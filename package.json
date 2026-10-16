@@ -10,7 +10,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 
 export type Status = 'busy' | 'idle' | 'offline';
@@ -111,13 +112,26 @@ export function listAgents(db: DatabaseSync): Agent[] {
 }
 
 function pidAlive(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  try { process.kill(pid, 0); return true; } catch (e) {
+    // EPERM: the process exists but we may not open it (e.g. from inside a sandbox). Only ESRCH means gone.
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== 'EPERM') log(`pid ${pid} judged dead: ${code}`);
+    return code === 'EPERM';
+  }
+}
+
+/** Append a line to chord.db.log next to the database, when CHORD_DB is known. Silent otherwise. */
+export function log(line: string): void {
+  if (!process.env.CHORD_DB) return;
+  try { fs.appendFileSync(process.env.CHORD_DB + '.log', `${new Date().toISOString()} [${process.env.CHORD_AGENT_ID ?? '-'}/${process.pid}] ${line}
+`); } catch { /* best effort */ }
 }
 
 /** Mark agents whose process is gone as offline and drop their claims. Returns the names swept. */
 export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAlive): string[] {
   const dead = listAgents(db).filter(a => a.status !== 'offline' && !alive(a.pid)).map(a => a.name);
   for (const name of dead) {
+    log(`sweep: ${name} marked offline, claims released`);
     setStatus(db, name, 'offline');
     releaseAll(db, name);
   }

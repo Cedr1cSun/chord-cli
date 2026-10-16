@@ -26,7 +26,7 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
 
 const isShell = (name: unknown) => /^(bash|shell|exec|exec_command|local_shell)$/i.test(String(name ?? ''));
 
-function fmtMessages(ms: db.Message[]): string {
+export function formatMessages(ms: db.Message[]): string {
   return ms.map(m => `[chord] message from ${m.sender} at ${new Date(m.created_at).toISOString().slice(11, 16)}:\n${m.body}`).join('\n\n');
 }
 
@@ -64,7 +64,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     case 'user-prompt-submit': {
       db.setStatus(ctx.db, ctx.agent, 'busy');
       const ms = db.takeUnread(ctx.db, ctx.agent);
-      return ms.length ? fmtMessages(ms) : undefined;
+      return ms.length ? formatMessages(ms) : undefined;
     }
 
     case 'pre-tool-use': {
@@ -93,7 +93,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
 
     case 'stop': {
       const ms = db.takeUnread(ctx.db, ctx.agent);
-      if (ms.length) return { decision: 'block', reason: fmtMessages(ms) + '\n\nHandle these messages before stopping.' };
+      if (ms.length) return { decision: 'block', reason: formatMessages(ms) + '\n\nHandle these messages before stopping.' };
       db.setStatus(ctx.db, ctx.agent, 'idle');
       return undefined;
     }

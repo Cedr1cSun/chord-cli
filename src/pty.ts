@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import pty from 'node-pty';
 import * as db from './db.ts';
-import { formatMessages, type Tool } from './hooks.ts';
+import type { Tool } from './hooks.ts';
 import type { Launch } from './launch.ts';
 
 /** Executable and leading args for a tool. On Windows an npm .cmd shim is unwrapped to
@@ -44,7 +44,18 @@ export class InputGate {
   }
 }
 
-export const injectionText = (ms: db.Message[]) => formatMessages(ms) + '\n\nReply to the sender with the chord send tool if a reply is needed.';
+export const NUDGE = '[chord] You have new messages from other agents; they are attached to this prompt. Handle them, replying with the chord send tool where needed.';
+
+export type Action = 'nudge' | 'enter' | null;
+
+/** What the idle-wake loop should do this tick. Messages stay in the inbox until the
+ *  UserPromptSubmit hook takes them, so a lost keystroke is retried, never dropped. */
+export function nextAction(s: { status: string | undefined; unread: boolean; gateClear: boolean; nudgedAt: number }, now: number): Action {
+  if (s.status !== 'idle' || !s.unread || !s.gateClear) return null;
+  if (!s.nudgedAt || now - s.nudgedAt > 30_000) return 'nudge'; // first try, or the typed text was lost
+  if (now - s.nudgedAt > 5_000) return 'enter'; // typed but not submitted: press Enter again
+  return null;
+}
 
 export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<number> {
   const { file, args } = resolveCommand(tool);
@@ -65,12 +76,15 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   const onResize = () => term.resize(process.stdout.columns || 120, process.stdout.rows || 40);
   process.stdout.on('resize', onResize);
 
+  let nudgedAt = 0;
   const timer = setInterval(() => {
-    if (db.getAgent(d, launch.name)?.status !== 'idle' || !db.hasUnread(d, launch.name) || !gate.clear()) return;
-    const ms = db.takeUnread(d, launch.name);
-    db.setStatus(d, launch.name, 'busy'); // the UserPromptSubmit hook will set this too; avoid a second injection meanwhile
-    term.write(injectionText(ms));
-    setTimeout(() => term.write('\r'), 400); // Enter must arrive separately or the TUI treats it as pasted text
+    const status = db.getAgent(d, launch.name)?.status;
+    if (status !== 'idle') nudgedAt = 0;
+    const action = nextAction({ status, unread: db.hasUnread(d, launch.name), gateClear: gate.clear(), nudgedAt }, Date.now());
+    if (!action) return;
+    nudgedAt = Date.now();
+    if (action === 'nudge') { term.write(NUDGE); setTimeout(() => term.write('\r'), 1000); } // Enter must arrive separately or the TUI treats it as pasted text
+    else term.write('\r');
   }, 1000);
 
   return new Promise(resolve => {

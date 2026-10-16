@@ -24,3 +24,15 @@ test('resolveCommand unwraps npm .cmd shims on windows', { skip: process.platfor
   assert.deepEqual(resolveCommand('claude', () => '', () => 'C:\\bin\\claude.exe'), { file: 'C:\\bin\\claude.exe', args: [] });
   assert.throws(() => resolveCommand('nope', () => '', () => undefined), /not found/);
 });
+
+test('nextAction nudges once, retries Enter after 5s, retypes after 30s', async () => {
+  const { nextAction } = await import('../src/pty.ts');
+  const base = { status: 'idle', unread: true, gateClear: true, nudgedAt: 0 };
+  assert.equal(nextAction(base, 100_000), 'nudge');
+  assert.equal(nextAction({ ...base, nudgedAt: 100_000 }, 103_000), null);
+  assert.equal(nextAction({ ...base, nudgedAt: 100_000 }, 106_000), 'enter');
+  assert.equal(nextAction({ ...base, nudgedAt: 100_000 }, 131_000), 'nudge');
+  assert.equal(nextAction({ ...base, status: 'busy' }, 100_000), null);
+  assert.equal(nextAction({ ...base, unread: false }, 100_000), null);
+  assert.equal(nextAction({ ...base, gateClear: false }, 100_000), null);
+});

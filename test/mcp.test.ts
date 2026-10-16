@@ -9,20 +9,20 @@ function setup() {
   db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/a' });
   db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/b' });
   const call = (agent: string, name: string, args: Record<string, unknown> = {}) => {
-    const res = handle(tools({ db: d, agent }), { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) as any;
+    const res = handle(tools({ db: d, agent, cwd: '/' + agent }), { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) as any;
     return { text: res.result.content[0].text as string, isError: !!res.result.isError };
   };
   return { d, call };
 }
 
 test('initialize, ping, tools/list, unknown method, notification', () => {
-  const t = tools({ db: db.openDb(':memory:'), agent: 'a' });
+  const t = tools({ db: db.openDb(':memory:'), agent: 'a', cwd: '/a' });
   const init = handle(t, { jsonrpc: '2.0', id: 0, method: 'initialize', params: {} }) as any;
   assert.equal(init.result.serverInfo.name, 'chord');
   assert.ok(init.result.capabilities.tools);
   assert.deepEqual((handle(t, { jsonrpc: '2.0', id: 1, method: 'ping' }) as any).result, {});
   const names = (handle(t, { jsonrpc: '2.0', id: 2, method: 'tools/list' }) as any).result.tools.map((x: any) => x.name);
-  assert.deepEqual(names, ['register', 'list_agents', 'send', 'inbox']);
+  assert.deepEqual(names, ['register', 'list_agents', 'claim', 'release', 'send', 'inbox']);
   assert.equal((handle(t, { jsonrpc: '2.0', id: 3, method: 'nope' }) as any).error.code, -32601);
   assert.equal(handle(t, { jsonrpc: '2.0', method: 'notifications/initialized' }), undefined);
 });

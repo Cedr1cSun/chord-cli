@@ -22,6 +22,7 @@ export interface Claim {
   intent: string;
   kind: string;
   symbols: string | null;
+  created_at: number;
   asked_at: number | null;
 }
 
@@ -62,8 +63,9 @@ export function openDb(file: string): DatabaseSync {
       file     text not null,
       intent   text not null,
       kind     text not null,
-      symbols  text,
-      asked_at integer,
+      symbols    text,
+      created_at integer not null,
+      asked_at   integer,
       primary key (agent, file)
     );
     create table if not exists messages (
@@ -124,9 +126,9 @@ export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAli
 
 export function addClaim(db: DatabaseSync, c: { agent: string; file: string; intent: string; kind: string; symbols?: string | null }): void {
   db.prepare(
-    `insert into claims (agent, file, intent, kind, symbols) values (?, ?, ?, ?, ?)
+    `insert into claims (agent, file, intent, kind, symbols, created_at) values (?, ?, ?, ?, ?, ?)
      on conflict(agent, file) do update set intent = excluded.intent, kind = excluded.kind, symbols = excluded.symbols`,
-  ).run(c.agent, c.file, c.intent, c.kind, c.symbols ?? null);
+  ).run(c.agent, c.file, c.intent, c.kind, c.symbols ?? null, Date.now());
 }
 
 export function setAskedAt(db: DatabaseSync, agent: string, file: string, at: number): void {

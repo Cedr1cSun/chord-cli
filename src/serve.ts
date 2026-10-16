@@ -9,4 +9,4 @@ if (!agent || !file) {
   process.stderr.write('chord: CHORD_AGENT_ID and CHORD_DB must be set\n');
   process.exit(2);
 }
-serve(tools({ db: openDb(file), agent }));
+serve(tools({ db: openDb(file), agent, cwd: process.cwd() }));

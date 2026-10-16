@@ -1,0 +1,23 @@
+{
+  "name": "chord",
+  "version": "0.0.0",
+  "description": "Run several coding agents in one git project, each in its own worktree, with shared file claims and messaging",
+  "type": "module",
+  "bin": {
+    "chord": "src/cli.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5.9"
+  }
+}

@@ -35,11 +35,13 @@ export interface Message {
   read_at: number | null;
 }
 
+const commonDir = (cwd: string) => path.resolve(cwd, execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd, encoding: 'utf8' }).trim());
+
+/** Root of the main checkout, even when run from inside a linked worktree. */
+export const mainRoot = (cwd: string) => path.dirname(commonDir(cwd));
+
 /** chord.db lives in the common git dir, so every worktree of the repo shares it. */
-export function dbPath(cwd: string): string {
-  const common = execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd, encoding: 'utf8' }).trim();
-  return path.resolve(cwd, common, 'chord.db');
-}
+export const dbPath = (cwd: string) => path.join(commonDir(cwd), 'chord.db');
 
 export function openDb(file: string): DatabaseSync {
   const db = new DatabaseSync(file);

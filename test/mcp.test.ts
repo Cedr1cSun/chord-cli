@@ -22,7 +22,7 @@ test('initialize, ping, tools/list, unknown method, notification', () => {
   assert.ok(init.result.capabilities.tools);
   assert.deepEqual((handle(t, { jsonrpc: '2.0', id: 1, method: 'ping' }) as any).result, {});
   const names = (handle(t, { jsonrpc: '2.0', id: 2, method: 'tools/list' }) as any).result.tools.map((x: any) => x.name);
-  assert.deepEqual(names, ['register', 'list_agents', 'claim', 'release', 'send', 'inbox']);
+  assert.deepEqual(names, ['register', 'list_agents', 'claim', 'release', 'send', 'inbox', 'finish']);
   assert.equal((handle(t, { jsonrpc: '2.0', id: 3, method: 'nope' }) as any).error.code, -32601);
   assert.equal(handle(t, { jsonrpc: '2.0', method: 'notifications/initialized' }), undefined);
 });

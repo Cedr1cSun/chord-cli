@@ -44,6 +44,7 @@ export function briefing(ctx: Ctx): string {
     '4. Do not modify files through shell commands (sed, echo >, etc.). Use the editor tools so claims are checked.',
     '5. To talk to other agents use only chord send()/inbox(); do not use any other agent-messaging feature. Messages are asynchronous.',
     '6. To learn about the project, read the agent list and claims below and ask a specific agent with send(); do not ask the user.',
+    '7. When your change is complete and committed on your branch, call finish() to rebase onto main and fast-forward it. If finish() reports a conflict, stop and ask the user.',
     '',
     peers.length ? 'Agents online:' : 'No other agents are online yet.',
     ...peers.map(a => `- ${a.name} (${a.tool}, ${a.status}): ${a.task ?? 'not registered yet'}${a.scope ? ` [${a.scope}]` : ''}`),

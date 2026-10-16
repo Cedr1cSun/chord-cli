@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import * as db from './db.ts';
+export const mainRoot = db.mainRoot;
 import type { Event, Tool } from './hooks.ts';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -15,11 +16,6 @@ const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd,
 const here = (f: string) => fileURLToPath(new URL(f, import.meta.url)).split(path.sep).join('/');
 export const HOOKS_TS = here('./hooks.ts');
 export const SERVE_TS = here('./serve.ts');
-
-/** Root of the main checkout, even when run from inside a linked worktree. */
-export function mainRoot(cwd: string): string {
-  return path.dirname(path.resolve(cwd, git(cwd, 'rev-parse', '--git-common-dir')));
-}
 
 /** Keep .chord/ out of git without touching the project's own files. */
 export function ensureExcluded(root: string): void {

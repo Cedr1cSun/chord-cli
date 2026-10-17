@@ -83,6 +83,18 @@ test('session-end leaves going offline to the wrapper: the agent is idle and kee
   assert.equal(db.claimsBy(d, 'a').length, 1);
 });
 
+test('session-start after compaction does not make a busy agent idle', () => {
+  const { d, ctx } = setup();
+  db.setStatus(d, 'a', 'busy');
+  handleHook(ctx('a'), 'claude', 'session-start', { source: 'compact' });
+  assert.equal(db.getAgent(d, 'a')!.status, 'busy');
+  handleHook(ctx('a'), 'claude', 'session-start', { source: 'startup' });
+  assert.equal(db.getAgent(d, 'a')!.status, 'idle');
+  db.setStatus(d, 'a', 'idle');
+  handleHook(ctx('a'), 'claude', 'post-tool-use', { tool_name: 'Read' }); // any tool call means the agent is working
+  assert.equal(db.getAgent(d, 'a')!.status, 'busy');
+});
+
 test('pre-tool-use polices only the worktree and forbids other checkouts in the project', () => {
   const d = db.openDb(':memory:');
   const P = process.platform === 'win32' ? 'D:\\P' : '/P';

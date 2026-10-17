@@ -88,8 +88,9 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
   db.sweep(ctx.db);
   switch (event) {
     case 'session-start':
-      // the agent now waits for its first prompt: idle, so messages that arrive before the user types still wake it
-      db.setStatus(ctx.db, ctx.agent, 'idle');
+      // The agent now waits for its first prompt: idle, so messages that arrive before the user types still wake it.
+      // Claude Code also fires this after compacting a long conversation, in the middle of a turn: not idle then.
+      if (payload.source !== 'compact') db.setStatus(ctx.db, ctx.agent, 'idle');
       return context('SessionStart', briefing(ctx));
 
     case 'user-prompt-submit': {
@@ -124,6 +125,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     case 'post-tool-use': {
       // runs after every tool call: warn about shell edits to unclaimed files, and hand over messages
       // that arrived mid-turn so a busy agent hears from its peers at the next tool call, not at turn end
+      db.setStatus(ctx.db, ctx.agent, 'busy'); // any tool call means the agent is working, whatever another plugin's Stop hook did
       const parts: string[] = [];
       if (isShell(payload.tool_name)) {
         let status = '';

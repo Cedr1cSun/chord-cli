@@ -121,10 +121,15 @@ export function finish(ctx: Ctx) {
 
 function finishLocked(ctx: Ctx) {
   const wt = ctx.worktree;
-  // a finish killed mid-rebase leaves the worktree in rebase state; clear it before anything else
+  // A rebase in progress is only ours to clean up when finish itself started it (a finish killed mid-rebase leaves
+  // the marker behind). Anyone else's rebase, perhaps with conflicts already resolved, is left alone.
+  const marker = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'chord-finish'));
   for (const dir of ['rebase-merge', 'rebase-apply']) {
-    if (fs.existsSync(path.resolve(wt, git(wt, 'rev-parse', '--git-path', dir)))) { git(wt, 'rebase', '--abort'); break; }
+    if (!fs.existsSync(path.resolve(wt, git(wt, 'rev-parse', '--git-path', dir)))) continue;
+    if (!fs.existsSync(marker)) throw new Error('a rebase is in progress in your worktree that finish did not start; run `git rebase --continue` (after resolving conflicts) or `git rebase --abort` first');
+    git(wt, 'rebase', '--abort'); break;
   }
+  fs.rmSync(marker, { force: true });
   if (git(wt, 'status', '--porcelain')) throw new Error('your worktree has uncommitted changes; commit them first');
   const root = db.mainRoot(wt);
   if (git(root, 'status', '--porcelain', '--untracked-files=no')) throw new Error('the main checkout has uncommitted changes; ask the user to commit or stash them');
@@ -132,10 +137,13 @@ function finishLocked(ctx: Ctx) {
   if (branch === 'HEAD') throw new Error('your worktree is not on its branch (detached HEAD); check out your chord/ branch first');
   const main = git(root, 'rev-parse', '--abbrev-ref', 'HEAD');
   if (main === 'HEAD') throw new Error('the main checkout is not on a branch (detached HEAD); ask the user to check out a branch there');
+  fs.writeFileSync(marker, `${Date.now()}\n`);
   try {
     git(wt, 'rebase', main);
+    fs.rmSync(marker, { force: true });
   } catch (e) {
     try { git(wt, 'rebase', '--abort'); } catch { /* nothing to abort */ }
+    fs.rmSync(marker, { force: true });
     db.log(`finish: rebase of ${branch} onto ${main} conflicted; aborted`);
     db.addEvent(ctx.db, ctx.agent, 'conflict', null, `rebase of ${branch} onto ${main} conflicted; aborted, nothing merged`);
     throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${stderrOf(e)}`);

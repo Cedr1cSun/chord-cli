@@ -71,6 +71,8 @@ test('finish recovers from a worktree left mid-rebase by an earlier crash', () =
   const { root, wt, ctx } = setup();
   fs.writeFileSync(path.join(wt, 'a.txt'), 'from worktree\n'); git(wt, 'commit', '-q', '-am', 'wt change');
   fs.writeFileSync(path.join(root, 'a.txt'), 'from main\n'); git(root, 'commit', '-q', '-am', 'main change');
+  // finish writes this marker before its own rebase; a finish killed mid-rebase leaves it behind
+  fs.writeFileSync(path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'chord-finish')), '1\n');
   try { git(wt, 'rebase', 'main'); } catch { /* conflict: worktree now sits mid-rebase */ }
   const rebaseDir = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'rebase-merge'));
   assert.ok(fs.existsSync(rebaseDir));
@@ -80,6 +82,18 @@ test('finish recovers from a worktree left mid-rebase by an earlier crash', () =
   assert.deepEqual(r.merged, ['wt change']);
   assert.ok(!fs.existsSync(rebaseDir));
   assert.equal(git(root, 'log', '--format=%s', '-1'), 'wt change');
+});
+
+test('finish leaves a rebase it did not start alone, resolved conflicts included', () => {
+  const { root, wt, ctx } = setup();
+  fs.writeFileSync(path.join(wt, 'a.txt'), 'from worktree\n'); git(wt, 'commit', '-q', '-am', 'wt change');
+  fs.writeFileSync(path.join(root, 'a.txt'), 'from main\n'); git(root, 'commit', '-q', '-am', 'main change');
+  try { git(wt, 'rebase', 'main'); } catch { /* conflict */ }
+  fs.writeFileSync(path.join(wt, 'a.txt'), 'RESOLVED\n'); git(wt, 'add', 'a.txt'); // the agent resolved it but has not continued yet
+  assert.throws(() => finish(ctx), /a rebase is in progress in your worktree that finish did not start/);
+  assert.equal(fs.readFileSync(path.join(wt, 'a.txt'), 'utf8'), 'RESOLVED\n');
+  assert.ok(fs.existsSync(path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'rebase-merge'))));
+  assert.equal(git(root, 'log', '--format=%s', '-1'), 'main change');
 });
 
 test('finish refuses when the main checkout is detached', () => {

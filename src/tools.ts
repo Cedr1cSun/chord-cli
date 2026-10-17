@@ -78,6 +78,7 @@ export function finish(ctx: Ctx) {
   if (git(root, 'status', '--porcelain', '--untracked-files=no')) throw new Error('the main checkout has uncommitted changes; ask the user to commit or stash them');
   const branch = git(ctx.cwd, 'rev-parse', '--abbrev-ref', 'HEAD');
   const main = git(root, 'rev-parse', '--abbrev-ref', 'HEAD');
+  if (main === 'HEAD') throw new Error('the main checkout is not on a branch (detached HEAD); ask the user to check out a branch there');
   let subjects: string[] = [];
   let lastErr = '';
   for (let attempt = 0; ; attempt++) {

@@ -75,3 +75,10 @@ test('finish recovers from a worktree left mid-rebase by an earlier crash', () =
   assert.ok(!fs.existsSync(path.join(root, '.git', 'worktrees', 'w', 'rebase-merge')));
   assert.equal(git(root, 'log', '--format=%s', '-1'), 'wt change');
 });
+
+test('finish refuses when the main checkout is detached', () => {
+  const { root, wt, ctx } = setup();
+  fs.writeFileSync(path.join(wt, 'b.txt'), 'x\n'); git(wt, 'add', 'b.txt'); git(wt, 'commit', '-q', '-m', 'feat: b');
+  git(root, 'checkout', '-q', '--detach');
+  assert.throws(() => finish(ctx), /detached HEAD/);
+});

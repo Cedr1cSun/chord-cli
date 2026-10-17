@@ -62,22 +62,36 @@ export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
-/** Rebase the agent's branch onto main and fast-forward main to it. Atomic from the agent's point of view. */
+const stderrOf = (e: unknown) => ((e as { stderr?: string }).stderr ?? (e as Error).message).trim();
+const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/** Rebase the agent's branch onto main and fast-forward main to it. Atomic from the agent's point of view.
+ *  Several agents may finish at once: a git lock or a main that moved under us is retried, a real conflict is not. */
 export function finish(ctx: Ctx) {
   if (git(ctx.cwd, 'status', '--porcelain')) throw new Error('your worktree has uncommitted changes; commit them first');
   const root = db.mainRoot(ctx.cwd);
   if (git(root, 'status', '--porcelain', '--untracked-files=no')) throw new Error('the main checkout has uncommitted changes; ask the user to commit or stash them');
   const branch = git(ctx.cwd, 'rev-parse', '--abbrev-ref', 'HEAD');
   const main = git(root, 'rev-parse', '--abbrev-ref', 'HEAD');
-  try {
-    git(ctx.cwd, 'rebase', main);
-  } catch (e) {
-    try { git(ctx.cwd, 'rebase', '--abort'); } catch { /* nothing to abort */ }
-    const msg = ((e as { stderr?: string }).stderr ?? (e as Error).message).trim();
-    throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${msg}`);
+  let subjects: string[] = [];
+  let lastErr = '';
+  for (let attempt = 0; ; attempt++) {
+    try {
+      git(ctx.cwd, 'rebase', main);
+    } catch (e) {
+      try { git(ctx.cwd, 'rebase', '--abort'); } catch { /* nothing to abort */ }
+      const msg = stderrOf(e);
+      if (!/\.lock/.test(msg)) throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${msg}`);
+      lastErr = msg;
+    }
+    if (!lastErr) {
+      subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
+      try { git(root, 'merge', '--ff-only', branch); break; } catch (e) { lastErr = stderrOf(e); }
+    }
+    if (attempt >= 9) throw new Error(`could not fast-forward ${main} after ${attempt + 1} attempts; your branch is rebased but not merged. Try finish again.\n${lastErr}`);
+    lastErr = '';
+    sleepSync(100 + Math.random() * 400);
   }
-  const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
-  git(root, 'merge', '--ff-only', branch);
   db.releaseAll(ctx.db, ctx.agent);
   const online = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent && a.status !== 'offline').map(a => a.name);
   if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\nRebase your branch when convenient. This is a notification; do not reply.`);

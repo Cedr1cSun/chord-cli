@@ -32,7 +32,8 @@ export function pickName(d: DatabaseSync, tool: Tool, project: string, override?
     if (clash && clash.status !== 'offline') throw new Error(`agent "${override}" is already online`);
     return override;
   }
-  const base = path.basename(project).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  // the project name makes the agent recognisable in `chord ls --all`; kept short so the worktree path stays short
+  const base = path.basename(project).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 12).replace(/^-+|-+$/g, '') || 'project';
   for (;;) {
     const name = `${tool}-${base}-${randomBytes(2).toString('hex')}`;
     if (!db.getAgent(d, name)) return name;
@@ -62,8 +63,20 @@ export function ensureWorktree(repo: string, wt: string, name: string): string {
   if (siblings.length) { try { git(repo, 'worktree', 'repair', ...siblings); } catch { /* a sibling beyond repair is pruned below */ } }
   git(repo, 'worktree', 'prune');
   const exists = git(repo, 'branch', '--list', branch) !== '';
-  if (exists) git(repo, 'worktree', 'add', wt, branch);
-  else git(repo, 'worktree', 'add', '-b', branch, wt);
+  try {
+    // core.longpaths: a worktree path is some forty characters longer than the main checkout's, which on Windows is
+    // enough to push a deep repository past MAX_PATH
+    if (exists) git(repo, '-c', 'core.longpaths=true', 'worktree', 'add', wt, branch);
+    else git(repo, '-c', 'core.longpaths=true', 'worktree', 'add', '-b', branch, wt);
+  } catch (e) {
+    // nothing half-made stays behind: a stale branch or an empty directory would trip the next launch
+    try { git(repo, 'worktree', 'prune'); } catch { /* best effort */ }
+    if (!exists) { try { git(repo, 'branch', '-D', branch); } catch { /* never created */ } }
+    try { fs.rmSync(wt, { recursive: true, force: true }); } catch { /* best effort */ }
+    const msg = ((e as { stderr?: string }).stderr ?? (e as Error).message).trim();
+    if (/too long/i.test(msg)) throw new Error(`${msg}\n${wt} is too long a path for git here; run "git config --global core.longpaths true", or move the project to a shorter path`);
+    throw new Error(`could not create the worktree ${wt}: ${msg}`);
+  }
   return onBranch(wt, branch);
 }
 

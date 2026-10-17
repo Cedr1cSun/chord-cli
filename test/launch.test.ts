@@ -154,6 +154,31 @@ test('ensureWorktree recovers a deleted workspace and a moved project, and refus
   assert.throws(() => ensureWorktree(path.join(moved, 'repo'), foreign, 'y'), /not a git worktree/);
 });
 
+test('a failed worktree add leaves no branch or directory behind, and long paths work', () => {
+  const proj = tempProject(); const repo = path.join(proj, 'repo');
+  const out = (...a: string[]) => execFileSync('git', a, { cwd: repo, encoding: 'utf8' }).trim();
+  const wtA = ensureWorktree(repo, path.join(proj, 'chord', 'agents', 'x', 'repo'), 'x');
+  // the same branch cannot be checked out twice: the second add fails, and must clean up after itself
+  const wtB = path.join(proj, 'chord', 'agents', 'x2', 'repo');
+  assert.throws(() => ensureWorktree(repo, wtB, 'x'), /could not create the worktree/);
+  assert.ok(!fs.existsSync(wtB));
+  assert.notEqual(out('branch', '--list', 'chord/x'), ''); // existed before: kept
+  assert.equal(out('worktree', 'list', '--porcelain').split('\n').filter(l => l.startsWith('worktree ')).length, 2);
+  assert.ok(fs.existsSync(wtA));
+  // a brand-new branch is deleted again when its worktree cannot be made
+  fs.mkdirSync(path.dirname(path.join(proj, 'chord', 'agents', 'z', 'repo')), { recursive: true });
+  fs.writeFileSync(path.join(proj, 'chord', 'agents', 'z', 'repo'), 'a file where the worktree should go');
+  assert.throws(() => ensureWorktree(repo, path.join(proj, 'chord', 'agents', 'z', 'repo'), 'z'));
+  assert.equal(out('branch', '--list', 'chord/z'), '');
+  // a path beyond MAX_PATH: git cannot make the worktree even with core.longpaths; the failure must be clean
+  const deep = path.join(proj, 'chord', 'agents', 'd'.repeat(120), 'e'.repeat(120), 'repo');
+  assert.throws(() => ensureWorktree(repo, deep, 'deep'), /could not create the worktree/);
+  assert.equal(out('branch', '--list', 'chord/deep'), '');
+  assert.ok(!fs.existsSync(deep));
+  assert.equal(out('worktree', 'list', '--porcelain').split('\n').filter(l => l.startsWith('worktree ')).length, 2);
+  assert.match(pickName(db.openDb(':memory:'), 'codex', '/x/A Very Long Project Name Indeed'), /^codex-a-very-long-[0-9a-f]{4}$/);
+});
+
 test('after the project moves, a new agent does not take over an old agent\'s worktree registration', () => {
   const proj = tempProject();
   const alice = prepare('codex', proj, 'alice');

@@ -180,3 +180,24 @@ test('finish survives a noisy post-merge hook and a stale index.lock, and does n
   assert.equal(d.prepare("select count(*) c from events where kind = 'conflict'").get()!.c, 0);
   assert.equal(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), 'chord/w');
 });
+
+test('finish ignores line-ending-only differences a repository shows from the moment it is checked out', () => {
+  const { root, wt, ctx } = setup();
+  // a CRLF file committed as is, then a "* text" attribute without renormalising: git now reports it modified everywhere
+  fs.writeFileSync(path.join(root, 'crlf.txt'), 'one\r\ntwo\r\n'); git(root, 'add', 'crlf.txt'); git(root, 'commit', '-q', '-m', 'crlf');
+  fs.writeFileSync(path.join(root, '.gitattributes'), '* text\n'); git(root, 'add', '.gitattributes'); git(root, 'commit', '-q', '-m', 'attributes');
+  git(wt, 'rebase', '-q', 'main');
+  assert.notEqual(git(wt, 'status', '--porcelain', '--untracked-files=no'), ''); // the phantom change
+  fs.writeFileSync(path.join(wt, 'b.txt'), 'x\n'); git(wt, 'add', 'b.txt'); git(wt, 'commit', '-q', '-m', 'feat: b');
+  // git itself will not rebase over it, so finish names the cause and the fix instead of calling it the agent's change
+  assert.throws(() => finish(ctx), /differ from the index only in their line endings.*crlf.txt.*git add --renormalize/);
+  assert.equal(git(root, 'log', '--format=%s', '-1'), 'attributes');
+  // once the repository is renormalised, a worktree made from that commit is clean and finishes normally
+  git(root, 'add', '--renormalize', '.'); git(root, 'commit', '-q', '-m', 'renormalise');
+  const ws2 = path.join(path.dirname(path.dirname(wt)), 'w2');
+  const wt2 = ensureWorktree(root, path.join(ws2, 'repo'), 'w2');
+  assert.equal(git(wt2, 'status', '--porcelain', '--untracked-files=no'), '');
+  fs.writeFileSync(path.join(wt2, 'c.txt'), 'y\n'); git(wt2, 'add', 'c.txt'); git(wt2, 'commit', '-q', '-m', 'feat: c');
+  db.addAgent(ctx.db, { name: 'w2', tool: 'claude', pid: process.pid, cwd: ws2, worktree: wt2 });
+  assert.deepEqual(finish({ ...ctx, agent: 'w2', cwd: ws2, worktree: wt2 }).merged, ['feat: c']);
+});

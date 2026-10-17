@@ -108,6 +108,14 @@ const gitOk = (cwd: string, ...args: string[]) => { try { git(cwd, ...args); ret
 const stderrOf = (e: unknown) => ((e as { stderr?: string }).stderr ?? (e as Error).message).trim();
 const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
+/** Tracked files with real changes, staged or not, ignoring line-ending differences and whatever happens inside
+ *  submodules; '' when clean. */
+export function dirtyTracked(cwd: string): string {
+  const unstaged = git(cwd, 'diff', '--name-only', '--ignore-cr-at-eol', '--ignore-submodules=dirty');
+  const staged = git(cwd, 'diff', '--cached', '--name-only', '--ignore-cr-at-eol', '--ignore-submodules=dirty');
+  return [...new Set([...unstaged.split('\n'), ...staged.split('\n')].filter(Boolean))].join('\n');
+}
+
 /** git, retried for up to five seconds when another process (an IDE polling git status, say) holds index.lock. */
 function gitRetry(cwd: string, ...args: string[]): string {
   const t0 = Date.now();
@@ -154,10 +162,16 @@ function finishLocked(ctx: Ctx) {
   // a finish killed mid-operation can leave the worktree's own index.lock behind; one older than a minute is debris
   const indexLock = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'index.lock'));
   try { if (Date.now() - fs.statSync(indexLock).mtimeMs > 60_000) { fs.unlinkSync(indexLock); db.log('finish: removed a stale index.lock in the worktree'); } } catch { /* none */ }
-  // untracked files (build output, a venv) are not in the way of a rebase and must not be forced into a commit
-  if (git(wt, 'status', '--porcelain', '--untracked-files=no')) throw new Error('your worktree has uncommitted changes to tracked files; commit them first');
+  // Untracked files (build output, a venv) are not in the way of a rebase and must not be forced into a commit.
+  // Line-ending-only differences are ignored: a repository with CRLF files and a "* text" attribute shows every
+  // such file as modified the moment it is checked out, and no agent can commit that away.
+  if (dirtyTracked(wt)) throw new Error('your worktree has uncommitted changes to tracked files; commit them first');
+  // What status still reports now differs only in line endings. git will not rebase over it, and nothing done in a
+  // worktree can clear it: the repository needs a renormalised commit, which is the user's call.
+  const phantom = git(wt, 'status', '--porcelain', '--untracked-files=no', '--ignore-submodules=dirty').split('\n').filter(Boolean).map(l => l.replace(/^[ MADRCU?!]{1,2}\s+/, ''));
+  if (phantom.length) throw new Error(`these files differ from the index only in their line endings (a .gitattributes text rule the repository never renormalised for): ${phantom.slice(0, 10).join(', ')}. git cannot rebase over that and no worktree can clear it; ask the user to run "git add --renormalize ." and commit in the main checkout, after which worktrees made from that commit are clean. Nothing was merged.`);
   const root = db.mainRoot(wt);
-  if (git(root, 'status', '--porcelain', '--untracked-files=no')) throw new Error('the main checkout has uncommitted changes; ask the user to commit or stash them');
+  if (dirtyTracked(root)) throw new Error('the main checkout has uncommitted changes; ask the user to commit or stash them');
   const branch = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD');
   if (branch === 'HEAD') throw new Error('your worktree is not on its branch (detached HEAD); check out your chord/ branch first');
   const main = git(root, 'rev-parse', '--abbrev-ref', 'HEAD');

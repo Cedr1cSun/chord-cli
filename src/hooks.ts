@@ -189,6 +189,20 @@ export function changedPaths(statusZ: string): string[] {
   return out;
 }
 
+/** The old names of renames in NUL-separated status output: a rename changes that path too, and diff --name-only
+ *  lists only the new one. */
+export function renameSources(statusZ: string): string[] {
+  const parts = statusZ.split('\0');
+  const out: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i];
+    if (!entry) continue;
+    if (/R/.test(entry.slice(0, 2))) { i++; if (parts[i]) out.push(parts[i]); }
+    else if (/C/.test(entry.slice(0, 2))) i++;
+  }
+  return out;
+}
+
 /** git output, or '' when the command fails; optional locks off so this read-only look never fights the agent's own git. */
 const gitOut = (cwd: string, ...args: string[]): string => {
   try { return execFileSync('git', ['--no-optional-locks', ...args], { cwd, encoding: 'utf8', env: db.gitEnv(), maxBuffer: 64 * 1024 * 1024 }); } catch { return ''; }
@@ -201,12 +215,16 @@ export function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] 
   const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
   // uncommitted changes (-unormal folds an untracked directory into one entry) plus whatever the branch has
   // committed since it left main: a commit made from the shell is no more a claim than an edit is
+  // tracked files: real changes only, so a repository whose files differ in line endings from the moment they are
+  // checked out does not make every shell command cry wolf; untracked files from status, directories folded
   const status = gitOut(ctx.worktree, 'status', '--porcelain=v1', '-z', '-unormal');
+  const untracked = status.split('\0').filter(e => e.startsWith('?? ')).map(e => e.slice(3));
+  const modified = ['', '--cached'].flatMap(c => gitOut(ctx.worktree, 'diff', ...(c ? [c] : []), '--name-only', '-z', '--ignore-cr-at-eol').split('\0'));
   const root = db.mainRoot(ctx.worktree);
   const main = root ? gitOut(root, 'rev-parse', '--abbrev-ref', 'HEAD').trim() : '';
   const base = main && main !== 'HEAD' ? gitOut(ctx.worktree, 'merge-base', 'HEAD', main).trim() : '';
   const committed = base ? gitOut(ctx.worktree, 'diff', '--name-only', '-z', base, 'HEAD').split('\0').filter(Boolean) : [];
-  const touched = [...new Set([...changedPaths(status), ...committed])];
+  const touched = [...new Set([...modified.filter(Boolean), ...untracked, ...renameSources(status), ...committed])];
   const unclaimed = touched.map(f => normFile(ctx, path.join(ctx.worktree, f))).filter(f => !mine.has(f.toLowerCase()));
   const shown = unclaimed.slice(0, MAX_WARNED_FILES);
   if (unclaimed.length) out.push(`[chord] The shell command changed files you have not claimed: ${shown.join(', ')}${unclaimed.length > shown.length ? ` and ${unclaimed.length - shown.length} more` : ''}. Claim them now with claim(), or revert the change.`);

@@ -118,7 +118,7 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
     name: 'xterm-256color', cols: process.stdout.columns || 120, rows: process.stdout.rows || 40, cwd: launch.cwd, env,
   });
   const d = db.openDb(launch.dbFile);
-  db.addAgent(d, { name: launch.name, tool, pid: term.pid, cwd: launch.cwd, worktree: launch.worktree });
+  db.addAgent(d, { name: launch.name, tool, pid: term.pid, cwd: launch.cwd, worktree: launch.worktree, heartbeat: true });
 
   let outTail = '';
   term.onData(x => {
@@ -141,6 +141,7 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   Object.assign(process.env, launch.env); // so the wrapper writes to the same chord.db.log as the hooks
   let nudgedAt = 0, enteredAt = 0, lastState = '';
   const timer = setInterval(() => {
+    db.heartbeat(d, launch.name);
     const status = db.getAgent(d, launch.name)?.status;
     if (status !== 'idle') nudgedAt = enteredAt = 0;
     const s = { status, unread: db.hasUnread(d, launch.name), gateClear: gate.clear(), nudgedAt, enteredAt };

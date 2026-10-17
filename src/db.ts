@@ -16,6 +16,7 @@ export interface Agent {
   status: Status;
   started_at: number;
   updated_at: number;
+  heartbeat_at: number | null; // refreshed by the wrapper; null for agents without one (tests)
 }
 
 export interface Claim {
@@ -78,7 +79,8 @@ export function openDb(file: string): DatabaseSync {
       scope      text,
       status     text not null default 'busy',
       started_at integer not null,
-      updated_at integer not null
+      updated_at integer not null,
+      heartbeat_at integer
     );
     create table if not exists claims (
       agent    text not null references agents(name),
@@ -105,14 +107,14 @@ export function openDb(file: string): DatabaseSync {
 
 // agents
 
-export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid: number; cwd: string; worktree?: string }): void {
+export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid: number; cwd: string; worktree?: string; heartbeat?: boolean }): void {
   const now = Date.now();
   db.prepare(
-    `insert into agents (name, tool, pid, cwd, worktree, status, started_at, updated_at)
-     values (?, ?, ?, ?, ?, 'busy', ?, ?)
+    `insert into agents (name, tool, pid, cwd, worktree, status, started_at, updated_at, heartbeat_at)
+     values (?, ?, ?, ?, ?, 'busy', ?, ?, ?)
      on conflict(name) do update set tool = excluded.tool, pid = excluded.pid, cwd = excluded.cwd, worktree = excluded.worktree,
-       status = 'busy', task = null, scope = null, started_at = excluded.started_at, updated_at = excluded.updated_at`,
-  ).run(a.name, a.tool, a.pid, a.cwd, a.worktree ?? a.cwd, now, now);
+       status = 'busy', task = null, scope = null, started_at = excluded.started_at, updated_at = excluded.updated_at, heartbeat_at = excluded.heartbeat_at`,
+  ).run(a.name, a.tool, a.pid, a.cwd, a.worktree ?? a.cwd, now, now, a.heartbeat ? now : null);
   // a relaunch under the same name must not inherit messages meant for the previous session
   db.prepare('delete from messages where recipient = ? and read_at is null').run(a.name);
 }
@@ -156,9 +158,17 @@ export function log(line: string): void {
 `); } catch { /* best effort */ }
 }
 
-/** Mark agents whose process is gone as offline and drop their claims. Returns the names swept. */
-export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAlive): string[] {
-  const dead = listAgents(db).filter(a => a.status !== 'offline' && !alive(a.pid)).map(a => a.name);
+/** The wrapper refreshes this every second; an agent whose heartbeat is this old is dead even if its pid is taken again. */
+export const HEARTBEAT_STALE_MS = 30_000;
+
+export function heartbeat(db: DatabaseSync, name: string): void {
+  db.prepare('update agents set heartbeat_at = ? where name = ?').run(Date.now(), name);
+}
+
+/** Mark agents whose process is gone as offline and drop their claims. Returns the names swept. A missing
+ *  process or a stale heartbeat both count: Windows reuses pids quickly, so the pid alone can lie. */
+export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAlive, now = Date.now()): string[] {
+  const dead = listAgents(db).filter(a => a.status !== 'offline' && (!alive(a.pid) || (a.heartbeat_at !== null && now - a.heartbeat_at > HEARTBEAT_STALE_MS))).map(a => a.name);
   for (const name of dead) {
     log(`sweep: ${name} marked offline, claims released`);
     setStatus(db, name, 'offline');

@@ -69,7 +69,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     case 'user-prompt-submit': {
       db.setStatus(ctx.db, ctx.agent, 'busy');
       const ms = db.takeUnread(ctx.db, ctx.agent);
-      return ms.length ? context('UserPromptSubmit', formatMessages(ms)) : undefined;
+      return ms.length ? context('UserPromptSubmit', `${formatMessages(ms)}\n\n[chord] ${ms.length} message(s) above arrived from other agents. Act on them in this turn as well as on the user's request: reply with the chord send tool where a reply is asked for.`) : undefined;
     }
 
     case 'pre-tool-use': {

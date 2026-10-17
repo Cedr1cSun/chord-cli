@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EXIT_COMMAND, InputGate, NUDGE, decodeKeys, nextAction, oscState, resolveCommand, stripAnsi, typedEchoed, whereIs } from '../src/pty.ts';
+import { EXIT_COMMAND, InputGate, NUDGE, TitleFilter, decodeKeys, nextAction, oscState, resolveCommand, stripAnsi, titleFor, titleSequence, typedEchoed, whereIs } from '../src/pty.ts';
 
 const key = (uc: number, down = 1, ctrl = 0) => `\x1b[${uc};0;${uc};${down};${ctrl};1_`;
 
@@ -98,6 +98,22 @@ test('nextAction: a stop request wins over unread messages and follows the same 
   assert.equal(nextAction(stopping, 107_000), 'enter');
   assert.equal(nextAction({ ...stopping, echoed: false }, 107_000), null);
   assert.deepEqual(EXIT_COMMAND, { claude: '/exit', codex: '/quit' });
+});
+
+test('TitleFilter drops the tool\'s title sequences, keeps everything else and holds a split sequence', () => {
+  const f = new TitleFilter();
+  assert.equal(f.push('a\x1b]0;Claude Code\x07b\x1b]2;x\x1b\\c'), 'abc');
+  assert.equal(f.push('\x1b]7501;state=idle:app=codex\x1b\\ok'), '\x1b]7501;state=idle:app=codex\x1b\\ok'); // Codex state reports pass
+  assert.equal(f.push('\x1b[31mred\x1b[0m'), '\x1b[31mred\x1b[0m');
+  assert.equal(f.push('x\x1b]0;half a ti'), 'x'); // unfinished title: held
+  assert.equal(f.push('tle\x07y'), 'y'); // completed and dropped
+  assert.equal(f.push('p\x1b]'), 'p'); assert.equal(f.push('0;t\x07q'), 'q'); // split right after the introducer
+  assert.equal(f.push('m\x1b]0;t\x1b'), 'm'); assert.equal(f.push('\\n'), 'n'); // split inside the ST terminator
+  assert.equal(f.push('\x1b]7501;sta'), '\x1b]7501;sta'); // not a title: not held
+  assert.equal(titleFor('claude-ab12', null), 'chord claude-ab12');
+  assert.equal(titleFor('claude-ab12', '  fix   the\nfooter '), 'chord claude-ab12 · fix the footer');
+  assert.equal(titleFor('a', 'x'.repeat(100)).length, 'chord a · '.length + 80);
+  assert.equal(titleSequence('t\x07i\x1btle'), '\x1b]0;t i tle\x07');
 });
 
 test('typedEchoed sees the text through re-rendering, wrapping and escape sequences, and not when a dialog ate it', () => {

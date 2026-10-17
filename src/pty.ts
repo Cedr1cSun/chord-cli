@@ -109,6 +109,28 @@ export function typedEchoed(output: string, text: string): boolean {
   return squash(output).includes(squash(text).slice(0, 25));
 }
 
+/** The terminal title is chord's: "chord <agent> · <task>", so a window or tab can be matched to a `chord ls` row.
+ *  The tools set their own titles (Claude Code its session summary, Codex the folder name), so their title
+ *  sequences (OSC 0, 1, 2) are removed from the forwarded output; everything else, including Codex's OSC 7501
+ *  state reports, passes through. A sequence split across two chunks is held until it completes. */
+export class TitleFilter {
+  private pending = '';
+  push(chunk: string): string {
+    let s = this.pending + chunk;
+    this.pending = '';
+    s = s.replace(/\x1b\][012];[^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
+    const i = s.lastIndexOf('\x1b]');
+    if (i !== -1 && /^\x1b\](?:[012](?:;[^\x07\x1b]*\x1b?)?)?$/.test(s.slice(i))) { this.pending = s.slice(i); s = s.slice(0, i); }
+    return s;
+  }
+}
+
+export function titleFor(name: string, task: string | null | undefined): string {
+  const t = (task ?? '').replace(/\s+/g, ' ').trim();
+  return `chord ${name}${t ? ` · ${t.length > 80 ? `${t.slice(0, 79)}…` : t}` : ''}`;
+}
+export const titleSequence = (title: string) => `\x1b]0;${title.replace(/[\x00-\x1f\x7f]/g, ' ')}\x07`;
+
 export type Typed = 'nudge' | 'stop';
 export type Action = Typed | 'enter' | null;
 
@@ -147,8 +169,11 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   db.addAgent(d, { name: launch.name, tool, pid: term.pid, cwd: launch.cwd, worktree: launch.worktree, heartbeat: true });
 
   let outTail = '', echoBuf = '', awaitingEcho = false;
+  const titles = new TitleFilter();
+  let title = titleFor(launch.name, null);
+  process.stdout.write(titleSequence(title));
   term.onData(x => {
-    process.stdout.write(x);
+    process.stdout.write(titles.push(x));
     if (awaitingEcho) echoBuf = (echoBuf + x).slice(-16000);
     if (tool === 'codex') { // the hooks set status too; the terminal report catches turns the hooks miss (Esc, untrusted hooks)
       const state = oscState(outTail + x);
@@ -170,6 +195,8 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   const timer = setInterval(() => {
     db.heartbeat(d, launch.name);
     const me = db.getAgent(d, launch.name);
+    const wanted = titleFor(launch.name, me?.task);
+    if (wanted !== title) { title = wanted; process.stdout.write(titleSequence(title)); }
     const status = me?.status;
     if (status !== 'idle') { typed = null; typedAt = enteredAt = enters = 0; echoed = false; }
     const s = { status, unread: db.hasUnread(d, launch.name), stop: !!me?.stop_requested_at, gateClear: gate.clear(), typed, typedAt, echoed, enters, enteredAt };

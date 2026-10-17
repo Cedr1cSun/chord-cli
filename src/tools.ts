@@ -93,7 +93,10 @@ export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
   return { ok: true };
 }
 
-const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+// 64 MB of output: a project's post-merge hook may print a great deal, and the default 1 MB would turn a merge that
+// already happened into an exception
+const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }).trim();
+const gitOk = (cwd: string, ...args: string[]) => { try { git(cwd, ...args); return true; } catch { return false; } };
 
 const stderrOf = (e: unknown) => ((e as { stderr?: string }).stderr ?? (e as Error).message).trim();
 const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -143,8 +146,11 @@ function finishLocked(ctx: Ctx) {
     git(wt, 'rebase', main);
     fs.rmSync(marker, { force: true });
   } catch (e) {
+    // a conflict is a conflict; anything else (a pre-rebase hook saying no, a lock) is reported as what it is
+    const conflicted = !!git(wt, 'diff', '--name-only', '--diff-filter=U');
     try { git(wt, 'rebase', '--abort'); } catch { /* nothing to abort */ }
     fs.rmSync(marker, { force: true });
+    if (!conflicted) throw new Error(`rebase onto ${main} failed (not a conflict); nothing was merged.\n${stderrOf(e)}`);
     db.log(`finish: rebase of ${branch} onto ${main} conflicted; aborted`);
     db.addEvent(ctx.db, ctx.agent, 'conflict', null, `rebase of ${branch} onto ${main} conflicted; aborted, nothing merged`);
     throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${stderrOf(e)}`);
@@ -155,7 +161,13 @@ function finishLocked(ctx: Ctx) {
     db.releaseAll(ctx.db, ctx.agent, 'finish');
     return { merged: [] as string[], into: main, notified: [] as string[], note: 'your branch has no commits beyond main; nothing to merge' };
   }
-  git(root, 'merge', '--ff-only', branch);
+  try {
+    git(root, 'merge', '--ff-only', branch);
+  } catch (e) {
+    // a noisy post-merge hook can make git exit non-zero after the merge went through
+    if (!gitOk(root, 'merge-base', '--is-ancestor', branch, main)) throw e;
+    db.log(`finish: merge reported an error but ${branch} is on ${main}; carrying on: ${stderrOf(e).split('\n')[0]}`);
+  }
   db.log(`finish: merged ${branch} into ${main} (${subjects.length} commit(s))`);
   db.addEvent(ctx.db, ctx.agent, 'merge', null, `${subjects.length} commit(s) into ${main}: ${subjects.join('; ')}`);
   db.releaseAll(ctx.db, ctx.agent, 'finish');

@@ -27,6 +27,12 @@ export function clean(project: Project, d: DatabaseSync, names: string[] = [], f
       try { git(project.repo, 'merge-base', '--is-ancestor', branch, main); } catch { merged = false; }
       if (!merged) { result.kept.push({ name: a.name, why: `${branch} has commits that are not on ${main}; use --force to discard them` }); continue; }
     }
+    // work that was never committed (an agent stopped half-way) is just as much work as an unmerged commit
+    if (!force && fs.existsSync(path.join(a.worktree, '.git'))) {
+      let dirty = '';
+      try { dirty = git(a.worktree, 'status', '--porcelain'); } catch { /* a broken worktree holds nothing to keep */ }
+      if (dirty) { result.kept.push({ name: a.name, why: `${a.worktree} has uncommitted changes; use --force to discard them` }); continue; }
+    }
     if (fs.existsSync(a.worktree)) { try { git(project.repo, 'worktree', 'remove', '--force', a.worktree); } catch { /* fall through to rm */ } }
     git(project.repo, 'worktree', 'prune');
     if (hasBranch) git(project.repo, 'branch', '-D', branch);

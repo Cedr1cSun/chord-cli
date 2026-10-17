@@ -43,6 +43,19 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   assert.deepEqual(r.removed, []);
   assert.deepEqual(r.kept.map(k => k.why.split(';')[0]), ['no such agent', 'still online']);
 
+  // uncommitted and untracked work is kept too: an agent stopped half-way has not lost anything
+  const dirty = mk('dirty');
+  fs.writeFileSync(path.join(dirty.wt, 'wip.txt'), 'half done');
+  fs.appendFileSync(path.join(dirty.wt, 'm.txt'), 'edited');
+  db.setStatus(d, 'dirty', 'offline');
+  r = clean(project, d);
+  assert.deepEqual(r.removed, []);
+  assert.match(r.kept.find(k => k.name === 'dirty')!.why, /has uncommitted changes; use --force/);
+  assert.ok(fs.existsSync(path.join(dirty.wt, 'wip.txt')));
+  assert.equal(fs.readFileSync(path.join(dirty.wt, 'm.txt'), 'utf8'), '1edited');
+  assert.deepEqual(clean(project, d, ['dirty'], true).removed, ['dirty']);
+  assert.ok(!fs.existsSync(dirty.ws));
+
   r = clean(project, d, ['unmerged'], true);
   assert.deepEqual(r.removed, ['unmerged']);
   assert.equal(git(repo, 'branch', '--list', 'chord/unmerged'), '');

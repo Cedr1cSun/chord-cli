@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeProjectSettings } from '../src/launch.ts';
+import { ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeProjectSettings, mergeUserSettings } from '../src/launch.ts';
 import { NeedsRestructure, resolveProject, restructure, encodeProjectPath, knownProjects } from '../src/project.ts';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, stdio: 'ignore' });
@@ -112,6 +112,15 @@ test('claude gets --add-dir for the worktree and codex a long tool timeout', () 
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: '/w/repo' };
   const c = claudeArgs(env);
   assert.equal(c[c.indexOf('--add-dir') + 1], '/w/repo');
+  // --add-dir and --mcp-config take several values; --settings takes one and must come last, or a prompt the user puts
+  // after `chord claude` would be swallowed as another directory
+  assert.equal(c[c.length - 2], '--settings');
+  assert.ok(c.indexOf('--add-dir') < c.indexOf('--mcp-config') && c.indexOf('--mcp-config') < c.indexOf('--settings'));
+  const merged = mergeUserSettings(c, { model: 'opus', disableAllHooks: true, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } });
+  const ms = JSON.parse(merged[merged.indexOf('--settings') + 1]);
+  assert.equal(ms.model, 'opus'); assert.equal(ms.disableAllHooks, undefined);
+  assert.deepEqual(ms.hooks.Stop.map((h: any) => h.hooks[0].command), [hookCommand('stop'), 'echo mine']); // chord's hooks stay
+  assert.equal(ms.hooks.PreToolUse[0].matcher, 'Edit|Write|MultiEdit|NotebookEdit');
   assert.ok(codexArgs(env).find(a => a.startsWith('mcp_servers.chord='))!.includes('tool_timeout_sec=600'));
 });
 
@@ -142,7 +151,7 @@ test('ensureWorktree recovers a deleted workspace and a moved project, and refus
 
 test('post-tool-use runs for every tool and codex hooks that attach context get a higher limit', () => {
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude' };
-  const settings = JSON.parse(claudeArgs(env)[1]);
+  const a = claudeArgs(env); const settings = JSON.parse(a[a.indexOf('--settings') + 1]);
   assert.equal(settings.hooks.PostToolUse[0].matcher, undefined);
   const c = codexArgs(env);
   assert.ok(c.find(a => a.startsWith('hooks.PostToolUse='))!.includes('additionalContextLimit=16000'));
@@ -160,7 +169,7 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: wt };
   // without the user's trust in the repository nothing of its own rides along
   const bare = claudeArgs(env);
-  assert.equal(JSON.parse(bare[1]).model, undefined);
+  assert.equal(JSON.parse(bare[bare.indexOf('--settings') + 1]).model, undefined);
   assert.ok(!bare.some(a => a.endsWith('.mcp.json')));
   const args = claudeArgs(env, true);
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);

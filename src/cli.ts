@@ -12,7 +12,7 @@ import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { clean } from './clean.ts';
 import * as db from './db.ts';
-import { prepare } from './launch.ts';
+import { mergeUserSettings, prepare } from './launch.ts';
 import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
 import { resolveCommand, run } from './pty.ts';
 import { disabledCodexHooks, pretrustClaude } from './trust.ts';
@@ -95,6 +95,35 @@ export function listArgs(rest: string[]): { agent?: string; limit: number } {
 }
 
 /** `--name <x>` or `--name=<x>` anywhere before the tool's own arguments. */
+/** The user's own `--settings <json|file>` for Claude, removed from the tool arguments: passed through as is it would
+ *  replace chord's --settings wholesale and switch the hooks off, so chord folds it under its own instead. */
+export function takeSettings(rest: string[]): Record<string, any> | undefined {
+  let raw: string | undefined;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--settings') { raw = rest[i + 1]; if (raw === undefined || raw.startsWith('-')) throw new Error('--settings needs a value'); rest.splice(i, 2); break; }
+    if (a.startsWith('--settings=')) { raw = a.slice(11); rest.splice(i, 1); break; }
+  }
+  if (raw === undefined) return undefined;
+  const text = fs.existsSync(raw) ? fs.readFileSync(raw, 'utf8') : raw;
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); } catch { throw new Error(`--settings must be a JSON object or a path to a JSON file: ${raw}`); }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('--settings must be a JSON object');
+  return parsed as Record<string, any>;
+}
+
+/** Tool flags that would silently disable chord's hooks or MCP server: refused rather than launched half-working. */
+export function refuseHookKillers(tool: Tool, rest: string[]): void {
+  if (tool === 'claude') {
+    for (const flag of ['--bare', '--safe-mode', '--disable-all-hooks']) if (rest.includes(flag)) throw new Error(`${flag} switches off the hooks chord relies on; run plain claude for that`);
+  } else {
+    for (let i = 0; i < rest.length; i++) {
+      const v = rest[i] === '-c' || rest[i] === '--config' ? rest[i + 1] ?? '' : rest[i].startsWith('--config=') ? rest[i].slice(9) : '';
+      if (/^(hooks\b|mcp_servers\.chord\b)/.test(v)) throw new Error(`"-c ${v}" would replace chord's own hooks or MCP server; chord sets these itself`);
+    }
+  }
+}
+
 export function takeName(rest: string[]): string | undefined {
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
@@ -171,6 +200,8 @@ async function main(argv: string[]): Promise<number> {
   }
   if (cmd !== 'claude' && cmd !== 'codex') { process.stderr.write(USAGE); return 2; }
   const name = takeName(rest);
+  const userSettings = cmd === 'claude' ? takeSettings(rest) : undefined;
+  refuseHookKillers(cmd as Tool, rest);
   resolveCommand(cmd); // fail before creating a workspace when the tool is not installed
   let launch;
   try {
@@ -181,6 +212,7 @@ async function main(argv: string[]): Promise<number> {
     launch = prepare(cmd as Tool, process.cwd(), name);
   }
   process.stderr.write(`chord: agent ${launch.name} in ${launch.cwd}\n`);
+  if (userSettings) launch.args = mergeUserSettings(launch.args, userSettings);
   if (cmd === 'claude') pretrustClaude(launch.cwd); // otherwise every new workspace asks "do you trust this folder?"
   if (cmd === 'codex') {
     const off = disabledCodexHooks();

@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ago, events, listArgs, ls, messages, stop, when } from '../src/cli.ts';
+import { ago, events, listArgs, ls, messages, refuseHookKillers, stop, takeSettings, when } from '../src/cli.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -94,4 +97,20 @@ test('lsAll survives an unreadable project database', async () => {
     const out = lsAll();
     assert.match(out, /== D:\/bad\n\(unreadable:/); assert.match(out, /== D:\/good\nno agents/);
   } finally { process.env.CHORD_HOME = prev; }
+});
+
+test('takeSettings lifts the user --settings out of the tool arguments; hook-killing flags are refused', () => {
+  let rest = ['--settings', '{"model":"opus"}', '-p'];
+  assert.deepEqual(takeSettings(rest), { model: 'opus' }); assert.deepEqual(rest, ['-p']);
+  rest = ['--settings={"a":1}']; assert.deepEqual(takeSettings(rest), { a: 1 }); assert.deepEqual(rest, []);
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-set-')), 's.json'); fs.writeFileSync(file, '{"b":2}');
+  rest = ['--settings', file]; assert.deepEqual(takeSettings(rest), { b: 2 });
+  assert.equal(takeSettings(['-p']), undefined);
+  assert.throws(() => takeSettings(['--settings']), /needs a value/);
+  assert.throws(() => takeSettings(['--settings', '{oops']), /JSON object or a path/);
+  assert.throws(() => takeSettings(['--settings', '[1]']), /JSON object/);
+  assert.throws(() => refuseHookKillers('claude', ['--bare']), /switches off the hooks/);
+  assert.throws(() => refuseHookKillers('codex', ['-c', 'hooks.PreToolUse=[]']), /replace chord's own hooks/);
+  assert.throws(() => refuseHookKillers('codex', ['--config=mcp_servers.chord.command="x"']), /replace chord's own hooks/);
+  refuseHookKillers('claude', ['--model', 'opus']); refuseHookKillers('codex', ['-c', 'model="gpt-5"']); // fine
 });

@@ -89,7 +89,19 @@ export function claudeArgs(env: Record<string, string>, projectConfig = false): 
   const addDir = wt ? ['--add-dir', wt] : [];
   const mcpFiles = projectConfig && wt ? [path.join(wt, '.mcp.json')].filter(f => fs.existsSync(f)) : [];
   const settings = projectConfig ? mergeProjectSettings({ hooks }, wt) : { hooks };
-  return ['--settings', JSON.stringify(settings), '--mcp-config', JSON.stringify(mcp), ...mcpFiles, ...addDir];
+  // --add-dir and --mcp-config take any number of values, so they must not come last: the user's own arguments
+  // follow these, and a prompt such as `chord claude "fix the tests"` would be read as another directory.
+  // --settings takes exactly one value and closes the list.
+  return [...addDir, '--mcp-config', JSON.stringify(mcp), ...mcpFiles, '--settings', JSON.stringify(settings)];
+}
+
+/** The user's own --settings folded under chord's (chord's hooks stay, theirs are added), in place in `args`. */
+export function mergeUserSettings(args: string[], user: Record<string, any>): string[] {
+  const i = args.indexOf('--settings');
+  if (i < 0 || i + 1 >= args.length) return args;
+  const out = [...args];
+  out[i + 1] = JSON.stringify(mergeSettings(JSON.parse(args[i + 1]), user));
+  return out;
 }
 
 const PROJECT_CONFIG_FILES = ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json'];

@@ -257,6 +257,15 @@ test('the setup command from <project>/chord/config.json runs once per new workt
   db.setStatus(db.openDb(l.dbFile), 'one', 'offline'); // the agent left
   prepare('codex', proj, 'one'); // the same workspace again: no rerun
   assert.equal(fs.readFileSync(path.join(l.worktree, 'setup-ran.txt'), 'utf8'), 'one;');
+  // what says setup has run is a marker in the state dir, not the worktree: a setup interrupted half-way (worktree
+  // there, marker not) runs again on the next launch
+  const marker = path.join(l.project.stateDir, 'setup-done', 'one');
+  assert.ok(fs.existsSync(marker));
+  fs.rmSync(marker); db.setStatus(db.openDb(l.dbFile), 'one', 'offline');
+  prepare('codex', proj, 'one');
+  assert.equal(fs.readFileSync(path.join(l.worktree, 'setup-ran.txt'), 'utf8'), 'one;one;');
+  assert.ok(fs.existsSync(marker));
+  db.setStatus(db.openDb(l.dbFile), 'one', 'offline');
   cfg({ setup: 'node -e "process.exit(3)"' });
   assert.throws(() => prepare('codex', proj, 'two'), /setup command failed with exit code 3/);
   assert.ok(!fs.existsSync(path.join(proj, 'chord', 'agents', 'two', 'repo')));

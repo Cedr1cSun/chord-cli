@@ -73,6 +73,19 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   assert.deepEqual(clean(project, d, ['junk'], true).removed, ['junk']);
   assert.ok(fs.existsSync(path.join(target, 'sentinel')));
 
+  // a directory with no database row (a launch that died before the tool started) is cleaned by the same rules
+  const orphanWt = ensureWorktree(repo, path.join(project.dir, 'chord', 'agents', 'orphan', 'repo'), 'orphan');
+  fs.writeFileSync(path.join(orphanWt, 'o.txt'), '1'); git(orphanWt, 'add', '.'); git(orphanWt, 'commit', '-q', '-m', 'o');
+  r = clean(project, d);
+  assert.match(r.kept.find(k => k.name === 'orphan')!.why, /not on main/);
+  git(repo, 'merge', '-q', '--ff-only', 'chord/orphan');
+  fs.mkdirSync(path.join(project.stateDir, 'setup-done'), { recursive: true }); fs.writeFileSync(path.join(project.stateDir, 'setup-done', 'orphan'), '1');
+  r = clean(project, d);
+  assert.ok(r.removed.includes('orphan'));
+  assert.ok(!fs.existsSync(path.join(project.dir, 'chord', 'agents', 'orphan')));
+  assert.equal(git(repo, 'branch', '--list', 'chord/orphan'), '');
+  assert.ok(!fs.existsSync(path.join(project.stateDir, 'setup-done', 'orphan'))); // the setup marker goes with the agent
+
   r = clean(project, d, ['unmerged'], true);
   assert.deepEqual(r.removed, ['unmerged']);
   assert.equal(git(repo, 'branch', '--list', 'chord/unmerged'), '');

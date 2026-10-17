@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import * as db from './db.ts';
 import type { Tool } from './mcp.ts';
@@ -68,6 +69,10 @@ const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuf
 /** Rebase the agent's branch onto main and fast-forward main to it. Atomic from the agent's point of view.
  *  Several agents may finish at once: a git lock or a main that moved under us is retried, a real conflict is not. */
 export function finish(ctx: Ctx) {
+  // a finish killed mid-rebase leaves the worktree in rebase state; clear it before anything else
+  for (const dir of ['rebase-merge', 'rebase-apply']) {
+    if (fs.existsSync(path.resolve(ctx.cwd, git(ctx.cwd, 'rev-parse', '--git-path', dir)))) { git(ctx.cwd, 'rebase', '--abort'); break; }
+  }
   if (git(ctx.cwd, 'status', '--porcelain')) throw new Error('your worktree has uncommitted changes; commit them first');
   const root = db.mainRoot(ctx.cwd);
   if (git(root, 'status', '--porcelain', '--untracked-files=no')) throw new Error('the main checkout has uncommitted changes; ask the user to commit or stash them');

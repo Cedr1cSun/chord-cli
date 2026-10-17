@@ -61,3 +61,17 @@ test('finish aborts cleanly on a rebase conflict', () => {
   assert.equal(git(root, 'log', '--format=%s', '-1'), 'main change');
   assert.equal(db.claimsBy(d, 'w').length, 1);
 });
+
+test('finish recovers from a worktree left mid-rebase by an earlier crash', () => {
+  const { root, wt, ctx } = setup();
+  fs.writeFileSync(path.join(wt, 'a.txt'), 'from worktree\n'); git(wt, 'commit', '-q', '-am', 'wt change');
+  fs.writeFileSync(path.join(root, 'a.txt'), 'from main\n'); git(root, 'commit', '-q', '-am', 'main change');
+  try { git(wt, 'rebase', 'main'); } catch { /* conflict: worktree now sits mid-rebase */ }
+  assert.ok(fs.existsSync(path.join(root, '.git', 'worktrees', 'w', 'rebase-merge')));
+  // main backs out of its change, so a fresh rebase would succeed
+  git(root, 'reset', '-q', '--hard', 'HEAD~1');
+  const r = finish(ctx);
+  assert.deepEqual(r.merged, ['wt change']);
+  assert.ok(!fs.existsSync(path.join(root, '.git', 'worktrees', 'w', 'rebase-merge')));
+  assert.equal(git(root, 'log', '--format=%s', '-1'), 'wt change');
+});

@@ -63,5 +63,14 @@ test('post-tool-use handles renames and names with spaces or accents', () => {
   const out = handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Bash' }) as any;
   const text = out.hookSpecificOutput.additionalContext as string;
   assert.match(text, /renamed notes.txt/); assert.ok(!/(^|[ ,])notes.txt/.test(text.replace('renamed notes.txt', '')));
-  assert.match(text, /ünï cødé.txt/); assert.match(text, /newdir\/inner.md/);
+  assert.match(text, /ünï cødé.txt/); assert.match(text, /, newdir[.,]/); assert.doesNotMatch(text, /inner\.md/); // an untracked directory is one entry, not every file in it
+});
+
+test('post-tool-use names at most twenty unclaimed files and counts the rest', () => {
+  const { root, ctx } = repo();
+  for (let i = 0; i < 25; i++) fs.writeFileSync(path.join(root, `gen-${String(i).padStart(2, '0')}.txt`), 'x');
+  const text = (handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Bash' }) as any).hookSpecificOutput.additionalContext as string;
+  assert.equal((text.match(/gen-\d\d\.txt/g) || []).length, 20);
+  assert.match(text, / and 5 more\./);
+  assert.ok(text.length < 1200);
 });

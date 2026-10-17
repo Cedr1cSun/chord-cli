@@ -36,6 +36,7 @@ export function formatMessages(ms: db.Message[]): string {
 }
 
 const MAX_CLAIM_LINES = 60;
+const MAX_WARNED_FILES = 20;
 const MAX_INSTRUCTION_CHARS = 8000;
 
 /** The repository's own agent instructions. The agent's cwd is the workspace, so the tools do not load them themselves. */
@@ -126,12 +127,15 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       const parts: string[] = [];
       if (isShell(payload.tool_name)) {
         let status = '';
-        try { status = execFileSync('git', ['status', '--porcelain=v1', '-z', '-uall'], { cwd: ctx.worktree, encoding: 'utf8', env: db.gitEnv() }); } catch { status = ''; }
+        // -unormal folds an untracked directory into one entry (a venv or node_modules that is not ignored would otherwise
+        // list thousands of files); --no-optional-locks keeps this read-only check from fighting the agent's own git
+        try { status = execFileSync('git', ['--no-optional-locks', 'status', '--porcelain=v1', '-z', '-unormal'], { cwd: ctx.worktree, encoding: 'utf8', env: db.gitEnv(), maxBuffer: 64 * 1024 * 1024 }); } catch { status = ''; }
         const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
         const unclaimed = changedPaths(status)
           .map(f => normFile(ctx, path.join(ctx.worktree, f)))
           .filter(f => !mine.has(f.toLowerCase()));
-        if (unclaimed.length) parts.push(`[chord] The shell command changed files you have not claimed: ${unclaimed.join(', ')}. Claim them now with claim(), or revert the change.`);
+        const shown = unclaimed.slice(0, MAX_WARNED_FILES);
+        if (unclaimed.length) parts.push(`[chord] The shell command changed files you have not claimed: ${shown.join(', ')}${unclaimed.length > shown.length ? ` and ${unclaimed.length - shown.length} more` : ''}. Claim them now with claim(), or revert the change.`);
       }
       const ms = db.takeUnread(ctx.db, ctx.agent);
       if (ms.length) parts.push(`${formatMessages(ms)}\n\n[chord] ${ms.length} message(s) above arrived from other agents while you were working. Deal with them when convenient (reply with the chord send tool where a reply is asked for), then carry on with your task.`);

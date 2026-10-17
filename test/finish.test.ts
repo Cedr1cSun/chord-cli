@@ -49,9 +49,9 @@ test('finish rebases, fast-forwards main, releases claims and notifies online pe
 
 test('finish refuses dirty worktrees and dirty main', () => {
   const { root, wt, ctx } = setup();
-  fs.writeFileSync(path.join(wt, 'dirty.txt'), 'x');
-  assert.throws(() => finish(ctx), /uncommitted changes; commit them first/);
-  fs.rmSync(path.join(wt, 'dirty.txt'));
+  fs.appendFileSync(path.join(wt, 'a.txt'), 'dirty'); // a tracked file modified and not committed
+  assert.throws(() => finish(ctx), /uncommitted changes to tracked files; commit them first/);
+  git(wt, 'checkout', '--', 'a.txt');
   fs.writeFileSync(path.join(root, 'a.txt'), 'changed\n');
   assert.throws(() => finish(ctx), /main checkout has uncommitted changes/);
 });
@@ -136,4 +136,15 @@ test('merge broadcasts are notices', () => {
   const [m] = db.takeUnread(d, 'peer');
   assert.equal(m.kind, 'notice');
   assert.equal(db.repliedSince(d, 'w', 'peer', 0), false);
+});
+
+test('finish ignores untracked files in the worktree instead of forcing them into a commit', () => {
+  const { root, wt, ctx } = setup();
+  fs.writeFileSync(path.join(wt, 'b.txt'), 'x\n'); git(wt, 'add', 'b.txt'); git(wt, 'commit', '-q', '-m', 'feat: b');
+  fs.mkdirSync(path.join(wt, 'build')); fs.writeFileSync(path.join(wt, 'build', 'out.log'), 'build output');
+  assert.deepEqual(finish(ctx).merged, ['feat: b']);
+  assert.ok(fs.existsSync(path.join(wt, 'build', 'out.log')));
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  fs.appendFileSync(path.join(wt, 'b.txt'), 'edited'); // tracked and modified: still refused
+  assert.throws(() => finish(ctx), /uncommitted changes to tracked files/);
 });

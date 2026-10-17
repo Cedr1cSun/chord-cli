@@ -130,7 +130,8 @@ function finishLocked(ctx: Ctx) {
     git(wt, 'rebase', '--abort'); break;
   }
   fs.rmSync(marker, { force: true });
-  if (git(wt, 'status', '--porcelain')) throw new Error('your worktree has uncommitted changes; commit them first');
+  // untracked files (build output, a venv) are not in the way of a rebase and must not be forced into a commit
+  if (git(wt, 'status', '--porcelain', '--untracked-files=no')) throw new Error('your worktree has uncommitted changes to tracked files; commit them first');
   const root = db.mainRoot(wt);
   if (git(root, 'status', '--porcelain', '--untracked-files=no')) throw new Error('the main checkout has uncommitted changes; ask the user to commit or stash them');
   const branch = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD');

@@ -16,7 +16,9 @@ export function pretrustClaude(workspace: string, file = claudeConfigPath()): bo
   try { cfg = JSON.parse(raw); } catch { return false; } // not ours to repair
   if (typeof cfg !== 'object' || cfg === null) return false;
   const projects = (cfg.projects ??= {});
-  const key = Object.keys(projects).find(k => k.toLowerCase() === workspace.toLowerCase()) ?? workspace;
+  // Claude Code keys projects by the cwd with forward slashes, even on Windows
+  const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+  const key = Object.keys(projects).find(k => norm(k) === norm(workspace)) ?? workspace.replace(/\\/g, '/');
   if (projects[key]?.hasTrustDialogAccepted === true) return false;
   projects[key] = projects[key]
     ? { ...projects[key], hasTrustDialogAccepted: true } // existing entry: flip the flag, keep everything else

@@ -23,6 +23,9 @@ export const SERVE_TS = here('./serve.ts');
 export function pickName(d: DatabaseSync, tool: Tool, project: string, override?: string): string {
   if (override) {
     if (!/^[A-Za-z0-9._-]+$/.test(override)) throw new Error('agent names may only contain letters, digits, ".", "_" and "-"');
+    // the name becomes a directory and a branch: ".." would escape agents/, git refuses components starting with "."
+    // or ending in "." or ".lock", and Windows reserves CON, NUL, COM1 and friends
+    if (/^[.-]|\.$|\.\.|\.lock$/i.test(override) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(override)) throw new Error(`"${override}" cannot be an agent name: no leading "." or "-", no trailing "." or ".lock", no "..", and no Windows reserved names (CON, NUL, COM1...)`);
     // workspace paths are case-insensitive on Windows and macOS, so names differing only in case would share one
     const clash = db.listAgents(d).find(a => a.name.toLowerCase() === override.toLowerCase());
     if (clash && clash.name !== override) throw new Error(`agent "${clash.name}" already exists; names must differ in more than case`);

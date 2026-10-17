@@ -130,6 +130,8 @@ test('pickName refuses invalid names and case-only variants of existing names', 
   assert.throws(() => pickName(d, 'codex', '/x', 'alice'), /differ in more than case/);
   assert.throws(() => pickName(d, 'codex', '/x', 'bad name'), /letters, digits/);
   assert.throws(() => pickName(d, 'codex', '/x', 'a/b'), /letters, digits/);
+  for (const bad of ['..', '.', 'x.', 'a..b', 'x.lock', '.hidden', '-x', 'NUL', 'con', 'COM1', 'lpt3.txt']) assert.throws(() => pickName(d, 'codex', '/x', bad), /cannot be an agent name/, bad);
+  assert.equal(pickName(d, 'codex', '/x', 'a.b-c_d'), 'a.b-c_d');
   assert.equal(pickName(d, 'codex', '/x', 'alice-2'), 'alice-2');
 });
 

@@ -82,3 +82,17 @@ test('finish refuses when the main checkout is detached', () => {
   git(root, 'checkout', '-q', '--detach');
   assert.throws(() => finish(ctx), /detached HEAD/);
 });
+
+test('withLock serialises callers and takes over a stale lock', async () => {
+  const { withLock } = await import('../src/tools.ts');
+  const lock = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-lock-')), 'l.lock');
+  assert.equal(withLock(lock, () => 42), 42);
+  assert.ok(!fs.existsSync(lock));
+  fs.writeFileSync(lock, '1'); // held by someone else, not stale
+  assert.throws(() => withLock(lock, () => 0, 300, 60_000), /another agent has been finishing/);
+  const old = new Date(Date.now() - 10 * 60_000);
+  fs.utimesSync(lock, old, old); // stale: taken over
+  assert.equal(withLock(lock, () => 'took over', 300, 60_000), 'took over');
+  assert.throws(() => withLock(lock, () => { throw new Error('boom'); }), /boom/);
+  assert.ok(!fs.existsSync(lock)); // released even when fn throws
+});

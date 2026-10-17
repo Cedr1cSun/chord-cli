@@ -44,6 +44,9 @@ export const mainRoot = (cwd: string) => path.dirname(commonDir(cwd));
 /** chord.db lives in the common git dir, so every worktree of the repo shares it. */
 export const dbPath = (cwd: string) => path.join(commonDir(cwd), 'chord.db');
 
+/** Lock file that serialises finish() across agents: git cannot run two merges in one checkout at once. */
+export const finishLockPath = (cwd: string) => path.join(commonDir(cwd), 'chord.finish.lock');
+
 /** Windows and macOS file systems are case-insensitive: Src/a.ts and src/a.ts are one file, so one claim key. */
 const FILE_COLLATION = process.platform === 'linux' ? '' : 'collate nocase';
 

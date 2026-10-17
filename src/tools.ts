@@ -66,9 +66,27 @@ const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd,
 const stderrOf = (e: unknown) => ((e as { stderr?: string }).stderr ?? (e as Error).message).trim();
 const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
+/** Run fn holding an exclusive lock file. Waits up to `waitMs`; a lock older than `staleMs` is taken over. */
+export function withLock<T>(file: string, fn: () => T, waitMs = 120_000, staleMs = 180_000): T {
+  const t0 = Date.now();
+  for (;;) {
+    try { fs.writeFileSync(file, String(process.pid), { flag: 'wx' }); break; } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      try { if (Date.now() - fs.statSync(file).mtimeMs > staleMs) { fs.unlinkSync(file); continue; } } catch { continue; }
+      if (Date.now() - t0 > waitMs) throw new Error(`another agent has been finishing for over ${waitMs / 1000}s; try again later`);
+      sleepSync(150 + Math.random() * 200);
+    }
+  }
+  try { return fn(); } finally { try { fs.unlinkSync(file); } catch { /* already gone */ } }
+}
+
 /** Rebase the agent's branch onto main and fast-forward main to it. Atomic from the agent's point of view.
- *  Several agents may finish at once: a git lock or a main that moved under us is retried, a real conflict is not. */
+ *  Finishes are serialised with a lock file: git cannot run two merges in one checkout concurrently. */
 export function finish(ctx: Ctx) {
+  return withLock(db.finishLockPath(ctx.cwd), () => finishLocked(ctx));
+}
+
+function finishLocked(ctx: Ctx) {
   // a finish killed mid-rebase leaves the worktree in rebase state; clear it before anything else
   for (const dir of ['rebase-merge', 'rebase-apply']) {
     if (fs.existsSync(path.resolve(ctx.cwd, git(ctx.cwd, 'rev-parse', '--git-path', dir)))) { git(ctx.cwd, 'rebase', '--abort'); break; }
@@ -79,25 +97,14 @@ export function finish(ctx: Ctx) {
   const branch = git(ctx.cwd, 'rev-parse', '--abbrev-ref', 'HEAD');
   const main = git(root, 'rev-parse', '--abbrev-ref', 'HEAD');
   if (main === 'HEAD') throw new Error('the main checkout is not on a branch (detached HEAD); ask the user to check out a branch there');
-  let subjects: string[] = [];
-  let lastErr = '';
-  for (let attempt = 0; ; attempt++) {
-    try {
-      git(ctx.cwd, 'rebase', main);
-    } catch (e) {
-      try { git(ctx.cwd, 'rebase', '--abort'); } catch { /* nothing to abort */ }
-      const msg = stderrOf(e);
-      if (!/\.lock/.test(msg)) throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${msg}`);
-      lastErr = msg;
-    }
-    if (!lastErr) {
-      subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
-      try { git(root, 'merge', '--ff-only', branch); break; } catch (e) { lastErr = stderrOf(e); }
-    }
-    if (attempt >= 9) throw new Error(`could not fast-forward ${main} after ${attempt + 1} attempts; your branch is rebased but not merged. Try finish again.\n${lastErr}`);
-    lastErr = '';
-    sleepSync(100 + Math.random() * 400);
+  try {
+    git(ctx.cwd, 'rebase', main);
+  } catch (e) {
+    try { git(ctx.cwd, 'rebase', '--abort'); } catch { /* nothing to abort */ }
+    throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${stderrOf(e)}`);
   }
+  const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
+  git(root, 'merge', '--ff-only', branch);
   db.releaseAll(ctx.db, ctx.agent);
   const online = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent && a.status !== 'offline').map(a => a.name);
   if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\nRebase your branch when convenient. This is a notification; do not reply.`);

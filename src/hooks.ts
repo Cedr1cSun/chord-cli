@@ -277,6 +277,7 @@ async function main(): Promise<void> {
     }
     return;
   }
+  if (process.env.CHORD_DEBUG_HOOKS) db.log(`hook payload ${event}: keys=${Object.keys(payload).join(',')} agent_id=${payload.agent_id ?? '-'} agent_type=${payload.agent_type ?? '-'} source=${payload.source ?? '-'} reason=${payload.reason ?? '-'}`);
   const out = safeHandle(ctx, tool, event, payload);
   db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `${typeof out === 'string' ? 'text' : 'json'} ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
   if (out !== undefined) process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out));

@@ -83,7 +83,8 @@ export function withLock<T>(file: string, fn: () => T, waitMs = 120_000, staleMs
 /** Rebase the agent's branch onto main and fast-forward main to it. Atomic from the agent's point of view.
  *  Finishes are serialised with a lock file: git cannot run two merges in one checkout concurrently. */
 export function finish(ctx: Ctx) {
-  return withLock(db.finishLockPath(ctx.cwd), () => finishLocked(ctx));
+  const t0 = Date.now();
+  return withLock(db.finishLockPath(ctx.cwd), () => { db.log(`finish: lock acquired after ${Date.now() - t0}ms`); return finishLocked(ctx); });
 }
 
 function finishLocked(ctx: Ctx) {

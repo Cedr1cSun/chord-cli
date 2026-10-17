@@ -111,6 +111,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
 }
 
 async function main(): Promise<void> {
+  const started = Date.now();
   const event = process.argv[2] as Event;
   const agent = process.env.CHORD_AGENT_ID;
   const file = process.env.CHORD_DB;
@@ -122,7 +123,7 @@ async function main(): Promise<void> {
   try { payload = JSON.parse(raw); } catch { /* no payload */ }
   const ctx: Ctx = { db: db.openDb(file), agent, cwd: typeof payload.cwd === 'string' ? payload.cwd : process.cwd() };
   const out = handleHook(ctx, tool, event, payload);
-  db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `${typeof out === 'string' ? 'text' : 'json'} ${JSON.stringify(out).length} chars`}`);
+  db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `${typeof out === 'string' ? 'text' : 'json'} ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
   if (out !== undefined) process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out));
 }
 

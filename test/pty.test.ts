@@ -14,6 +14,8 @@ test('InputGate holds while a draft is being typed and releases only on Enter or
   g.onUserInput('x');
   assert.equal(g.clear(), false); // no staleness rule: a half-typed line keeps chord out until the user deals with it
   g.onUserInput('\x1b');
+  assert.equal(g.clear(), false); // Esc closes a menu or interrupts; it does not empty the box
+  g.onUserInput('\x15');
   assert.equal(g.clear(), true);
   g.onUserInput('\x1b[B'); // arrow key: neither a draft nor a submit
   assert.equal(g.clear(), true);
@@ -32,6 +34,8 @@ test('InputGate: backspace empties a draft, Ctrl+U/Ctrl+C clear it, a paste with
   g.onUserInput('typing'); g.onUserInput('\x03'); assert.equal(g.clear(), true); // Ctrl+C
   g.onUserInput('\x1b[200~line one\nline two\n\x1b[201~'); assert.equal(g.clear(), false); // pasted text waits for Enter
   g.onUserInput('\r'); assert.equal(g.clear(), true);
+  g.onUserInput('\x1b[200~line one\rline two\r'); g.onUserInput('line three\r\x1b[201~'); assert.equal(g.clear(), false); // a paste split across chunks
+  g.onUserInput('\r'); assert.equal(g.clear(), true);
   g.onUserInput(key(97) + key(13, 1, 0x10)); assert.equal(g.clear(), false); // 'a' then Shift+Enter: still a draft
   g.onUserInput(key(13)); assert.equal(g.clear(), true);
 });
@@ -48,7 +52,9 @@ test('InputGate decodes win32-input-mode key events, including a sequence split 
   g.onUserInput(key(97));
   g.onUserInput('\x1b[24;1R\x1b[?62;c'); // plain terminal replies still ignored
   assert.equal(g.clear(), false);
-  g.onUserInput(key(27)); // Esc clears the draft
+  g.onUserInput(key(27)); // Esc leaves the draft alone
+  assert.equal(g.clear(), false);
+  g.onUserInput('\x15');
   assert.equal(g.clear(), true);
 });
 

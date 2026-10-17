@@ -68,15 +68,21 @@ export function decodeKeys(data: string, hold: (rest: string) => void): string {
 export class InputGate {
   private draftLen = 0;
   private pending = '';
+  private inPaste = false;
   onUserInput(data: string): void {
-    const pasted = data.includes('\x1b[200~'); // bracketed paste: its newlines are content, not submits
+    // bracketed paste: its newlines are content, not submits, and a long paste arrives in several chunks
+    const pasted = this.inPaste || data.includes('\x1b[200~');
+    const open = data.lastIndexOf('\x1b[200~'), close = data.lastIndexOf('\x1b[201~');
+    if (open >= 0 || close >= 0) this.inPaste = open > close;
     const text = decodeKeys(this.pending + data, rest => { this.pending = rest; });
     if (!text) return;
     for (const ch of text) {
-      if (ch === '\x1b' || ch === '\x15' || ch === '\x03') this.draftLen = 0;         // Esc, Ctrl+U, Ctrl+C clear the line
+      if (ch === '\x15' || ch === '\x03') this.draftLen = 0;                              // Ctrl+U, Ctrl+C clear the line
       else if (ch === '\x7f' || ch === '\x08') this.draftLen = Math.max(0, this.draftLen - 1); // Backspace
-      else if ((ch === '\r' || ch === '\n') && !pasted) this.draftLen = 0;           // submitted
-      else this.draftLen++;
+      else if ((ch === '\r' || ch === '\n') && !pasted) this.draftLen = 0;                // submitted
+      else if (ch !== '\x1b') this.draftLen++;
+      // Esc is neither: in Claude Code one press closes a menu or interrupts, in Codex it never empties the box, so the
+      // draft is assumed to be still there (erring towards leaving the user alone)
     }
   }
   /** True when the input box is believed empty. */

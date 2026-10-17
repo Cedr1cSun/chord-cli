@@ -141,12 +141,15 @@ export function claudeArgs(env: Record<string, string>, projectConfig = false): 
     }];
   }
   const mcp = { mcpServers: { chord: { command: NODE, args: [SERVE_TS], env } } };
+  // chord's own tools are pre-approved: in the default permission mode every claim, send and finish would otherwise
+  // stop at a prompt, and an unattended agent would never get past the first one
+  const ours = { hooks, permissions: { allow: ['mcp__chord'] } };
   // The agent's cwd is its workspace, not the repository, so Claude Code would not pick up the repository's
   // own CLAUDE.md, .claude/settings*.json or .mcp.json. --add-dir covers CLAUDE.md; the others are passed along.
   const wt = env.CHORD_WORKTREE;
   const addDir = wt ? ['--add-dir', wt] : [];
   const mcpFiles = projectConfig && wt ? [path.join(wt, '.mcp.json')].filter(f => fs.existsSync(f)) : [];
-  const settings = projectConfig ? mergeProjectSettings({ hooks }, wt) : { hooks };
+  const settings = projectConfig ? mergeProjectSettings(ours, wt) : ours;
   // --add-dir and --mcp-config take any number of values, so they must not come last: the user's own arguments
   // follow these, and a prompt such as `chord claude "fix the tests"` would be read as another directory.
   // --settings takes exactly one value and closes the list.
@@ -178,6 +181,12 @@ function concatHooks(a: Record<string, any>, b: Record<string, any>): Record<str
  *  and disableAllHooks is dropped because it would switch chord itself off. */
 export function mergeSettings(ours: Record<string, any>, theirs: Record<string, any>): Record<string, any> {
   const out: Record<string, any> = { ...theirs, ...ours, hooks: concatHooks(ours, theirs) };
+  if (ours.permissions || theirs.permissions) {
+    // permission lists add up, as across Claude's own settings levels; other permission keys follow the usual precedence
+    const lists = (k: 'allow' | 'deny' | 'ask') => [...new Set([...(ours.permissions?.[k] ?? []), ...(theirs.permissions?.[k] ?? [])])];
+    out.permissions = { ...theirs.permissions, ...ours.permissions };
+    for (const k of ['allow', 'deny', 'ask'] as const) if (lists(k).length) out.permissions[k] = lists(k);
+  }
   delete out.disableAllHooks;
   return out;
 }
@@ -198,8 +207,12 @@ export function mergeProjectSettings(ours: Record<string, any>, worktree?: strin
 const toml = (s: string) => JSON.stringify(s);
 
 /** CLI arguments that inject chord's hooks and MCP server into Codex. Values are TOML. */
-export function codexArgs(env: Record<string, string>): string[] {
+/** `writableRoots`: directories Codex's workspace-write sandbox must also be allowed to write. A linked worktree keeps
+ *  its index and refs under the main checkout's .git, outside the agent's workspace, so without this every git commit
+ *  fails inside the sandbox. */
+export function codexArgs(env: Record<string, string>, writableRoots: string[] = []): string[] {
   const args: string[] = [];
+  if (writableRoots.length) args.push('-c', `sandbox_workspace_write.writable_roots=[${writableRoots.map(toml).join(',')}]`);
   for (const e of EVENTS) {
     if (!e.codex) continue;
     const matcher = e.matcher?.codex ? `matcher=${toml(e.matcher.codex)},` : '';
@@ -254,7 +267,7 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
       projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir);
       if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
     }
-    return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env) };
+    return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env, [path.join(project.repo, '.git')]) };
   } catch (e) {
     db.setStatus(d, name, 'offline'); // the launch failed: the name is free again
     throw e;

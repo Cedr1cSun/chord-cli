@@ -126,6 +126,11 @@ test('claude gets --add-dir for the worktree and codex a long tool timeout', () 
   assert.deepEqual(ms.hooks.Stop.map((h: any) => h.hooks[0].command), [hookCommand('stop'), 'echo mine']); // chord's hooks stay
   assert.equal(ms.hooks.PreToolUse[0].matcher, 'Edit|Write|MultiEdit|NotebookEdit');
   assert.ok(codexArgs(env).find(a => a.startsWith('mcp_servers.chord='))!.includes('tool_timeout_sec=600'));
+  // default permission mode: chord's tools need no prompt; Codex's sandbox may write the main checkout's .git
+  const settings = JSON.parse(c[c.indexOf('--settings') + 1]);
+  assert.deepEqual(settings.permissions, { allow: ['mcp__chord'] });
+  assert.ok(codexArgs(env, ['D:/p/repo/.git']).includes('sandbox_workspace_write.writable_roots=["D:/p/repo/.git"]'));
+  assert.ok(!codexArgs(env).some(a => a.includes('writable_roots')));
 });
 
 test('pickName refuses invalid names and case-only variants of existing names', () => {
@@ -226,7 +231,7 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   assert.ok(!bare.some(a => a.endsWith('.mcp.json')));
   const args = claudeArgs(env, true);
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
-  assert.deepEqual(settings.permissions, { allow: ['Bash(npm test)'] });
+  assert.deepEqual(settings.permissions, { allow: ['mcp__chord', 'Bash(npm test)'] }); // chord's own tools stay pre-approved; the repository's list adds to it
   assert.equal(settings.model, 'opus');
   assert.deepEqual(settings.env, { A: 'local' }); // settings.local.json wins over settings.json, as in Claude Code (whole key, not a deep merge)
   assert.equal(settings.disableAllHooks, undefined); // would switch chord off

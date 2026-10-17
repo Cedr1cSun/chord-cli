@@ -2,13 +2,36 @@
   "name": "chord",
   "version": "0.0.0",
   "description": "Run several coding agents in one git project, each in its own worktree, with shared file claims and messaging",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "coding-agents",
+    "git-worktree",
+    "multi-agent",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cedr1cSun/chord-cli.git"
+  },
+  "homepage": "https://github.com/Cedr1cSun/chord-cli#readme",
+  "bugs": {
+    "url": "https://github.com/Cedr1cSun/chord-cli/issues"
+  },
   "type": "module",
   "bin": {
     "chord": "src/cli.ts"
   },
+  "files": [
+    "src",
+    "README.md"
+  ],
   "engines": {
     "node": ">=24"
   },
+  "os": [
+    "win32"
+  ],
   "scripts": {
     "test": "node --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit"

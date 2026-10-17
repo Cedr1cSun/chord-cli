@@ -175,11 +175,24 @@ function finishLocked(ctx: Ctx) {
     db.releaseAll(ctx.db, ctx.agent, 'finish');
     return { merged: [] as string[], into: main, notified: [] as string[], note: 'your branch has no commits beyond main; nothing to merge' };
   }
+  // Files the branch adds must not already sit untracked in the main checkout: the fast-forward would stop half-way,
+  // leaving some of them written and every later finish of this agent failing on them.
+  const added = git(root, 'diff', '--name-only', '-z', '--diff-filter=A', main, branch).split('\0').filter(Boolean);
+  const blocking = added.filter(f => fs.existsSync(path.join(root, f)));
+  if (blocking.length) throw new Error(`cannot fast-forward ${main}: these files exist in the main checkout (${root}) but are not tracked there: ${blocking.join(', ')}. Ask the user to move or delete them; nothing was merged.`);
   try {
     gitRetry(root, 'merge', '--ff-only', branch);
   } catch (e) {
     // a noisy post-merge hook can make git exit non-zero after the merge went through
-    if (!gitOk(root, 'merge-base', '--is-ancestor', branch, main)) throw e;
+    if (!gitOk(root, 'merge-base', '--is-ancestor', branch, main)) {
+      // undo what a half-done fast-forward wrote: files of ours that now sit untracked in the main checkout
+      for (const f of added) {
+        const p = path.join(root, f);
+        if (fs.existsSync(p) && !gitOk(root, 'ls-files', '--error-unmatch', f) && git(root, 'hash-object', p) === git(root, 'rev-parse', `${branch}:${f}`)) fs.rmSync(p);
+      }
+      db.addEvent(ctx.db, ctx.agent, 'merge-failed', null, `fast-forward of ${main} to ${branch} failed: ${stderrOf(e).split('\n')[0]}`);
+      throw new Error(`fast-forward of ${main} failed; your branch is rebased and intact, the main checkout was left as it was. ${stderrOf(e)}`);
+    }
     db.log(`finish: merge reported an error but ${branch} is on ${main}; carrying on: ${stderrOf(e).split('\n')[0]}`);
   }
   db.log(`finish: merged ${branch} into ${main} (${subjects.length} commit(s))`);

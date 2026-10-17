@@ -149,6 +149,18 @@ test('finish ignores untracked files in the worktree instead of forcing them int
   assert.throws(() => finish(ctx), /uncommitted changes to tracked files/);
 });
 
+test('finish refuses to fast-forward over untracked files of the same name in the main checkout', () => {
+  const { root, wt, ctx, d } = setup();
+  fs.writeFileSync(path.join(wt, 'gen.txt'), 'from branch\n'); git(wt, 'add', 'gen.txt'); git(wt, 'commit', '-q', '-m', 'feat: gen');
+  fs.writeFileSync(path.join(root, 'gen.txt'), 'someone left this here\n');
+  assert.throws(() => finish(ctx), /exist in the main checkout .* but are not tracked there: gen.txt/);
+  assert.equal(fs.readFileSync(path.join(root, 'gen.txt'), 'utf8'), 'someone left this here\n');
+  assert.equal(git(root, 'log', '--format=%s', '-1'), 'init');
+  assert.equal(db.claimsBy(d, 'w').length, 1);
+  fs.rmSync(path.join(root, 'gen.txt'));
+  assert.deepEqual(finish(ctx).merged, ['feat: gen']);
+});
+
 test('finish survives a noisy post-merge hook and a stale index.lock, and does not call a hook refusal a conflict', () => {
   const { root, wt, ctx, d } = setup();
   const hooks = path.join(root, '.git', 'hooks'); fs.mkdirSync(hooks, { recursive: true });

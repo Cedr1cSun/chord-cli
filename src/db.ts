@@ -240,7 +240,7 @@ export function releaseAll(db: DatabaseSync, agent: string, why = 'released'): v
   for (const f of files) addEvent(db, agent, 'release', f, why);
 }
 
-export type EventKind = 'claim' | 'release' | 'merge' | 'conflict';
+export type EventKind = 'claim' | 'release' | 'merge' | 'conflict' | 'merge-failed';
 export interface Event { id: number; at: number; agent: string; kind: EventKind; file: string | null; detail: string | null }
 
 /** Append-only history of claims, releases and merges, for `chord events`. */

@@ -166,7 +166,7 @@ test('finish refuses to fast-forward over untracked files of the same name in th
 test('finish survives a noisy post-merge hook and a stale index.lock, and does not call a hook refusal a conflict', () => {
   const { root, wt, ctx, d } = setup();
   const hooks = path.join(root, '.git', 'hooks'); fs.mkdirSync(hooks, { recursive: true });
-  fs.writeFileSync(path.join(hooks, 'post-merge'), '#!/bin/sh\nnode -e "process.stdout.write(\'x\'.repeat(2e6))"\nexit 0\n');
+  fs.writeFileSync(path.join(hooks, 'post-merge'), '#!/bin/sh\nnode -e "process.stdout.write(\'x\'.repeat(2e6))"\nexit 0\n', { mode: 0o755 });
   fs.writeFileSync(path.join(wt, 'b.txt'), 'x\n'); git(wt, 'add', 'b.txt'); git(wt, 'commit', '-q', '-m', 'feat: b');
   const lock = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'index.lock'));
   fs.writeFileSync(lock, ''); const old = new Date(Date.now() - 120_000); fs.utimesSync(lock, old, old);
@@ -175,7 +175,7 @@ test('finish survives a noisy post-merge hook and a stale index.lock, and does n
   assert.equal(git(root, 'log', '--format=%s', '-1'), 'feat: b');
   assert.equal(db.claimsBy(d, 'w').length, 0);
   // a pre-rebase hook that says no is not a conflict
-  fs.writeFileSync(path.join(hooks, 'pre-rebase'), '#!/bin/sh\necho "no rebasing today" >&2\nexit 1\n');
+  fs.writeFileSync(path.join(hooks, 'pre-rebase'), '#!/bin/sh\necho "no rebasing today" >&2\nexit 1\n', { mode: 0o755 });
   fs.writeFileSync(path.join(wt, 'c.txt'), 'y\n'); git(wt, 'add', 'c.txt'); git(wt, 'commit', '-q', '-m', 'feat: c');
   fs.writeFileSync(path.join(root, 'a.txt'), 'main moved\n'); git(root, 'commit', '-q', '-am', 'main change');
   assert.throws(() => finish(ctx), /rebase onto main failed \(not a conflict\)[\s\S]*no rebasing today/);

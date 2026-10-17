@@ -62,10 +62,14 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   const holder = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1e9)'], { cwd: busy.wt, stdio: 'ignore', detached: true });
   try {
     r = clean(project, d, ['busy', 'other']);
-    assert.deepEqual(r.removed, ['other']);
-    assert.match(r.kept.find(k => k.name === 'busy')!.why, /could not be removed/);
-    assert.notEqual(git(repo, 'branch', '--list', 'chord/busy'), ''); // branch and row survive with the directory
-    assert.ok(db.getAgent(d, 'busy'));
+    if (process.platform === 'win32') {
+      assert.deepEqual(r.removed, ['other']);
+      assert.match(r.kept.find(k => k.name === 'busy')!.why, /could not be removed/);
+      assert.notEqual(git(repo, 'branch', '--list', 'chord/busy'), ''); // branch and row survive with the directory
+      assert.ok(db.getAgent(d, 'busy'));
+    } else {
+      assert.deepEqual(r.removed, ['busy', 'other']); // Linux lets a directory in use go
+    }
   } finally { holder.kill(); }
   // a junction inside the worktree is unlinked, not followed
   const target = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-target-')); fs.writeFileSync(path.join(target, 'sentinel'), 'keep');

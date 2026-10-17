@@ -190,10 +190,12 @@ test('a failed worktree add leaves no branch or directory behind, and long paths
   assert.throws(() => ensureWorktree(repo, path.join(proj, 'chord', 'agents', 'z', 'repo'), 'z'));
   assert.equal(out('branch', '--list', 'chord/z'), '');
   // a path beyond MAX_PATH: git cannot make the worktree even with core.longpaths; the failure must be clean
-  const deep = path.join(proj, 'chord', 'agents', 'd'.repeat(120), 'e'.repeat(120), 'repo');
-  assert.throws(() => ensureWorktree(repo, deep, 'deep'), /could not create the worktree/);
-  assert.equal(out('branch', '--list', 'chord/deep'), '');
-  assert.ok(!fs.existsSync(deep));
+  if (process.platform === 'win32') {
+    const deep = path.join(proj, 'chord', 'agents', 'd'.repeat(120), 'e'.repeat(120), 'repo');
+    assert.throws(() => ensureWorktree(repo, deep, 'deep'), /could not create the worktree/);
+    assert.equal(out('branch', '--list', 'chord/deep'), '');
+    assert.ok(!fs.existsSync(deep));
+  }
   assert.equal(out('worktree', 'list', '--porcelain').split('\n').filter(l => l.startsWith('worktree ')).length, 2);
   assert.match(pickName(db.openDb(':memory:'), 'codex', '/x/A Very Long Project Name Indeed'), /^codex-a-very-long-[0-9a-f]{4}$/);
 });

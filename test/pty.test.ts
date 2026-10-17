@@ -152,7 +152,7 @@ test('oscState reads the last Codex state report in a chunk', () => {
   assert.equal(oscState('no report here'), null);
 });
 
-test('whereIs scans PATH without where.exe', () => {
+test('whereIs scans PATH without where.exe', { skip: process.platform !== 'win32' }, () => {
   const exists = (p: string) => p === 'C:\\tools\\codex.cmd' || p === 'C:\\bin\\claude.exe';
   assert.equal(whereIs('codex', 'C:\\nothing;C:\\tools', exists), 'C:\\tools\\codex.cmd');
   assert.equal(whereIs('claude', 'C:\\bin', exists), 'C:\\bin\\claude.exe');

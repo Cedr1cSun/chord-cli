@@ -75,3 +75,11 @@ test('prepare creates the worktree and db and names the agent', () => {
   assert.equal(path.dirname(l.worktree), path.join(root, '.chord', 'wt'));
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(), ''); // .chord/ ignored
 });
+
+test('prepare explains a non-git directory and an empty repository', () => {
+  const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-plain-'));
+  assert.throws(() => prepare('claude', plain), /not inside a git repository/);
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-empty-'));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: empty });
+  assert.throws(() => prepare('claude', empty), /no commits yet/);
+});

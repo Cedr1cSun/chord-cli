@@ -99,7 +99,9 @@ export interface Launch { name: string; worktree: string; dbFile: string; env: R
 
 /** Resolve everything for `chord <tool> [--name x] [tool args...]` without spawning. */
 export function prepare(tool: Tool, cwd: string, override?: string): Launch {
-  const root = mainRoot(cwd);
+  let root: string;
+  try { root = mainRoot(cwd); } catch { throw new Error(`${cwd} is not inside a git repository`); }
+  try { git(root, 'rev-parse', '--verify', '-q', 'HEAD'); } catch { throw new Error('the repository has no commits yet; make an initial commit first'); }
   ensureExcluded(root);
   const dbFile = db.dbPath(root);
   const d = db.openDb(dbFile);

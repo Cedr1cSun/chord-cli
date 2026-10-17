@@ -2,7 +2,7 @@
 // workspace with its repository worktree, and the per-launch hook/MCP configuration for each
 // tool. Hook command strings must stay identical across launches (Codex persists trust by
 // hashing them), so per-session values go in env.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -143,7 +143,37 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
   db.sweep(d);
   const name = pickName(d, tool, project.dir, override);
   const ws = workspacePath(project, name);
+  const config = readConfig(project);
+  const fresh = !fs.existsSync(path.join(ws, project.repoName, '.git'));
   const worktree = ensureWorktree(project.repo, path.join(ws, project.repoName), name);
   const env = { CHORD_AGENT_ID: name, CHORD_DB: fwd(dbFile), CHORD_TOOL: tool, CHORD_PROJECT: fwd(project.dir), CHORD_WORKSPACE: fwd(ws), CHORD_WORKTREE: fwd(worktree) };
+  if (fresh && config.setup) runSetup(project, name, worktree, config.setup, env);
   return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env) : codexArgs(env) };
+}
+
+/** <project>/chord/config.json. `setup` is a shell command run in every new worktree before the agent starts,
+ *  for example "npm install". */
+export function readConfig(project: Project): { setup?: string } {
+  const file = path.join(project.dir, 'chord', 'config.json');
+  let raw: string;
+  try { raw = fs.readFileSync(file, 'utf8'); } catch { return {}; }
+  let cfg: unknown;
+  try { cfg = JSON.parse(raw); } catch (e) { throw new Error(`${file} is not valid JSON: ${(e as Error).message}`); }
+  if (typeof cfg !== 'object' || cfg === null) throw new Error(`${file} must hold a JSON object`);
+  const setup = (cfg as { setup?: unknown }).setup;
+  if (setup !== undefined && typeof setup !== 'string') throw new Error(`${file}: "setup" must be a string (a shell command)`);
+  return setup ? { setup } : {};
+}
+
+/** A failed setup aborts the launch, and the half-prepared worktree and branch go with it so the next launch starts clean. */
+function runSetup(project: Project, name: string, worktree: string, setup: string, env: Record<string, string>): void {
+  process.stderr.write(`chord: running setup in ${worktree}: ${setup}\n`);
+  try {
+    execSync(setup, { cwd: worktree, stdio: 'inherit', env: { ...process.env, ...env } });
+  } catch (e) {
+    try { git(project.repo, 'worktree', 'remove', '--force', worktree); } catch { /* best effort */ }
+    try { git(project.repo, 'branch', '-D', `chord/${name}`); } catch { /* best effort */ }
+    const status = (e as { status?: number | null }).status;
+    throw new Error(`setup command failed${status != null ? ` with exit code ${status}` : ''}: ${setup}\nthe worktree was removed; fix the command in ${path.join(project.dir, 'chord', 'config.json')} or the repository and launch again`);
+  }
 }

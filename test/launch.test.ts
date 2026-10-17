@@ -176,3 +176,25 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   assert.ok(!claudeArgs(env).some(a => a.endsWith('.mcp.json')));
   assert.ok(!codexArgs(env).some(a => a.includes('Notification')));
 });
+
+test('the setup command from <project>/chord/config.json runs once per new worktree; a failure aborts and removes the worktree', () => {
+  const proj = tempProject();
+  fs.mkdirSync(path.join(proj, 'chord'), { recursive: true });
+  const cfg = (c: unknown) => fs.writeFileSync(path.join(proj, 'chord', 'config.json'), typeof c === 'string' ? c : JSON.stringify(c));
+  cfg({ setup: `node -e "require('fs').appendFileSync('setup-ran.txt', process.env.CHORD_AGENT_ID + ';')"` });
+  const l = prepare('codex', proj, 'one');
+  assert.equal(fs.readFileSync(path.join(l.worktree, 'setup-ran.txt'), 'utf8'), 'one;'); // ran in the worktree with chord's env
+  prepare('codex', proj, 'one'); // the same workspace again: no rerun
+  assert.equal(fs.readFileSync(path.join(l.worktree, 'setup-ran.txt'), 'utf8'), 'one;');
+  cfg({ setup: 'node -e "process.exit(3)"' });
+  assert.throws(() => prepare('codex', proj, 'two'), /setup command failed with exit code 3/);
+  assert.ok(!fs.existsSync(path.join(proj, 'chord', 'agents', 'two', 'repo')));
+  assert.equal(execFileSync('git', ['branch', '--list', 'chord/two'], { cwd: l.project.repo, encoding: 'utf8' }).trim(), '');
+  assert.ok(fs.existsSync(l.worktree)); // other agents' worktrees untouched
+  cfg('{oops');
+  assert.throws(() => prepare('codex', proj, 'three'), /not valid JSON/);
+  cfg({ setup: ['npm', 'install'] });
+  assert.throws(() => prepare('codex', proj, 'three'), /"setup" must be a string/);
+  cfg({});
+  assert.ok(prepare('codex', proj, 'three').worktree); // no setup configured: nothing runs
+});

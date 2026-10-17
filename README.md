@@ -11,7 +11,7 @@ One repository, as many agents as you care to start. Each agent works in its own
 
 <p align="center"><!-- demo: three terminals side by side, titles "chord <agent> · <task>", a chord ls in between --></p>
 
-## Highlights
+## ✨ Highlights
 
 - One repository, N agents, one worktree each: parallel work without stepping on each other
 - A file-level claims board: register before editing, talk to the holder first, and a hook turns away any write that was never claimed
@@ -21,7 +21,7 @@ One repository, as many agents as you care to start. Each agent works in its own
 - Agent-agnostic by design: adding a tool means one launch recipe, not a new coordinator
 - `chord ls` for the whole picture, `messages` and `events` to replay what happened, `stop` and `clean` to wind down
 
-## Supported agents
+## 🤖 Supported agents
 
 | agent | status |
 |---|---|
@@ -36,7 +36,7 @@ One repository, as many agents as you care to start. Each agent works in its own
 
 A new agent needs three things from its tool: a way to inject hooks and an MCP server at launch, the names and payloads of its hook events, and an idle/busy signal.
 
-## How it works
+## 🧩 How it works
 
 ```mermaid
 flowchart LR
@@ -56,7 +56,7 @@ flowchart LR
 2. **Coordination.** A shared board holds claims, messages and events. Agents register, claim and talk through tools chord gives them; hooks check claims before each write and hand new messages to the agent as it works.
 3. **Merging.** `finish` rebases the branch onto main and fast-forwards. A clean rebase merges; anything else stops where it is and waits for you.
 
-## Install
+## 📦 Install
 
 From source, with Node 24 and git:
 
@@ -65,7 +65,7 @@ git clone https://github.com/Cedr1cSun/chord-cli && cd chord-cli
 npm install && npm link
 ```
 
-## Quick start
+## 🚀 Quick start
 
 A project is a folder with the repository in a child directory:
 
@@ -95,7 +95,7 @@ chord clean              # remove the workspaces and branches of agents that hav
 
 `--name` fixes an agent's name, workspace and branch, so launching the same name later returns to the same worktree (add `--resume` or `-c` to pick up the conversation too). Run chord in a repository root and it offers to move the repository into a child directory first.
 
-## Commands
+## 🧰 Commands
 
 | command | what it does |
 |---|---|
@@ -106,7 +106,7 @@ chord clean              # remove the workspaces and branches of agents that hav
 | `chord stop <agent>` | quit an agent once its turn ends and its input box is empty |
 | `chord clean [--force] [agent...]` | remove offline agents' workspaces, worktrees and branches; work not yet on main stays unless `--force` |
 
-## Configuration
+## ⚙️ Configuration
 
 `<project>/chord/config.json`:
 
@@ -118,7 +118,7 @@ chord clean              # remove the workspaces and branches of agents that hav
 
 A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) reaches an agent once you have trusted that repository in Claude Code yourself; the MCP servers you approved there are the ones that start.
 
-## How chord works with your tools
+## 🔌 How chord works with your tools
 
 - **Waking an agent** means typing a short note into its terminal. chord does this only when the input box is empty, the keyboard has been quiet for a few seconds, and the terminal has echoed the note; a dialogue never receives the Enter.
 - **Trust** for each agent workspace is recorded in `~/.claude.json`, so Claude asks about a folder once rather than for every agent. Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off.
@@ -127,17 +127,17 @@ A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) 
 - **The terminal title** reads `chord <agent> · <task>`, so each window says which agent it is.
 - **Hooks gate the editor tools.** Files changed from the shell are reported by name after each command, with the claim to make.
 
-## Scope
+## 🗺️ Scope
 
 - Runs on Windows 11 today.
 - One repository per project.
 - Project paths up to about 190 characters.
 - A repository with CRLF files and a `* text` attribute that was never renormalised shows phantom changes in every worktree; chord names the files and the command that puts the repository right.
 
-## Testing
+## 🧪 Testing
 
 `npm test` runs the unit tests against real git repositories in temporary folders. The coordination itself has been exercised end to end with the real tools, from two agents negotiating over one file to twenty agents merging into one main, and on open-source repositories in Python, Rust and JavaScript.
 
-## Licence
+## 📄 Licence
 
 [MIT](LICENSE)

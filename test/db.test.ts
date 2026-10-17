@@ -1,5 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import * as db from '../src/db.ts';
 
 const open = () => db.openDb(':memory:');
@@ -105,4 +109,21 @@ test('only the wrapper brings an agent back from offline: hooks cannot, the hear
   assert.equal(db.getAgent(d, 'a')!.status, 'busy');
   db.heartbeat(d, 'a');
   assert.equal(db.getAgent(d, 'a')!.status, 'busy'); // a heartbeat never changes a live agent's status
+});
+
+test('openDb upgrades a database from before heartbeat_at and keeps its rows', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-mig-')), 'chord.db');
+  const old = new DatabaseSync(file);
+  old.exec(`create table agents (name text primary key, tool text not null, pid integer not null, cwd text not null, worktree text not null,
+    task text, scope text, status text not null default 'busy', started_at integer not null, updated_at integer not null);
+    insert into agents (name, tool, pid, cwd, worktree, status, started_at, updated_at) values ('old', 'claude', 1, '/', '/', 'offline', 1, 1);`);
+  old.close();
+  const d = db.openDb(file);
+  assert.equal(d.prepare('pragma user_version').get()!.user_version, 1);
+  assert.deepEqual(db.getAgent(d, 'old')!.heartbeat_at, null);
+  assert.equal(db.getAgent(d, 'old')!.status, 'offline');
+  db.heartbeat(d, 'old'); // the new column works
+  assert.ok(db.getAgent(d, 'old')!.heartbeat_at! > 0);
+  d.close();
+  assert.equal(db.openDb(file).prepare('pragma user_version').get()!.user_version, 1); // idempotent
 });

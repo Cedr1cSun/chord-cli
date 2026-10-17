@@ -102,7 +102,22 @@ export function openDb(file: string): DatabaseSync {
       read_at    integer
     );
   `);
+  migrate(db);
   return db;
+}
+
+/** Bump when the schema changes and add a step below; `pragma user_version` records what a database has. A database
+ *  from before versioning reads as 0 and gets every step, each of which checks what is actually there. */
+const SCHEMA_VERSION = 1;
+
+function migrate(db: DatabaseSync): void {
+  const v = (db.prepare('pragma user_version').get() as { user_version: number }).user_version;
+  if (v >= SCHEMA_VERSION) return;
+  if (v < 1) { // 2026-10-17: heartbeat_at added to agents
+    const cols = (db.prepare('pragma table_info(agents)').all() as { name: string }[]).map(c => c.name);
+    if (!cols.includes('heartbeat_at')) db.exec('alter table agents add column heartbeat_at integer');
+  }
+  db.exec(`pragma user_version = ${SCHEMA_VERSION}`);
 }
 
 // agents

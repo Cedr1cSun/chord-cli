@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand } from '../src/launch.ts';
+import { ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeProjectSettings } from '../src/launch.ts';
 import { NeedsRestructure, resolveProject, restructure, encodeProjectPath, knownProjects } from '../src/project.ts';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, stdio: 'ignore' });
@@ -71,7 +71,7 @@ test('claudeArgs carries hooks in --settings and the server in --mcp-config', ()
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: '/w/repo' };
   const args = claudeArgs(env);
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
-  assert.deepEqual(Object.keys(settings.hooks).sort(), ['PostToolUse', 'PreToolUse', 'SessionEnd', 'SessionStart', 'Stop', 'UserPromptSubmit']);
+  assert.deepEqual(Object.keys(settings.hooks).sort(), ['Notification', 'PostToolUse', 'PreToolUse', 'SessionEnd', 'SessionStart', 'Stop', 'UserPromptSubmit']);
   assert.equal(settings.hooks.PreToolUse[0].matcher, 'Edit|Write|MultiEdit|NotebookEdit');
   assert.equal(settings.hooks.PreToolUse[0].hooks[0].command, hookCommand('pre-tool-use'));
   assert.equal(settings.hooks.SessionEnd[0].hooks[0].timeout, 10);
@@ -149,4 +149,30 @@ test('post-tool-use runs for every tool and codex hooks that attach context get 
   assert.ok(!c.find(a => a.startsWith('hooks.PostToolUse='))!.includes('matcher='));
   assert.ok(c.find(a => a.startsWith('hooks.SessionStart='))!.includes('additionalContextLimit=16000'));
   assert.ok(!c.find(a => a.startsWith('hooks.Stop='))!.includes('additionalContextLimit'));
+});
+
+test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets no Notification hook', () => {
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-wt-'));
+  fs.mkdirSync(path.join(wt, '.claude'));
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'] }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo theirs' }] }], PreCompact: [{ hooks: [{ type: 'command', command: 'echo pc' }] }] } }));
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo local' }] }] } }));
+  fs.writeFileSync(path.join(wt, '.mcp.json'), '{"mcpServers":{}}');
+  const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: wt };
+  const args = claudeArgs(env);
+  const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
+  assert.deepEqual(settings.permissions, { allow: ['Bash(npm test)'] });
+  assert.equal(settings.model, 'opus');
+  assert.deepEqual(settings.hooks.Stop.map((h: any) => h.hooks[0].command), [hookCommand('stop'), 'echo theirs', 'echo local']);
+  assert.equal(settings.hooks.PreCompact[0].hooks[0].command, 'echo pc');
+  assert.equal(settings.hooks.Notification[0].matcher, 'idle_prompt');
+  assert.ok(args.includes(path.join(wt, '.mcp.json')), 'repo .mcp.json passed to --mcp-config');
+  assert.ok(args.indexOf(path.join(wt, '.mcp.json')) > args.indexOf('--mcp-config'));
+  // a broken settings file is skipped, not fatal
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), '{oops');
+  assert.equal(mergeProjectSettings({ hooks: {} }, wt).model, 'opus');
+  assert.deepEqual(mergeProjectSettings({ hooks: { X: [1] } }), { hooks: { X: [1] } });
+  // without a .mcp.json nothing extra is passed
+  fs.rmSync(path.join(wt, '.mcp.json'));
+  assert.ok(!claudeArgs(env).some(a => a.endsWith('.mcp.json')));
+  assert.ok(!codexArgs(env).some(a => a.includes('Notification')));
 });

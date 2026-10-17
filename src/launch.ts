@@ -57,8 +57,9 @@ export function ensureWorktree(repo: string, wt: string, name: string): string {
 }
 
 // ctxLimit: Codex caps a hook's additionalContext (default about 2,500 tokens); the briefing and message batches need more
-const EVENTS: { event: Event; claude: string; codex: string; matcher?: { claude: string; codex: string }; timeout?: number; ctxLimit?: number }[] = [
+const EVENTS: { event: Event; claude: string; codex?: string; matcher?: { claude: string; codex?: string }; timeout?: number; ctxLimit?: number }[] = [
   { event: 'session-start', claude: 'SessionStart', codex: 'SessionStart', ctxLimit: 16000 },
+  { event: 'notification', claude: 'Notification', matcher: { claude: 'idle_prompt' } }, // Claude only: Codex reports idle through OSC 7501
   { event: 'user-prompt-submit', claude: 'UserPromptSubmit', codex: 'UserPromptSubmit', ctxLimit: 16000 },
   { event: 'pre-tool-use', claude: 'PreToolUse', codex: 'PreToolUse', matcher: { claude: 'Edit|Write|MultiEdit|NotebookEdit', codex: '^apply_patch$' } },
   { event: 'post-tool-use', claude: 'PostToolUse', codex: 'PostToolUse', ctxLimit: 16000 }, // every tool: shell-edit warnings and mid-turn message delivery
@@ -78,9 +79,28 @@ export function claudeArgs(env: Record<string, string>): string[] {
     }];
   }
   const mcp = { mcpServers: { chord: { command: 'node', args: [SERVE_TS], env } } };
-  // the agent's cwd is its workspace, so the repository's CLAUDE.md is only found through --add-dir
-  const addDir = env.CHORD_WORKTREE ? ['--add-dir', env.CHORD_WORKTREE] : [];
-  return ['--settings', JSON.stringify({ hooks }), '--mcp-config', JSON.stringify(mcp), ...addDir];
+  // The agent's cwd is its workspace, not the repository, so Claude Code would not pick up the repository's
+  // own CLAUDE.md, .claude/settings*.json or .mcp.json. --add-dir covers CLAUDE.md; the others are passed along.
+  const wt = env.CHORD_WORKTREE;
+  const addDir = wt ? ['--add-dir', wt] : [];
+  const mcpFiles = wt ? [path.join(wt, '.mcp.json')].filter(f => fs.existsSync(f)) : [];
+  return ['--settings', JSON.stringify(mergeProjectSettings({ hooks }, wt)), '--mcp-config', JSON.stringify(mcp), ...mcpFiles, ...addDir];
+}
+
+/** chord's settings plus the repository's .claude/settings.json and settings.local.json (later files win,
+ *  hook lists are concatenated so both chord's and the project's hooks run). */
+export function mergeProjectSettings(ours: Record<string, any>, worktree?: string): Record<string, any> {
+  if (!worktree) return ours;
+  let out: Record<string, any> = ours;
+  for (const name of ['settings.json', 'settings.local.json']) {
+    let theirs: Record<string, any>;
+    try { theirs = JSON.parse(fs.readFileSync(path.join(worktree, '.claude', name), 'utf8')); } catch { continue; }
+    if (typeof theirs !== 'object' || theirs === null) continue;
+    const hooks: Record<string, unknown[]> = { ...out.hooks };
+    for (const [event, list] of Object.entries(theirs.hooks ?? {})) hooks[event] = [...(hooks[event] ?? []), ...(Array.isArray(list) ? list : [])];
+    out = { ...theirs, ...out, hooks };
+  }
+  return out;
 }
 
 /** A JSON string literal is also a valid TOML basic string, quotes, backslashes and non-ASCII included. */
@@ -90,7 +110,8 @@ const toml = (s: string) => JSON.stringify(s);
 export function codexArgs(env: Record<string, string>): string[] {
   const args: string[] = [];
   for (const e of EVENTS) {
-    const matcher = e.matcher ? `matcher=${toml(e.matcher.codex)},` : '';
+    if (!e.codex) continue;
+    const matcher = e.matcher?.codex ? `matcher=${toml(e.matcher.codex)},` : '';
     const limit = e.ctxLimit ? `,additionalContextLimit=${e.ctxLimit}` : '';
     args.push('-c', `hooks.${e.codex}=[{${matcher}hooks=[{type="command",command=${toml(hookCommand(e.event))}${limit}}]}]`);
   }

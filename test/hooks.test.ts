@@ -140,3 +140,12 @@ test('post-tool-use hands over messages that arrived mid-turn, after any tool', 
   assert.match(out.hookSpecificOutput.additionalContext, /message from b[\s\S]*heads up[\s\S]*arrived from other agents while you were working/);
   assert.equal(handleHook(ctx('a'), 'claude', 'post-tool-use', { tool_name: 'Read' }), undefined); // delivered once
 });
+
+test('an idle_prompt notification marks the agent idle; other notifications do not', () => {
+  const { d, ctx } = setup();
+  db.setStatus(d, 'a', 'busy');
+  assert.equal(handleHook(ctx('a'), 'claude', 'notification', { notification_type: 'permission_prompt' }), undefined);
+  assert.equal(db.getAgent(d, 'a')!.status, 'busy');
+  handleHook(ctx('a'), 'claude', 'notification', { notification_type: 'idle_prompt' });
+  assert.equal(db.getAgent(d, 'a')!.status, 'idle');
+});

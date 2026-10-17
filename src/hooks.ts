@@ -8,7 +8,7 @@ import * as db from './db.ts';
 import { patchFiles } from './patch.ts';
 import { canWrite, insideDir, normFile, type Ctx } from './tools.ts';
 
-export type Event = 'session-start' | 'user-prompt-submit' | 'pre-tool-use' | 'post-tool-use' | 'stop' | 'session-end';
+export type Event = 'session-start' | 'user-prompt-submit' | 'pre-tool-use' | 'post-tool-use' | 'stop' | 'session-end' | 'notification';
 export type Tool = 'claude' | 'codex';
 
 /** What the hook prints: plain text (context) or a JSON object; `undefined` prints nothing. */
@@ -139,6 +139,12 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       db.setStatus(ctx.db, ctx.agent, 'idle');
       return undefined;
     }
+
+    case 'notification':
+      // Claude Code: "idle_prompt" fires about a minute after Claude stopped and nobody typed. It is the only
+      // signal after an Esc interrupt, which fires no Stop hook, so it is how a cut-off turn becomes idle.
+      if (payload.notification_type === 'idle_prompt') db.setStatus(ctx.db, ctx.agent, 'idle');
+      return undefined;
 
     case 'session-end':
       // Claude Code's /clear and /resume end the session but keep the process; the agent is still here

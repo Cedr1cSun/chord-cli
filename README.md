@@ -9,7 +9,12 @@
 
 One repository, as many agents as you care to start. Each agent works in its own worktree; a shared board records who holds which file; an agent that wants a file another agent holds asks first and waits for the answer; when the work is committed, one call rebases the branch and fast-forwards main. Idle agents are woken the moment a message arrives, so the agents negotiate among themselves while you keep handing out work in plain language.
 
-<p align="center"><!-- demo: three terminals side by side, titles "chord <agent> · <task>", a chord ls in between --></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/demo-dark.svg">
+    <img alt="Two agents in their own terminals claim files, settle one shared file over messages and finish into main, while chord ls shows their status" src="docs/demo-light.svg" width="100%">
+  </picture>
+</p>
 
 ## ✨ Highlights
 

@@ -27,15 +27,36 @@ function whereIs(tool: string): string | undefined {
   } catch { return undefined; }
 }
 
+/**
+ * Characters the user typed, out of a raw stdin chunk. Under ConPTY keys arrive in win32-input-mode,
+ * `ESC [ Vk ; Sc ; Uc ; KeyDown ; Ctrl ; Repeat _`, one event per key press and release, and a chunk
+ * may end mid-sequence; `hold` receives such a tail to prepend to the next chunk. Other escape
+ * sequences (arrows, terminal replies to queries) are dropped: they are not a draft.
+ */
+export function decodeKeys(data: string, hold: (rest: string) => void): string {
+  if (data === '\x1b') { hold(''); return data; } // a bare Esc key outside win32-input-mode
+  const tail = data.lastIndexOf('\x1b');
+  if (tail >= 0 && !/^\x1b(\[[0-9;?]*[ -/]*[@-~]|[^[])/.test(data.slice(tail))) { hold(data.slice(tail)); data = data.slice(0, tail); } else hold('');
+  const ESC = ''; // stands in for a decoded Esc key while other sequences are stripped
+  return data
+    .replace(/\x1b\[(\d+);(\d+);(\d+);(\d+);(\d+);(\d+)_/g, (_, _vk, _sc, uc, down) =>
+      down !== '1' || Number(uc) === 0 ? '' : Number(uc) === 27 ? ESC : String.fromCharCode(Number(uc)))
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[^[]/g, '')
+    .replaceAll(ESC, '\x1b');
+}
+
 /** Decide whether chord may type into the terminal right now. */
 export class InputGate {
   private typedSinceEnter = false;
   private lastKeyAt = 0;
   private staleMs: number;
   constructor(staleMs = 60_000) { this.staleMs = staleMs; }
+  private pending = '';
   onUserInput(data: string, now = Date.now()): void {
+    const text = decodeKeys(this.pending + data, rest => { this.pending = rest; });
+    if (!text) return;
     this.lastKeyAt = now;
-    this.typedSinceEnter = !/[\r\n\x1b]$/.test(data) && data.length > 0;
+    this.typedSinceEnter = !/[\r\n\x1b]$/.test(text);
   }
   /** True when the input box is believed empty, or the user walked away mid-sentence. */
   clear(now = Date.now()): boolean {
@@ -69,18 +90,22 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
 
   term.onData(x => process.stdout.write(x));
   const gate = new InputGate();
-  const onKey = (x: Buffer) => { const s = x.toString(); gate.onUserInput(s); term.write(s); };
+  const onKey = (x: Buffer) => { const s = x.toString(); if (process.env.CHORD_DEBUG_STDIN) db.log(`stdin ${JSON.stringify(s)}`); gate.onUserInput(s); term.write(s); };
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdin.on('data', onKey);
   const onResize = () => term.resize(process.stdout.columns || 120, process.stdout.rows || 40);
   process.stdout.on('resize', onResize);
 
-  let nudgedAt = 0;
+  Object.assign(process.env, launch.env); // so the wrapper writes to the same chord.db.log as the hooks
+  let nudgedAt = 0, lastState = '';
   const timer = setInterval(() => {
     const status = db.getAgent(d, launch.name)?.status;
     if (status !== 'idle') nudgedAt = 0;
-    const action = nextAction({ status, unread: db.hasUnread(d, launch.name), gateClear: gate.clear(), nudgedAt }, Date.now());
+    const s = { status, unread: db.hasUnread(d, launch.name), gateClear: gate.clear(), nudgedAt };
+    const action = nextAction(s, Date.now());
+    const state = `${status}/${s.unread}/${s.gateClear}/${action}`;
+    if (state !== lastState) { db.log(`wake loop: status=${status} unread=${s.unread} gateClear=${s.gateClear} action=${action}`); lastState = state; }
     if (!action) return;
     nudgedAt = Date.now();
     if (action === 'nudge') { term.write(NUDGE); setTimeout(() => term.write('\r'), 1000); } // Enter must arrive separately or the TUI treats it as pasted text

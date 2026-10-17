@@ -234,17 +234,25 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
   db.sweep(d);
   const name = pickName(d, tool, project.dir, override);
   const ws = workspacePath(project, name);
-  const config = readConfig(project);
-  const fresh = !fs.existsSync(path.join(ws, project.repoName, '.git'));
-  const worktree = ensureWorktree(project.repo, path.join(ws, project.repoName), name);
-  const env = { CHORD_AGENT_ID: name, CHORD_DB: fwd(dbFile), CHORD_TOOL: tool, CHORD_PROJECT: fwd(project.dir), CHORD_WORKSPACE: fwd(ws), CHORD_WORKTREE: fwd(worktree) };
-  if (fresh && config.setup) runSetup(project, name, worktree, config.setup, env);
-  let projectConfig = false;
-  if (tool === 'claude' && hasProjectConfig(worktree)) {
-    projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir);
-    if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
+  // Take the name now, before the worktree and setup take their time: a second launch under the same name a moment
+  // later must find it online. The wrapper re-registers with the tool's own pid when it starts.
+  db.addAgent(d, { name, tool, pid: process.pid, cwd: ws, worktree: path.join(ws, project.repoName), heartbeat: true });
+  try {
+    const config = readConfig(project);
+    const fresh = !fs.existsSync(path.join(ws, project.repoName, '.git'));
+    const worktree = ensureWorktree(project.repo, path.join(ws, project.repoName), name);
+    const env = { CHORD_AGENT_ID: name, CHORD_DB: fwd(dbFile), CHORD_TOOL: tool, CHORD_PROJECT: fwd(project.dir), CHORD_WORKSPACE: fwd(ws), CHORD_WORKTREE: fwd(worktree) };
+    if (fresh && config.setup) runSetup(project, name, worktree, config.setup, env);
+    let projectConfig = false;
+    if (tool === 'claude' && hasProjectConfig(worktree)) {
+      projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir);
+      if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
+    }
+    return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env) };
+  } catch (e) {
+    db.setStatus(d, name, 'offline'); // the launch failed: the name is free again
+    throw e;
   }
-  return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env) };
 }
 
 /** <project>/chord/config.json. `setup` is a shell command run in every new worktree before the agent starts,

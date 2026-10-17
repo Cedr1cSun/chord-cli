@@ -99,6 +99,7 @@ test('codexArgs is a list of -c TOML overrides', () => {
 test('prepare builds the workspace, the worktree inside it and the state dir', () => {
   const proj = tempProject();
   const l = prepare('codex', proj);
+  assert.equal(db.getAgent(db.openDb(l.dbFile), l.name)!.pid, process.pid); // reserved under chord's own pid until the tool starts
   assert.equal(l.cwd, path.join(proj, 'chord', 'agents', l.name));
   assert.equal(l.worktree, path.join(l.cwd, 'repo'));
   assert.ok(fs.existsSync(path.join(l.worktree, '.git')));
@@ -251,6 +252,9 @@ test('the setup command from <project>/chord/config.json runs once per new workt
   cfg({ setup: `node -e "require('fs').appendFileSync('setup-ran.txt', process.env.CHORD_AGENT_ID + ';')"` });
   const l = prepare('codex', proj, 'one');
   assert.equal(fs.readFileSync(path.join(l.worktree, 'setup-ran.txt'), 'utf8'), 'one;'); // ran in the worktree with chord's env
+  assert.equal(db.getAgent(db.openDb(l.dbFile), 'one')!.status, 'busy'); // the name is taken from prepare onwards
+  assert.throws(() => prepare('codex', proj, 'one'), /already online/);
+  db.setStatus(db.openDb(l.dbFile), 'one', 'offline'); // the agent left
   prepare('codex', proj, 'one'); // the same workspace again: no rerun
   assert.equal(fs.readFileSync(path.join(l.worktree, 'setup-ran.txt'), 'utf8'), 'one;');
   cfg({ setup: 'node -e "process.exit(3)"' });

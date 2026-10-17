@@ -213,7 +213,9 @@ async function main(argv: string[]): Promise<number> {
   }
   process.stderr.write(`chord: agent ${launch.name} in ${launch.cwd}\n`);
   if (userSettings) launch.args = mergeUserSettings(launch.args, userSettings);
-  if (cmd === 'claude') pretrustClaude(launch.cwd); // otherwise every new workspace asks "do you trust this folder?"
+  if (cmd === 'claude') { // otherwise every new workspace asks "do you trust this folder?"; a failure here only brings that dialogue back
+    try { pretrustClaude(launch.cwd); } catch (e) { process.stderr.write(`chord: could not record the workspace as trusted in ~/.claude.json (${(e as Error).message}); Claude may ask you to trust the folder\n`); }
+  }
   if (cmd === 'codex') {
     const off = disabledCodexHooks();
     if (off.length) process.stderr.write(`chord: Codex has chord's ${off.join(', ')} hook(s) switched off in ~/.codex/config.toml, so the matching chord features will not work. Remove the "enabled = false" line(s) under the [hooks.state.'...<session-flags>...'] tables to switch them back on.\n`);

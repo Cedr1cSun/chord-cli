@@ -1,54 +1,55 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { InputGate, decodeKeys, nextAction, oscState, resolveCommand, whereIs } from '../src/pty.ts';
+import { InputGate, decodeKeys, nextAction, nudgeEchoed, oscState, resolveCommand, stripAnsi, whereIs } from '../src/pty.ts';
 
 const key = (uc: number, down = 1, ctrl = 0) => `\x1b[${uc};0;${uc};${down};${ctrl};1_`;
 
-test('InputGate holds while a draft is being typed, releases on Enter/Esc or after staleness', () => {
-  const g = new InputGate(1000);
-  assert.equal(g.clear(0), true);
-  g.onUserInput('hel', 100);
-  assert.equal(g.clear(200), false);
-  g.onUserInput('lo\r', 300);
-  assert.equal(g.clear(400), true);
-  g.onUserInput('x', 500);
-  assert.equal(g.clear(1400), false);
-  assert.equal(g.clear(1600), true); // walked away
-  g.onUserInput('\x1b[B', 1700); // arrow key: neither a draft nor a submit
-  assert.equal(g.clear(1700), true);
-  g.onUserInput('abc', 1800);
-  g.onUserInput('\x1b[24;1R\x1b[?62;c', 1900); // terminal replies to queries do not touch the draft state
-  assert.equal(g.clear(1950), false);
-  g.onUserInput('\r', 2000);
-  assert.equal(g.clear(2000), true);
+test('InputGate holds while a draft is being typed and releases only on Enter or Esc, however long the user takes', () => {
+  const g = new InputGate();
+  assert.equal(g.clear(), true);
+  g.onUserInput('hel');
+  assert.equal(g.clear(), false);
+  g.onUserInput('lo\r');
+  assert.equal(g.clear(), true);
+  g.onUserInput('x');
+  assert.equal(g.clear(), false); // no staleness rule: a half-typed line keeps chord out until the user deals with it
+  g.onUserInput('\x1b');
+  assert.equal(g.clear(), true);
+  g.onUserInput('\x1b[B'); // arrow key: neither a draft nor a submit
+  assert.equal(g.clear(), true);
+  g.onUserInput('abc');
+  g.onUserInput('\x1b[24;1R\x1b[?62;c'); // terminal replies to queries do not touch the draft state
+  assert.equal(g.clear(), false);
+  g.onUserInput('\r');
+  assert.equal(g.clear(), true);
 });
 
 test('InputGate: backspace empties a draft, Ctrl+U/Ctrl+C clear it, a paste with newlines stays a draft, Shift+Enter is not a submit', () => {
-  const g = new InputGate(60_000);
-  g.onUserInput('ab', 10); g.onUserInput('\x7f', 20); assert.equal(g.clear(30), false);
-  g.onUserInput('\x7f', 40); assert.equal(g.clear(50), true);
-  g.onUserInput('typing', 60); g.onUserInput('\x15', 70); assert.equal(g.clear(80), true); // Ctrl+U
-  g.onUserInput('typing', 90); g.onUserInput('\x03', 100); assert.equal(g.clear(110), true); // Ctrl+C
-  g.onUserInput('\x1b[200~line one\nline two\n\x1b[201~', 120); assert.equal(g.clear(130), false); // pasted text waits for Enter
-  g.onUserInput('\r', 140); assert.equal(g.clear(150), true);
-  g.onUserInput(key(97) + key(13, 1, 0x10), 160); assert.equal(g.clear(170), false); // 'a' then Shift+Enter: still a draft
-  g.onUserInput(key(13), 180); assert.equal(g.clear(190), true);
+  const g = new InputGate();
+  g.onUserInput('ab'); g.onUserInput('\x7f'); assert.equal(g.clear(), false);
+  g.onUserInput('\x7f'); assert.equal(g.clear(), true);
+  g.onUserInput('typing'); g.onUserInput('\x15'); assert.equal(g.clear(), true); // Ctrl+U
+  g.onUserInput('typing'); g.onUserInput('\x03'); assert.equal(g.clear(), true); // Ctrl+C
+  g.onUserInput('\x1b[200~line one\nline two\n\x1b[201~'); assert.equal(g.clear(), false); // pasted text waits for Enter
+  g.onUserInput('\r'); assert.equal(g.clear(), true);
+  g.onUserInput(key(97) + key(13, 1, 0x10)); assert.equal(g.clear(), false); // 'a' then Shift+Enter: still a draft
+  g.onUserInput(key(13)); assert.equal(g.clear(), true);
 });
 
 test('InputGate decodes win32-input-mode key events, including a sequence split across chunks', () => {
-  const g = new InputGate(1000);
-  g.onUserInput(key(16, 1) + key(72) + key(72, 0) + key(16, 0), 100); // Shift, 'H' down, 'H' up, Shift up
-  assert.equal(g.clear(200), false);
+  const g = new InputGate();
+  g.onUserInput(key(16, 1) + key(72) + key(72, 0) + key(16, 0)); // Shift, 'H' down, 'H' up, Shift up
+  assert.equal(g.clear(), false);
   const enter = key(13) + key(13, 0);
-  g.onUserInput(enter.slice(0, 7), 300); // chunk boundary inside the Enter sequence
-  assert.equal(g.clear(300), false);
-  g.onUserInput(enter.slice(7), 400);
-  assert.equal(g.clear(400), true);
-  g.onUserInput(key(97), 500);
-  g.onUserInput('\x1b[24;1R\x1b[?62;c', 600); // plain terminal replies still ignored
-  assert.equal(g.clear(600), false);
-  g.onUserInput(key(27), 700); // Esc clears the draft
-  assert.equal(g.clear(700), true);
+  g.onUserInput(enter.slice(0, 7)); // chunk boundary inside the Enter sequence
+  assert.equal(g.clear(), false);
+  g.onUserInput(enter.slice(7));
+  assert.equal(g.clear(), true);
+  g.onUserInput(key(97));
+  g.onUserInput('\x1b[24;1R\x1b[?62;c'); // plain terminal replies still ignored
+  assert.equal(g.clear(), false);
+  g.onUserInput(key(27)); // Esc clears the draft
+  assert.equal(g.clear(), true);
 });
 
 test('decodeKeys drops OSC, DCS, SS3 and mouse sequences and holds any unfinished one', () => {
@@ -66,17 +67,29 @@ test('decodeKeys drops OSC, DCS, SS3 and mouse sequences and holds any unfinishe
   assert.equal(dec('\x1bx'), ''); // Alt+x is not text
 });
 
-test('nextAction nudges once, retries Enter 5s after the last Enter, retypes 30s after the nudge', () => {
-  const base = { status: 'idle', unread: true, gateClear: true, nudgedAt: 0, enteredAt: 0 };
+test('nextAction nudges once, presses Enter once more only when the text was echoed, retypes 30s after the nudge', () => {
+  const base = { status: 'idle', unread: true, gateClear: true, nudgedAt: 0, echoed: false, enters: 0, enteredAt: 0 };
   assert.equal(nextAction(base, 100_000), 'nudge');
-  const nudged = { ...base, nudgedAt: 100_000, enteredAt: 101_000 };
-  assert.equal(nextAction(nudged, 103_000), null);
-  assert.equal(nextAction(nudged, 106_500), 'enter');
-  assert.equal(nextAction({ ...nudged, enteredAt: 106_500 }, 110_000), null); // the retry does not restart the 30s clock
-  assert.equal(nextAction({ ...nudged, enteredAt: 125_000 }, 131_000), 'nudge'); // but the nudge is retyped after 30s
+  const typed = { ...base, nudgedAt: 100_000 };
+  assert.equal(nextAction(typed, 103_000), null); // echo check pending
+  assert.equal(nextAction(typed, 110_000), null); // not echoed: a dialog ate it, hands off
+  const entered = { ...typed, echoed: true, enters: 1, enteredAt: 101_500 };
+  assert.equal(nextAction(entered, 103_000), null);
+  assert.equal(nextAction(entered, 106_600), 'enter'); // one retry
+  assert.equal(nextAction({ ...entered, enters: 2, enteredAt: 106_600 }, 120_000), null); // never a third
+  assert.equal(nextAction({ ...typed, echoed: true, enters: 0 }, 110_000), null); // the user got there first: leave it alone
+  assert.equal(nextAction({ ...entered, enters: 2, enteredAt: 125_000 }, 131_000), 'nudge'); // retyped 30s after the nudge
   assert.equal(nextAction({ ...base, status: 'busy' }, 100_000), null);
   assert.equal(nextAction({ ...base, unread: false }, 100_000), null);
   assert.equal(nextAction({ ...base, gateClear: false }, 100_000), null);
+});
+
+test('nudgeEchoed sees the nudge through re-rendering, wrapping and escape sequences, and not when a dialog ate it', () => {
+  assert.equal(nudgeEchoed('\x1b[?25l\x1b[2K\r> [chord] You have new\r\n  messages from other agents;\x1b[?25h'), true);
+  assert.equal(nudgeEchoed('\x1b[1;1H› [ch\x1b[Kord] You ha\x1b[Kve new messag\x1b[Kes from'), true);
+  assert.equal(nudgeEchoed('Hooks need review\n› 1. Review hooks\n  2. Trust all and continue'), false);
+  assert.equal(nudgeEchoed(''), false);
+  assert.equal(stripAnsi('a\x1b]7501;state=idle:app=codex\x1b\\b\x1b[31mc\x1b[0m\x1bPq..\x1b\\d\x1b(Be'), 'abcde');
 });
 
 test('oscState reads the last Codex state report in a chunk', () => {

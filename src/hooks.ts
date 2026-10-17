@@ -1,6 +1,7 @@
 // Hook entry point for both Claude Code and Codex: `node hooks.ts <event>`, payload on stdin.
 // Event names are chord's own; launch.ts maps each tool's hook config onto them.
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import * as db from './db.ts';
 import { patchFiles } from './patch.ts';
@@ -27,15 +28,33 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
 
 const isShell = (name: unknown) => /^(bash|powershell|shell|exec|exec_command|local_shell)$/i.test(String(name ?? ''));
 
+const hhmm = (t: number) => new Date(t).toTimeString().slice(0, 5); // local time
+
 export function formatMessages(ms: db.Message[]): string {
-  return ms.map(m => `[chord] message from ${m.sender} at ${new Date(m.created_at).toISOString().slice(11, 16)}:\n${m.body}`).join('\n\n');
+  return ms.map(m => `[chord] message from ${m.sender} at ${hhmm(m.created_at)}:\n${m.body}`).join('\n\n');
+}
+
+const MAX_CLAIM_LINES = 60;
+const MAX_INSTRUCTION_CHARS = 8000;
+
+/** The repository's own agent instructions. The agent's cwd is the workspace, so the tools do not load them themselves. */
+function projectInstructions(ctx: Ctx, repoDir: string): string[] {
+  const out: string[] = [];
+  for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+    try {
+      const text = fs.readFileSync(path.join(ctx.worktree, name), 'utf8');
+      const body = text.length > MAX_INSTRUCTION_CHARS ? text.slice(0, MAX_INSTRUCTION_CHARS) + `\n[... truncated, read ${repoDir}/${name} for the rest]` : text;
+      out.push('', `Project instructions from ${repoDir}/${name}:`, body.trimEnd());
+    } catch { /* not present */ }
+  }
+  return out;
 }
 
 export function briefing(ctx: Ctx): string {
   const me = db.getAgent(ctx.db, ctx.agent);
-  const peers = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent);
+  const peers = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent && a.status !== 'offline');
   const claims = db.allClaims(ctx.db);
-  const repoDir = path.relative(ctx.cwd, ctx.worktree) || '.';
+  const repoDir = path.relative(ctx.cwd, ctx.worktree).split(path.sep).join('/') || '.';
   const lines = [
     `You are agent "${ctx.agent}" (${me?.tool ?? 'unknown'}), one of several coding agents working on the same project. Your working directory is your own workspace; the repository is the directory "${repoDir}" inside it, a git worktree on your own branch. Run git commands inside "${repoDir}". Name files as paths from your working directory, e.g. "${repoDir}/src/x.ts" (claim() also accepts repository-relative paths like "src/x.ts"). Other agents have their own worktrees of the same repository; never edit files outside your workspace. Coordination goes through the "chord" MCP tools.`,
     '',
@@ -52,7 +71,9 @@ export function briefing(ctx: Ctx): string {
     ...peers.map(a => `- ${a.name} (${a.tool}, ${a.status}): ${a.task ?? 'not registered yet'}${a.scope ? ` [${a.scope}]` : ''}`),
     '',
     claims.length ? 'Current file claims:' : 'No files are claimed yet.',
-    ...claims.map(c => `- ${c.file} <- ${c.agent}: ${c.kind}, ${c.intent}${c.symbols ? ` (${c.symbols})` : ''}`),
+    ...claims.slice(0, MAX_CLAIM_LINES).map(c => `- ${c.file} <- ${c.agent}: ${c.kind}, ${c.intent}${c.symbols ? ` (${c.symbols})` : ''}`),
+    ...(claims.length > MAX_CLAIM_LINES ? [`- ... and ${claims.length - MAX_CLAIM_LINES} more (the claim tool reports holders of any file you claim)`] : []),
+    ...projectInstructions(ctx, repoDir),
   ];
   return lines.join('\n');
 }
@@ -96,10 +117,10 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     case 'post-tool-use': {
       if (!isShell(payload.tool_name)) return undefined;
       let status = '';
-      try { status = execFileSync('git', ['status', '--porcelain'], { cwd: ctx.worktree, encoding: 'utf8', env: db.gitEnv() }); } catch { return undefined; }
+      try { status = execFileSync('git', ['status', '--porcelain=v1', '-z', '-uall'], { cwd: ctx.worktree, encoding: 'utf8', env: db.gitEnv() }); } catch { return undefined; }
       const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
-      const unclaimed = status.split('\n').filter(Boolean)
-        .map(l => normFile(ctx, path.join(ctx.worktree, l.slice(3).trim().replace(/^.* -> /, '').replace(/^"|"$/g, ''))))
+      const unclaimed = changedPaths(status)
+        .map(f => normFile(ctx, path.join(ctx.worktree, f)))
         .filter(f => !mine.has(f.toLowerCase()));
       if (!unclaimed.length) return undefined;
       const text = `[chord] The shell command changed files you have not claimed: ${unclaimed.join(', ')}. Claim them now with claim(), or revert the change.`;
@@ -114,9 +135,39 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     }
 
     case 'session-end':
+      // Claude Code's /clear and /resume end the session but keep the process; the agent is still here
+      if (payload.reason === 'clear' || payload.reason === 'resume') { db.setStatus(ctx.db, ctx.agent, 'idle'); return undefined; }
       db.setStatus(ctx.db, ctx.agent, 'offline');
       db.releaseAll(ctx.db, ctx.agent);
       return undefined;
+  }
+}
+
+/** Paths changed according to `git status --porcelain=v1 -z -uall`: entries are NUL-separated, a rename
+ *  or copy is followed by the original path, and nothing is quoted or folded into directories. */
+export function changedPaths(statusZ: string): string[] {
+  const parts = statusZ.split('\0');
+  const out: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i];
+    if (!entry) continue;
+    out.push(entry.slice(3));
+    if (/^[RC]|^.[RC]/.test(entry.slice(0, 2))) i++; // skip the "from" path of a rename/copy
+  }
+  return out;
+}
+
+/** handleHook, but never lets an exception reach the tool: a broken hook must not fail open on a write. */
+export function safeHandle(ctx: Ctx, tool: Tool, event: Event, payload: Record<string, any>): HookOut {
+  try {
+    return handleHook(ctx, tool, event, payload);
+  } catch (e) {
+    const msg = (e as Error).message;
+    db.log(`hook ${event} failed: ${msg}`);
+    if (event === 'pre-tool-use' && filesTouched(tool, payload).length) {
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `chord could not check this write (${msg}); try again or report it to the user` } };
+    }
+    return undefined;
   }
 }
 
@@ -134,7 +185,7 @@ async function main(): Promise<void> {
   // the workspace is fixed per agent; the tool's own cwd moves when the agent runs `cd`, so it is not used as the base
   const cwd = process.env.CHORD_WORKSPACE ?? (typeof payload.cwd === 'string' ? payload.cwd : process.cwd());
   const ctx: Ctx = { db: db.openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd, project: process.env.CHORD_PROJECT };
-  const out = handleHook(ctx, tool, event, payload);
+  const out = safeHandle(ctx, tool, event, payload);
   db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `${typeof out === 'string' ? 'text' : 'json'} ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
   if (out !== undefined) process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out));
 }

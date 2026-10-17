@@ -107,3 +107,10 @@ test('prepare builds the workspace, the worktree inside it and the state dir', (
   const empty = tmp('chord-nocommit-'); fs.mkdirSync(path.join(empty, 'r')); git(path.join(empty, 'r'), 'init', '-q', '-b', 'main');
   assert.throws(() => prepare('claude', empty), /no commits yet/);
 });
+
+test('claude gets --add-dir for the worktree and codex a long tool timeout', () => {
+  const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: '/w/repo' };
+  const c = claudeArgs(env);
+  assert.equal(c[c.indexOf('--add-dir') + 1], '/w/repo');
+  assert.ok(codexArgs(env).find(a => a.startsWith('mcp_servers.chord='))!.includes('tool_timeout_sec=600'));
+});

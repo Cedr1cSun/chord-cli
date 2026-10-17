@@ -14,7 +14,8 @@ import type { Event, Tool } from './hooks.ts';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
-const here = (f: string) => fileURLToPath(new URL(f, import.meta.url)).split(path.sep).join('/');
+// realpath gives one canonical spelling (drive letter and directory case): Codex persists hook trust by hashing the command string
+const here = (f: string) => fs.realpathSync.native(fileURLToPath(new URL(f, import.meta.url))).split(path.sep).join('/');
 export const HOOKS_TS = here('./hooks.ts');
 export const SERVE_TS = here('./serve.ts');
 
@@ -66,7 +67,9 @@ export function claudeArgs(env: Record<string, string>): string[] {
     }];
   }
   const mcp = { mcpServers: { chord: { command: 'node', args: [SERVE_TS], env } } };
-  return ['--settings', JSON.stringify({ hooks }), '--mcp-config', JSON.stringify(mcp)];
+  // the agent's cwd is its workspace, so the repository's CLAUDE.md is only found through --add-dir
+  const addDir = env.CHORD_WORKTREE ? ['--add-dir', env.CHORD_WORKTREE] : [];
+  return ['--settings', JSON.stringify({ hooks }), '--mcp-config', JSON.stringify(mcp), ...addDir];
 }
 
 /** A JSON string literal is also a valid TOML basic string, quotes, backslashes and non-ASCII included. */
@@ -80,7 +83,8 @@ export function codexArgs(env: Record<string, string>): string[] {
     args.push('-c', `hooks.${e.codex}=[{${matcher}hooks=[{type="command",command=${toml(hookCommand(e.event))}}]}]`);
   }
   const envToml = Object.entries(env).map(([k, v]) => `${k}=${toml(v)}`).join(',');
-  args.push('-c', `mcp_servers.chord={command="node",args=[${toml(SERVE_TS)}],env={${envToml}}}`);
+  // finish may wait minutes for the merge lock; Codex's default tool timeout is 60s
+  args.push('-c', `mcp_servers.chord={command="node",args=[${toml(SERVE_TS)}],env={${envToml}},tool_timeout_sec=600}`);
   return args;
 }
 

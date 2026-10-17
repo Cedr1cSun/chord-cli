@@ -52,3 +52,16 @@ test('post-tool-use reports paths relative to the workspace when the repo is a s
   db.addClaim(d, { agent: 'a', file: 'repo/a.txt', intent: 'x', kind: 'modify' });
   assert.equal(handleHook(ctx, 'codex', 'post-tool-use', { tool_name: 'Bash' }), undefined);
 });
+
+test('post-tool-use handles renames and names with spaces or accents', () => {
+  const { root, ctx } = repo();
+  const git = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: root, stdio: 'ignore' });
+  fs.writeFileSync(path.join(root, 'ünï cødé.txt'), 'x\n'); git('add', '.'); git('commit', '-q', '-m', 'add');
+  git('mv', 'notes.txt', 'renamed notes.txt');
+  fs.appendFileSync(path.join(root, 'ünï cødé.txt'), 'y\n');
+  fs.mkdirSync(path.join(root, 'newdir')); fs.writeFileSync(path.join(root, 'newdir', 'inner.md'), 'z');
+  const out = handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Bash' }) as any;
+  const text = out.hookSpecificOutput.additionalContext as string;
+  assert.match(text, /renamed notes.txt/); assert.ok(!/(^|[ ,])notes.txt/.test(text.replace('renamed notes.txt', '')));
+  assert.match(text, /ünï cødé.txt/); assert.match(text, /newdir\/inner.md/);
+});

@@ -44,19 +44,44 @@ export const workspacePath = (p: Project, name: string) => path.join(p.dir, 'cho
 
 /** Create (or reuse) a worktree of `repo` at `wt` on branch chord/<name>, forked from the current main HEAD. */
 export function ensureWorktree(repo: string, wt: string, name: string): string {
+  const branch = `chord/${name}`;
   if (fs.existsSync(path.join(wt, '.git'))) {
-    try { git(wt, 'rev-parse', '--git-dir'); return wt; } catch { /* the link is broken, e.g. the project was moved */ }
-    git(repo, 'worktree', 'repair', wt);
-    git(wt, 'rev-parse', '--git-dir');
-    return wt;
+    try { git(wt, 'rev-parse', '--git-dir'); } catch { // the link is broken, e.g. the project was moved
+      git(repo, 'worktree', 'repair', wt);
+      git(wt, 'rev-parse', '--git-dir');
+    }
+    return onBranch(wt, branch);
   }
   if (fs.existsSync(wt) && fs.readdirSync(wt).length) throw new Error(`${wt} exists but is not a git worktree; remove it or pick another --name`);
   fs.mkdirSync(path.dirname(wt), { recursive: true });
-  git(repo, 'worktree', 'prune'); // a workspace deleted by hand leaves a stale registration behind
-  const branch = `chord/${name}`;
+  // Every worktree directory is named after the repository, so git gives them ids repo, repo1, repo2... After the
+  // project moves, the registrations point at the old place: pruning first would drop them all and let this new
+  // worktree take the id "repo" that belonged to another agent, which a later repair of that agent would then share.
+  // Repair the siblings first; prune only removes what the user really deleted.
+  const siblings = siblingWorktrees(wt);
+  if (siblings.length) { try { git(repo, 'worktree', 'repair', ...siblings); } catch { /* a sibling beyond repair is pruned below */ } }
+  git(repo, 'worktree', 'prune');
   const exists = git(repo, 'branch', '--list', branch) !== '';
   if (exists) git(repo, 'worktree', 'add', wt, branch);
   else git(repo, 'worktree', 'add', '-b', branch, wt);
+  return onBranch(wt, branch);
+}
+
+/** The other agents' worktrees beside `wt` (chord/agents/<other>/<repoName>) that still exist on disk. */
+function siblingWorktrees(wt: string): string[] {
+  const agents = path.dirname(path.dirname(wt));
+  try {
+    return fs.readdirSync(agents)
+      .map(n => path.join(agents, n, path.basename(wt)))
+      .filter(p => p !== wt && fs.existsSync(path.join(p, '.git')));
+  } catch { return []; }
+}
+
+/** A worktree that is not on its own branch is sharing a registration with another agent: refuse rather than let two
+ *  agents work on one index. */
+function onBranch(wt: string, branch: string): string {
+  const head = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD');
+  if (head !== branch) throw new Error(`${wt} is on ${head} instead of ${branch}; its git registration seems to be shared with another agent. Remove the directory and launch again`);
   return wt;
 }
 

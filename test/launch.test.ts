@@ -154,6 +154,20 @@ test('ensureWorktree recovers a deleted workspace and a moved project, and refus
   assert.throws(() => ensureWorktree(path.join(moved, 'repo'), foreign, 'y'), /not a git worktree/);
 });
 
+test('after the project moves, a new agent does not take over an old agent\'s worktree registration', () => {
+  const proj = tempProject();
+  const alice = prepare('codex', proj, 'alice');
+  fs.writeFileSync(path.join(alice.worktree, 'wip.txt'), 'half done');
+  const moved = proj + '-moved'; fs.renameSync(proj, moved);
+  const fresh = prepare('codex', moved); // launched first after the move: must not inherit alice's registration
+  const back = prepare('codex', moved, 'alice');
+  const branchOf = (wt: string) => execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: wt, encoding: 'utf8' }).trim();
+  assert.equal(branchOf(back.worktree), 'chord/alice');
+  assert.equal(branchOf(fresh.worktree), `chord/${fresh.name}`);
+  assert.notEqual(fs.readFileSync(path.join(back.worktree, '.git'), 'utf8'), fs.readFileSync(path.join(fresh.worktree, '.git'), 'utf8'));
+  assert.equal(fs.readFileSync(path.join(back.worktree, 'wip.txt'), 'utf8'), 'half done');
+});
+
 test('post-tool-use runs for every tool and codex hooks that attach context get a higher limit', () => {
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude' };
   const a = claudeArgs(env); const settings = JSON.parse(a[a.indexOf('--settings') + 1]);

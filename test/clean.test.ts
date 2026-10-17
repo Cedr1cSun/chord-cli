@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -55,6 +55,23 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   assert.equal(fs.readFileSync(path.join(dirty.wt, 'm.txt'), 'utf8'), '1edited');
   assert.deepEqual(clean(project, d, ['dirty'], true).removed, ['dirty']);
   assert.ok(!fs.existsSync(dirty.ws));
+
+  // a worktree some process is using cannot be removed on Windows: that agent is kept whole, the others still go
+  const busy = mk('busy'); const other = mk('other');
+  db.setStatus(d, 'busy', 'offline'); db.setStatus(d, 'other', 'offline');
+  const holder = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1e9)'], { cwd: busy.wt, stdio: 'ignore', detached: true });
+  try {
+    r = clean(project, d, ['busy', 'other']);
+    assert.deepEqual(r.removed, ['other']);
+    assert.match(r.kept.find(k => k.name === 'busy')!.why, /could not be removed/);
+    assert.notEqual(git(repo, 'branch', '--list', 'chord/busy'), ''); // branch and row survive with the directory
+    assert.ok(db.getAgent(d, 'busy'));
+  } finally { holder.kill(); }
+  // a junction inside the worktree is unlinked, not followed
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-target-')); fs.writeFileSync(path.join(target, 'sentinel'), 'keep');
+  const junk = mk('junk'); fs.symlinkSync(target, path.join(junk.wt, 'linked'), 'junction'); db.setStatus(d, 'junk', 'offline');
+  assert.deepEqual(clean(project, d, ['junk'], true).removed, ['junk']);
+  assert.ok(fs.existsSync(path.join(target, 'sentinel')));
 
   r = clean(project, d, ['unmerged'], true);
   assert.deepEqual(r.removed, ['unmerged']);

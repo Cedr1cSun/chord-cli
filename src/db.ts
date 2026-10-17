@@ -96,6 +96,8 @@ export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid:
      on conflict(name) do update set tool = excluded.tool, pid = excluded.pid, cwd = excluded.cwd,
        status = 'busy', task = null, scope = null, started_at = excluded.started_at, updated_at = excluded.updated_at`,
   ).run(a.name, a.tool, a.pid, a.cwd, now, now);
+  // a relaunch under the same name must not inherit messages meant for the previous session
+  db.prepare('delete from messages where recipient = ? and read_at is null').run(a.name);
 }
 
 export function setTask(db: DatabaseSync, name: string, task: string, scope: string | null): void {

@@ -53,3 +53,13 @@ test('tool calls sweep dead agents', () => {
   const l = JSON.parse(call('a', 'list_agents').text);
   assert.equal(l.find((p: any) => p.name === 'ghost').status, 'offline');
 });
+
+test('send refuses offline recipients; a relaunch drops stale unread messages', () => {
+  const { d, call } = setup();
+  db.send(d, 'a', ['b'], 'before b died');
+  db.setStatus(d, 'b', 'offline');
+  assert.match(call('a', 'send', { to: 'b', message: 'x' }).text, /b is offline/);
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/b' }); // relaunch
+  assert.equal(db.hasUnread(d, 'b'), false);
+  assert.equal(call('a', 'send', { to: 'b', message: 'fresh' }).isError, false);
+});

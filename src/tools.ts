@@ -175,6 +175,8 @@ export function tools(ctx: Ctx): Tool[] {
         const to = Array.isArray(a.to) ? a.to.map(String) : [req(a, 'to')];
         const unknown = to.filter(n => !db.getAgent(ctx.db, n));
         if (unknown.length) throw new Error(`unknown agent(s): ${unknown.join(', ')}`);
+        const offline = to.filter(n => db.getAgent(ctx.db, n)!.status === 'offline');
+        if (offline.length) throw new Error(`${offline.join(', ')} is offline; nobody would read the message`);
         db.send(ctx.db, ctx.agent, to, req(a, 'message'));
         return { sent_to: to };
       },

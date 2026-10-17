@@ -21,4 +21,5 @@ test('patchFiles reads add, update, delete and move headers', () => {
 
 test('patchFiles ignores body lines that look like headers', () => {
   assert.deepEqual(patchFiles('*** Begin Patch\n*** Update File: a.md\n+*** Add File: fake.md\n*** End Patch'), ['a.md']);
+  assert.deepEqual(patchFiles('  *** Begin Patch\n  *** Update File: b.md\n  *** End Patch'), ['b.md']); // indented inside a heredoc
 });

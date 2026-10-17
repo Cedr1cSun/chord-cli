@@ -117,7 +117,7 @@ const EVENTS: { event: Event; claude: string; codex?: string; matcher?: { claude
   { event: 'session-start', claude: 'SessionStart', codex: 'SessionStart', ctxLimit: 16000 },
   { event: 'notification', claude: 'Notification', matcher: { claude: 'idle_prompt' } }, // Claude only: Codex reports idle through OSC 7501
   { event: 'user-prompt-submit', claude: 'UserPromptSubmit', codex: 'UserPromptSubmit', ctxLimit: 16000 },
-  { event: 'pre-tool-use', claude: 'PreToolUse', codex: 'PreToolUse', matcher: { claude: 'Edit|Write|MultiEdit|NotebookEdit', codex: '^apply_patch$' } },
+  { event: 'pre-tool-use', claude: 'PreToolUse', codex: 'PreToolUse', matcher: { claude: 'Edit|Write|MultiEdit|NotebookEdit' } }, // Codex: every tool, so apply_patch run from the shell is seen too
   { event: 'post-tool-use', claude: 'PostToolUse', codex: 'PostToolUse', ctxLimit: 16000 }, // every tool: shell-edit warnings and mid-turn message delivery
   { event: 'stop', claude: 'Stop', codex: 'Stop' },
   { event: 'session-end', claude: 'SessionEnd', codex: 'SessionEnd', timeout: 10 },

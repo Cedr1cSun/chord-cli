@@ -88,7 +88,7 @@ test('codexArgs is a list of -c TOML overrides', () => {
   const args = codexArgs({ CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'codex' });
   assert.equal(args.filter(a => a === '-c').length, 7);
   const pre = args.find(a => a.startsWith('hooks.PreToolUse='))!;
-  assert.ok(pre.includes('matcher="^apply_patch$"'));
+  assert.ok(!pre.includes('matcher=')); // every Codex tool: apply_patch run from the shell must be seen too
   assert.ok(pre.includes(`command=${JSON.stringify(hookCommand('pre-tool-use'))}`));
   assert.ok(args.find(a => a.startsWith('mcp_servers.chord='))!.includes('env={CHORD_AGENT_ID="a",CHORD_DB="/db",CHORD_TOOL="codex"}'));
   // paths with quotes, spaces and non-ASCII survive as TOML basic strings

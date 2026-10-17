@@ -21,6 +21,26 @@ test('filesTouched: claude edit tools and codex apply_patch', () => {
   assert.deepEqual(filesTouched('claude', { tool_name: 'Bash', tool_input: { command: 'ls' } }), []);
   assert.deepEqual(filesTouched('codex', { tool_name: 'apply_patch', tool_input: { command: '*** Begin Patch\n*** Add File: x.ts\n+1\n*** End Patch' } }), ['x.ts']);
   assert.deepEqual(filesTouched('codex', { tool_name: 'Bash', tool_input: { command: 'ls' } }), []);
+  // other shapes the patch may arrive in
+  assert.deepEqual(filesTouched('codex', { tool_name: 'apply_patch', tool_input: { input: '*** Begin Patch\n*** Update File: y.ts\n*** End Patch' } }), ['y.ts']);
+  assert.deepEqual(filesTouched('codex', { tool_name: 'apply_patch', tool_input: '*** Begin Patch\n*** Delete File: z.ts\n*** End Patch' }), ['z.ts']);
+  assert.deepEqual(filesTouched('codex', { tool_name: 'Bash', tool_input: { command: "apply_patch <<'EOF'\n*** Begin Patch\n  *** Add File: u.txt\n+x\n*** End Patch\nEOF" } }), ['u.txt']); // from the shell, headers indented
+});
+
+test('pre-tool-use resolves a Codex patch against its workdir and refuses an edit tool that names no file', () => {
+  const { d, ctx } = setup();
+  const c = ctx('a'); // workspace /wt/a, worktree /wt/a: a workdir of a subdirectory
+  db.addClaim(d, { agent: 'a', file: 'sub/ok.ts', intent: 'x', kind: 'add' });
+  const patch = (f: string) => `*** Begin Patch\n*** Update File: ${f}\n*** End Patch`;
+  assert.equal(handleHook(c, 'codex', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { command: patch('ok.ts'), workdir: '/wt/a/sub' } }), undefined); // sub/ok.ts, claimed
+  const deny = handleHook(c, 'codex', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { command: patch('other.ts'), workdir: '/wt/a/sub' } }) as any;
+  assert.equal(deny.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(deny.hookSpecificOutput.permissionDecisionReason, /sub\/other.ts/);
+  const noFile = handleHook(c, 'codex', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { command: 'not a patch' } }) as any;
+  assert.equal(noFile.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(noFile.hookSpecificOutput.permissionDecisionReason, /could not tell which file/);
+  assert.equal((handleHook(c, 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: {} }) as any).hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(handleHook(c, 'claude', 'pre-tool-use', { tool_name: 'Read', tool_input: {} }), undefined);
 });
 
 test('session-start sets busy and briefs with peers and claims', () => {

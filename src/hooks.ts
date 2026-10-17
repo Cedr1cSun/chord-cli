@@ -23,9 +23,17 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
     const p = input.file_path ?? input.notebook_path;
     return typeof p === 'string' ? [p] : [];
   }
-  if (tool === 'codex' && name === 'apply_patch' && typeof input.command === 'string') return patchFiles(input.command);
+  if (tool === 'codex') {
+    // the patch has been seen under "command"; "input", "patch" and a bare string cost nothing to accept as well
+    const text = typeof input === 'string' ? input : [input.command, input.input, input.patch].find(v => typeof v === 'string');
+    if (name === 'apply_patch' && typeof text === 'string') return patchFiles(text);
+    if (isShell(name) && typeof text === 'string' && text.includes('*** Begin Patch')) return patchFiles(text); // apply_patch run from the shell
+  }
   return [];
 }
+
+/** Tools that write files and must therefore name them: a call that names none is refused rather than let through. */
+export const isEditTool = (tool: Tool, name: unknown) => (tool === 'claude' ? EDIT_TOOLS.has(String(name)) : name === 'apply_patch');
 
 const isShell = (name: unknown) => /^(bash|powershell|shell|exec|exec_command|local_shell)$/i.test(String(name ?? ''));
 
@@ -107,8 +115,14 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     }
 
     case 'pre-tool-use': {
-      for (const f of filesTouched(tool, payload)) {
-        const abs = path.resolve(ctx.cwd, f);
+      const files = filesTouched(tool, payload);
+      if (!files.length && isEditTool(tool, payload.tool_name)) {
+        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'chord could not tell which file this call writes, so it is refused; use the editor tool with a plain file path' } };
+      }
+      // Codex resolves a patch's relative paths against the call's workdir when it gives one; otherwise the workspace
+      const workdir = tool === 'codex' && typeof payload.tool_input?.workdir === 'string' ? path.resolve(ctx.cwd, payload.tool_input.workdir) : ctx.cwd;
+      for (const f of files) {
+        const abs = path.resolve(workdir, f);
         if (!insideDir(ctx.worktree, abs)) {
           // the main checkout and the other agents' workspaces are off limits; anything else is not ours to police
           if (ctx.project && insideDir(ctx.project, abs) && !insideDir(ctx.cwd, abs)) {
@@ -116,7 +130,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
           }
           continue;
         }
-        const check = canWrite(ctx, f);
+        const check = canWrite(ctx, abs);
         if (!check.ok) {
           return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: check.reason } };
         }

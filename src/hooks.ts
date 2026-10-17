@@ -116,16 +116,21 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     }
 
     case 'post-tool-use': {
-      if (!isShell(payload.tool_name)) return undefined;
-      let status = '';
-      try { status = execFileSync('git', ['status', '--porcelain=v1', '-z', '-uall'], { cwd: ctx.worktree, encoding: 'utf8', env: db.gitEnv() }); } catch { return undefined; }
-      const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
-      const unclaimed = changedPaths(status)
-        .map(f => normFile(ctx, path.join(ctx.worktree, f)))
-        .filter(f => !mine.has(f.toLowerCase()));
-      if (!unclaimed.length) return undefined;
-      const text = `[chord] The shell command changed files you have not claimed: ${unclaimed.join(', ')}. Claim them now with claim(), or revert the change.`;
-      return { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } };
+      // runs after every tool call: warn about shell edits to unclaimed files, and hand over messages
+      // that arrived mid-turn so a busy agent hears from its peers at the next tool call, not at turn end
+      const parts: string[] = [];
+      if (isShell(payload.tool_name)) {
+        let status = '';
+        try { status = execFileSync('git', ['status', '--porcelain=v1', '-z', '-uall'], { cwd: ctx.worktree, encoding: 'utf8', env: db.gitEnv() }); } catch { status = ''; }
+        const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
+        const unclaimed = changedPaths(status)
+          .map(f => normFile(ctx, path.join(ctx.worktree, f)))
+          .filter(f => !mine.has(f.toLowerCase()));
+        if (unclaimed.length) parts.push(`[chord] The shell command changed files you have not claimed: ${unclaimed.join(', ')}. Claim them now with claim(), or revert the change.`);
+      }
+      const ms = db.takeUnread(ctx.db, ctx.agent);
+      if (ms.length) parts.push(`${formatMessages(ms)}\n\n[chord] ${ms.length} message(s) above arrived from other agents while you were working. Deal with them when convenient (reply with the chord send tool where a reply is asked for), then carry on with your task.`);
+      return parts.length ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: parts.join('\n\n') } } : undefined;
     }
 
     case 'stop': {

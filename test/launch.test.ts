@@ -139,3 +139,14 @@ test('ensureWorktree recovers a deleted workspace and a moved project, and refus
   const foreign = path.join(moved, 'chord', 'agents', 'y', 'repo'); fs.mkdirSync(foreign, { recursive: true }); fs.writeFileSync(path.join(foreign, 'stuff.txt'), '1');
   assert.throws(() => ensureWorktree(path.join(moved, 'repo'), foreign, 'y'), /not a git worktree/);
 });
+
+test('post-tool-use runs for every tool and codex hooks that attach context get a higher limit', () => {
+  const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude' };
+  const settings = JSON.parse(claudeArgs(env)[1]);
+  assert.equal(settings.hooks.PostToolUse[0].matcher, undefined);
+  const c = codexArgs(env);
+  assert.ok(c.find(a => a.startsWith('hooks.PostToolUse='))!.includes('additionalContextLimit=16000'));
+  assert.ok(!c.find(a => a.startsWith('hooks.PostToolUse='))!.includes('matcher='));
+  assert.ok(c.find(a => a.startsWith('hooks.SessionStart='))!.includes('additionalContextLimit=16000'));
+  assert.ok(!c.find(a => a.startsWith('hooks.Stop='))!.includes('additionalContextLimit'));
+});

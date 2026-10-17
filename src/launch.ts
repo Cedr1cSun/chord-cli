@@ -56,11 +56,12 @@ export function ensureWorktree(repo: string, wt: string, name: string): string {
   return wt;
 }
 
-const EVENTS: { event: Event; claude: string; codex: string; matcher?: { claude: string; codex: string }; timeout?: number }[] = [
-  { event: 'session-start', claude: 'SessionStart', codex: 'SessionStart' },
-  { event: 'user-prompt-submit', claude: 'UserPromptSubmit', codex: 'UserPromptSubmit' },
+// ctxLimit: Codex caps a hook's additionalContext (default about 2,500 tokens); the briefing and message batches need more
+const EVENTS: { event: Event; claude: string; codex: string; matcher?: { claude: string; codex: string }; timeout?: number; ctxLimit?: number }[] = [
+  { event: 'session-start', claude: 'SessionStart', codex: 'SessionStart', ctxLimit: 16000 },
+  { event: 'user-prompt-submit', claude: 'UserPromptSubmit', codex: 'UserPromptSubmit', ctxLimit: 16000 },
   { event: 'pre-tool-use', claude: 'PreToolUse', codex: 'PreToolUse', matcher: { claude: 'Edit|Write|MultiEdit|NotebookEdit', codex: '^apply_patch$' } },
-  { event: 'post-tool-use', claude: 'PostToolUse', codex: 'PostToolUse', matcher: { claude: 'Bash|PowerShell', codex: 'Bash' } },
+  { event: 'post-tool-use', claude: 'PostToolUse', codex: 'PostToolUse', ctxLimit: 16000 }, // every tool: shell-edit warnings and mid-turn message delivery
   { event: 'stop', claude: 'Stop', codex: 'Stop' },
   { event: 'session-end', claude: 'SessionEnd', codex: 'SessionEnd', timeout: 10 },
 ];
@@ -90,7 +91,8 @@ export function codexArgs(env: Record<string, string>): string[] {
   const args: string[] = [];
   for (const e of EVENTS) {
     const matcher = e.matcher ? `matcher=${toml(e.matcher.codex)},` : '';
-    args.push('-c', `hooks.${e.codex}=[{${matcher}hooks=[{type="command",command=${toml(hookCommand(e.event))}}]}]`);
+    const limit = e.ctxLimit ? `,additionalContextLimit=${e.ctxLimit}` : '';
+    args.push('-c', `hooks.${e.codex}=[{${matcher}hooks=[{type="command",command=${toml(hookCommand(e.event))}${limit}}]}]`);
   }
   const envToml = Object.entries(env).map(([k, v]) => `${k}=${toml(v)}`).join(',');
   // finish may wait minutes for the merge lock; Codex's default tool timeout is 60s

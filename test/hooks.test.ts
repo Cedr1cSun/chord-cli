@@ -132,3 +132,11 @@ test('a hook that throws denies the write instead of failing open', async () => 
   assert.match(out.hookSpecificOutput.permissionDecisionReason, /chord could not check this write/);
   assert.equal(safeHandle(ctx, 'claude', 'stop', {}), undefined); // other events fail quietly
 });
+
+test('post-tool-use hands over messages that arrived mid-turn, after any tool', () => {
+  const { d, ctx } = setup();
+  db.send(d, 'b', ['a'], 'heads up: I am touching the footer');
+  const out = handleHook(ctx('a'), 'claude', 'post-tool-use', { tool_name: 'Read' }) as any;
+  assert.match(out.hookSpecificOutput.additionalContext, /message from b[\s\S]*heads up[\s\S]*arrived from other agents while you were working/);
+  assert.equal(handleHook(ctx('a'), 'claude', 'post-tool-use', { tool_name: 'Read' }), undefined); // delivered once
+});

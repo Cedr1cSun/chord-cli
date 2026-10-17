@@ -11,6 +11,7 @@ import * as db from './db.ts';
 import { prepare } from './launch.ts';
 import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
 import { resolveCommand, run } from './pty.ts';
+import { pretrustClaude } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
 const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord clean [--force] [agent...]\n';
@@ -109,6 +110,7 @@ async function main(argv: string[]): Promise<number> {
     launch = prepare(cmd as Tool, process.cwd(), name);
   }
   process.stderr.write(`chord: agent ${launch.name} in ${launch.cwd}\n`);
+  if (cmd === 'claude') pretrustClaude(launch.cwd); // otherwise every new workspace asks "do you trust this folder?"
   return run(cmd as Tool, launch, rest);
 }
 

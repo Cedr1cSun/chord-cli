@@ -9,6 +9,7 @@ import * as db from '../src/db.ts';
 import { ensureWorktree } from '../src/launch.ts';
 
 const helper = fileURLToPath(new URL('./helpers/finish-one.ts', import.meta.url));
+for (const [k, v] of Object.entries({ GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' })) process.env[k] ??= v;
 const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
 
 test('five agents finishing at the same moment all land on main', async () => {

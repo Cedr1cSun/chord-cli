@@ -8,6 +8,7 @@ import * as db from '../src/db.ts';
 import { ensureWorktree } from '../src/launch.ts';
 import { finish, type Ctx } from '../src/tools.ts';
 
+for (const [k, v] of Object.entries({ GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' })) process.env[k] ??= v;
 const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
 
 /** Project layout: <proj>/repo is the main checkout, <proj>/chord/agents/w/repo the agent's worktree. */

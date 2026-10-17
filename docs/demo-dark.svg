@@ -1,15 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 468" width="960" height="468" role="img" aria-label="Two chord agents, auth and api, claim files, negotiate one shared file over messages and finish into main while chord ls tracks them">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 516" width="960" height="516" role="img" aria-label="Two chord agents, auth and api, claim files, negotiate one shared file over messages and finish into main while chord ls tracks them">
 <defs><filter id="sh" x="-2%" y="-2%" width="104%" height="106%"><feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.35"/></filter>
-<style>text{font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:12.5px;fill:#e6edf3;white-space:pre}
-.t{font-family:ui-sans-serif,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;font-size:12px}
+<style>text{font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:15px;fill:#e6edf3;white-space:pre}
+.t{font-family:ui-sans-serif,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;font-size:13px}
 .v0{animation:v0 34s linear infinite;opacity:0}@keyframes v0{0%,1.176%{opacity:0}1.235%,100%{opacity:1}}
-.c1{animation:c1 34s linear infinite;opacity:0}@keyframes c1{0%,1.118%{opacity:0;transform:translateX(0)}1.176%{opacity:1;transform:translateX(0);animation-timing-function:steps(26,end)}5.765%{opacity:1;transform:translateX(195.0px)}7.529%,100%{opacity:0;transform:translateX(195.0px)}}
+.c1{animation:c1 34s linear infinite;opacity:0}@keyframes c1{0%,1.118%{opacity:0;transform:translateX(0)}1.176%{opacity:1;transform:translateX(0);animation-timing-function:steps(26,end)}5.765%{opacity:1;transform:translateX(234.0px)}7.529%,100%{opacity:0;transform:translateX(234.0px)}}
 .v2{animation:v2 34s linear infinite;opacity:0}@keyframes v2{0%,2.941%{opacity:0}3%,100%{opacity:1}}
-.c3{animation:c3 34s linear infinite;opacity:0}@keyframes c3{0%,2.882%{opacity:0;transform:translateX(0)}2.941%{opacity:1;transform:translateX(0);animation-timing-function:steps(24,end)}7.176%{opacity:1;transform:translateX(180.0px)}8.941%,100%{opacity:0;transform:translateX(180.0px)}}
+.c3{animation:c3 34s linear infinite;opacity:0}@keyframes c3{0%,2.882%{opacity:0;transform:translateX(0)}2.941%{opacity:1;transform:translateX(0);animation-timing-function:steps(24,end)}7.176%{opacity:1;transform:translateX(216.0px)}8.941%,100%{opacity:0;transform:translateX(216.0px)}}
 .v4{animation:v4 34s linear infinite;opacity:0}@keyframes v4{0%,6.471%{opacity:0}6.529%,100%{opacity:1}}
-.c5{animation:c5 34s linear infinite;opacity:0}@keyframes c5{0%,6.412%{opacity:0;transform:translateX(0)}6.471%{opacity:1;transform:translateX(0);animation-timing-function:steps(34,end)}12.471%{opacity:1;transform:translateX(255.0px)}14.235%,100%{opacity:0;transform:translateX(255.0px)}}
+.c5{animation:c5 34s linear infinite;opacity:0}@keyframes c5{0%,6.412%{opacity:0;transform:translateX(0)}6.471%{opacity:1;transform:translateX(0);animation-timing-function:steps(34,end)}12.471%{opacity:1;transform:translateX(306.0px)}14.235%,100%{opacity:0;transform:translateX(306.0px)}}
 .v6{animation:v6 34s linear infinite;opacity:0}@keyframes v6{0%,10%{opacity:0}10.059%,100%{opacity:1}}
-.c7{animation:c7 34s linear infinite;opacity:0}@keyframes c7{0%,9.941%{opacity:0;transform:translateX(0)}10%{opacity:1;transform:translateX(0);animation-timing-function:steps(41,end)}17.235%{opacity:1;transform:translateX(307.5px)}19%,100%{opacity:0;transform:translateX(307.5px)}}
+.c7{animation:c7 34s linear infinite;opacity:0}@keyframes c7{0%,9.941%{opacity:0;transform:translateX(0)}10%{opacity:1;transform:translateX(0);animation-timing-function:steps(41,end)}17.235%{opacity:1;transform:translateX(369.0px)}19%,100%{opacity:0;transform:translateX(369.0px)}}
 .s8{animation:s8 34s linear infinite;opacity:0}@keyframes s8{0%,17.647%{opacity:0;transform:translateX(-10px)}18.676%,100%{opacity:1;transform:translateX(0)}}
 .s9{animation:s9 34s linear infinite;opacity:0}@keyframes s9{0%,20%{opacity:0;transform:translateX(-10px)}21.029%,100%{opacity:1;transform:translateX(0)}}
 .s10{animation:s10 34s linear infinite;opacity:0}@keyframes s10{0%,21.765%{opacity:0;transform:translateX(-10px)}22.794%,100%{opacity:1;transform:translateX(0)}}
@@ -29,8 +29,8 @@
 .s24{animation:s24 34s linear infinite;opacity:0}@keyframes s24{0%,63.529%{opacity:0;transform:translateX(-10px)}64.559%,100%{opacity:1;transform:translateX(0)}}
 .s25{animation:s25 34s linear infinite;opacity:0}@keyframes s25{0%,67.647%{opacity:0;transform:translateX(-10px)}68.676%,100%{opacity:1;transform:translateX(0)}}
 .s26{animation:s26 34s linear infinite;opacity:0}@keyframes s26{0%,70.588%{opacity:0;transform:translateX(-10px)}71.618%,100%{opacity:1;transform:translateX(0)}}
-.d27{animation:d27 34s linear infinite;opacity:0}@keyframes d27{0%,28.618%{opacity:0;transform:translate(932px,138.5px)}28.676%{opacity:1;transform:translate(932px,138.5px);animation-timing-function:cubic-bezier(.4,0,.2,1)}30.441%{opacity:1;transform:translate(22px,138.5px)}30.5%,100%{opacity:0;transform:translate(22px,138.5px)}}
-.d28{animation:d28 34s linear infinite;opacity:0}@keyframes d28{0%,36.265%{opacity:0;transform:translate(332.5px,156.5px)}36.324%{opacity:1;transform:translate(332.5px,156.5px);animation-timing-function:cubic-bezier(.4,0,.2,1)}38.088%{opacity:1;transform:translate(494px,156.5px)}38.147%,100%{opacity:0;transform:translate(494px,156.5px)}}
+.d27{animation:d27 34s linear infinite;opacity:0}@keyframes d27{0%,28.618%{opacity:0;transform:translate(926px,159px)}28.676%{opacity:1;transform:translate(926px,159px);animation-timing-function:cubic-bezier(.4,0,.2,1)}30.441%{opacity:1;transform:translate(22px,159px)}30.5%,100%{opacity:0;transform:translate(22px,159px)}}
+.d28{animation:d28 34s linear infinite;opacity:0}@keyframes d28{0%,36.265%{opacity:0;transform:translate(373px,181px)}36.324%{opacity:1;transform:translate(373px,181px);animation-timing-function:cubic-bezier(.4,0,.2,1)}38.088%{opacity:1;transform:translate(494px,181px)}38.147%,100%{opacity:0;transform:translate(494px,181px)}}
 .v29{animation:v29 34s linear infinite;opacity:0}@keyframes v29{0%,14.706%{opacity:0}14.765%,100%{opacity:1}}
 .v30{animation:v30 34s linear infinite;opacity:0}@keyframes v30{0%,14.706%{opacity:0}14.765%,30.588%{opacity:1}30.647%,100%{opacity:0}}
 .v31{animation:v31 34s linear infinite;opacity:0}@keyframes v31{0%,30.588%{opacity:0}30.647%,35.882%{opacity:1}35.941%,100%{opacity:0}}
@@ -40,67 +40,66 @@
 .v35{animation:v35 34s linear infinite;opacity:0}@keyframes v35{0%,57.059%{opacity:0}57.118%,63.529%{opacity:1}63.588%,100%{opacity:0}}
 .v36{animation:v36 34s linear infinite;opacity:0}@keyframes v36{0%,63.529%{opacity:0}63.588%,70.588%{opacity:1}70.647%,100%{opacity:0}}
 .v37{animation:v37 34s linear infinite;opacity:0}@keyframes v37{0%,70.588%{opacity:0}70.647%,100%{opacity:1}}
-.fade{animation:fade 34s linear infinite}@keyframes fade{0%,93.529%{opacity:1}96.471%,100%{opacity:0}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important}g,circle{opacity:1!important}.cov,.dotm,.ls{display:none}.ls.last{display:inline}}</style></defs>
-<rect x="16" y="16" width="456" height="300" rx="8" fill="#161b22" stroke="#30363d" filter="url(#sh)"/>
-<path d="M24,16 h440 a8,8 0 0 1 8,8 v20 h-456 v-20 a8,8 0 0 1 8,-8 z" fill="#1c2128"/>
-<line x1="16" y1="44" x2="472" y2="44" stroke="#30363d"/>
-<circle cx="32" cy="30" r="4" fill="#484f58"/>
-<circle cx="46" cy="30" r="4" fill="#484f58"/>
-<circle cx="60" cy="30" r="4" fill="#484f58"/>
-<text class="t" x="244" y="34.5" text-anchor="middle" fill="#9da7b3">chord auth · fix the flaky test in tests/auth</text>
-<rect x="488" y="16" width="456" height="300" rx="8" fill="#161b22" stroke="#30363d" filter="url(#sh)"/>
-<path d="M496,16 h440 a8,8 0 0 1 8,8 v20 h-456 v-20 a8,8 0 0 1 8,-8 z" fill="#1c2128"/>
-<line x1="488" y1="44" x2="944" y2="44" stroke="#30363d"/>
-<circle cx="504" cy="30" r="4" fill="#484f58"/>
-<circle cx="518" cy="30" r="4" fill="#484f58"/>
-<circle cx="532" cy="30" r="4" fill="#484f58"/>
-<text class="t" x="716" y="34.5" text-anchor="middle" fill="#9da7b3">chord api · add rate limiting to the login endpoint</text>
-<rect x="16" y="332" width="928" height="120" rx="8" fill="#161b22" stroke="#30363d" filter="url(#sh)"/>
-<path d="M24,332 h912 a8,8 0 0 1 8,8 v20 h-928 v-20 a8,8 0 0 1 8,-8 z" fill="#1c2128"/>
-<line x1="16" y1="360" x2="944" y2="360" stroke="#30363d"/>
-<circle cx="32" cy="346" r="4" fill="#484f58"/>
-<circle cx="46" cy="346" r="4" fill="#484f58"/>
-<circle cx="60" cy="346" r="4" fill="#484f58"/>
-<text class="t" x="480" y="350.5" text-anchor="middle" fill="#9da7b3">chord ls</text>
+.fade{animation:fade 34s linear infinite}@keyframes fade{0%,93.529%{opacity:1}96.471%,100%{opacity:0}}</style></defs>
+<rect x="16" y="16" width="456" height="344" rx="8" fill="#161b22" stroke="#30363d" filter="url(#sh)"/>
+<path d="M24,16 h440 a8,8 0 0 1 8,8 v22 h-456 v-22 a8,8 0 0 1 8,-8 z" fill="#1c2128"/>
+<line x1="16" y1="46" x2="472" y2="46" stroke="#30363d"/>
+<circle cx="32" cy="31" r="4" fill="#484f58"/>
+<circle cx="46" cy="31" r="4" fill="#484f58"/>
+<circle cx="60" cy="31" r="4" fill="#484f58"/>
+<text class="t" x="244" y="35.5" text-anchor="middle" fill="#9da7b3">chord auth · fix the flaky test in tests/auth</text>
+<rect x="488" y="16" width="456" height="344" rx="8" fill="#161b22" stroke="#30363d" filter="url(#sh)"/>
+<path d="M496,16 h440 a8,8 0 0 1 8,8 v22 h-456 v-22 a8,8 0 0 1 8,-8 z" fill="#1c2128"/>
+<line x1="488" y1="46" x2="944" y2="46" stroke="#30363d"/>
+<circle cx="504" cy="31" r="4" fill="#484f58"/>
+<circle cx="518" cy="31" r="4" fill="#484f58"/>
+<circle cx="532" cy="31" r="4" fill="#484f58"/>
+<text class="t" x="716" y="35.5" text-anchor="middle" fill="#9da7b3">chord api · add rate limiting to the login endpoint</text>
+<rect x="16" y="376" width="928" height="124" rx="8" fill="#161b22" stroke="#30363d" filter="url(#sh)"/>
+<path d="M24,376 h912 a8,8 0 0 1 8,8 v22 h-928 v-22 a8,8 0 0 1 8,-8 z" fill="#1c2128"/>
+<line x1="16" y1="406" x2="944" y2="406" stroke="#30363d"/>
+<circle cx="32" cy="391" r="4" fill="#484f58"/>
+<circle cx="46" cy="391" r="4" fill="#484f58"/>
+<circle cx="60" cy="391" r="4" fill="#484f58"/>
+<text class="t" x="480" y="395.5" text-anchor="middle" fill="#9da7b3">chord ls</text>
 <g class="fade">
-<g class="v0"><text class="m" x="30" y="70.5" textLength="195.0"><tspan fill="#8b949e">$</tspan> chord claude --name auth</text></g>
-<g class="c1 cov"><rect x="30" y="58" width="199.0" height="18" fill="#161b22"/><rect x="30" y="59" width="7" height="14.5" fill="#8b93f0"/></g>
-<g class="v2"><text class="m" x="502" y="70.5" textLength="180.0"><tspan fill="#8b949e">$</tspan> chord codex --name api</text></g>
-<g class="c3 cov"><rect x="502" y="58" width="184.0" height="18" fill="#161b22"/><rect x="502" y="59" width="7" height="14.5" fill="#8b93f0"/></g>
-<g class="v4"><text class="m" x="30" y="88.5" textLength="255.0"><tspan fill="#8b93f0">❯</tspan> fix the flaky test in tests/auth</text></g>
-<g class="c5 cov"><rect x="30" y="76" width="259.0" height="18" fill="#161b22"/><rect x="30" y="77" width="7" height="14.5" fill="#8b93f0"/></g>
-<g class="v6"><text class="m" x="502" y="88.5" textLength="307.5"><tspan fill="#8b93f0">❯</tspan> add rate limiting to the login endpoint</text></g>
-<g class="c7 cov"><rect x="502" y="76" width="311.5" height="18" fill="#161b22"/><rect x="502" y="77" width="7" height="14.5" fill="#8b93f0"/></g>
-<g class="s8"><text class="m" x="30" y="106.5" textLength="247.5"><tspan fill="#8b93f0">●</tspan> claim  tests/auth/test_login.py</text></g>
-<g class="s9"><text class="m" x="30" y="124.5" textLength="210.0"><tspan fill="#8b93f0">●</tspan> claim  src/auth/session.py</text></g>
-<g class="s10"><text class="m" x="502" y="106.5" textLength="187.5"><tspan fill="#8b93f0">●</tspan> claim  src/api/login.py</text></g>
-<g class="s11"><text class="m" x="502" y="124.5" textLength="322.5"><tspan fill="#8b93f0">●</tspan> claim  src/auth/session.py   held by auth</text></g>
-<g class="s12"><text class="m" x="502" y="142.5" textLength="420.0"><tspan fill="#8b93f0">✉</tspan> to auth   I need refresh() in session.py, nothing else</text></g>
-<g class="s13"><text class="m" x="30" y="142.5" textLength="420.0"><tspan fill="#8b93f0">✉</tspan> from api  I need refresh() in session.py, nothing else</text></g>
-<g class="s14"><text class="m" x="30" y="160.5" textLength="292.5"><tspan fill="#8b93f0">✉</tspan> to api    fine, I only touch expiry()</text></g>
-<g class="s15"><text class="m" x="502" y="160.5" textLength="300.0"><tspan fill="#8b93f0">✉</tspan> from auth  fine, I only touch expiry()</text></g>
-<g class="s16"><text class="m" x="30" y="178.5" textLength="157.5"><tspan fill="#8b949e">✎</tspan> src/auth/session.py</text></g>
-<g class="s17"><text class="m" x="502" y="178.5" textLength="157.5"><tspan fill="#8b949e">✎</tspan> src/auth/session.py</text></g>
-<g class="s18"><text class="m" x="30" y="196.5" textLength="195.0"><tspan fill="#8b949e">✎</tspan> tests/auth/test_login.py</text></g>
-<g class="s19"><text class="m" x="502" y="196.5" textLength="135.0"><tspan fill="#8b949e">✎</tspan> src/api/login.py</text></g>
-<g class="s20"><text class="m" x="30" y="214.5" textLength="225.0"><tspan fill="#3fb950">✓</tspan> pytest tests/auth   3 passed</text></g>
-<g class="s21"><text class="m" x="30" y="232.5" textLength="60.0"><tspan fill="#8b93f0">●</tspan> finish</text></g>
-<g class="s22"><text class="m" x="30" y="250.5" textLength="427.5"><tspan fill="#3fb950">✓</tspan> main fast-forwarded   a1b2c3d  fix the flaky login test</text></g>
-<g class="s23"><text class="m" x="502" y="214.5" textLength="375.0"><tspan fill="#8b93f0">✉</tspan> auth merged into main · fix the flaky login test</text></g>
-<g class="s24"><text class="m" x="502" y="232.5" textLength="165.0"><tspan fill="#3fb950">✓</tspan> npm test   48 passed</text></g>
-<g class="s25"><text class="m" x="502" y="250.5" textLength="60.0"><tspan fill="#8b93f0">●</tspan> finish</text></g>
-<g class="s26"><text class="m" x="502" y="268.5" textLength="345.0"><tspan fill="#3fb950">✓</tspan> rebased onto main · fast-forwarded   9e8f7a6</text></g>
+<g class="v0"><text class="m" x="30" y="75" textLength="234.0"><tspan fill="#8b949e">$</tspan> chord claude --name auth</text></g>
+<g class="c1 cov"><rect x="30" y="60" width="238.0" height="22" fill="#161b22"/><rect x="30" y="61" width="8" height="17" fill="#8b93f0"/></g>
+<g class="v2"><text class="m" x="502" y="75" textLength="216.0"><tspan fill="#8b949e">$</tspan> chord codex --name api</text></g>
+<g class="c3 cov"><rect x="502" y="60" width="220.0" height="22" fill="#161b22"/><rect x="502" y="61" width="8" height="17" fill="#8b93f0"/></g>
+<g class="v4"><text class="m" x="30" y="97" textLength="306.0"><tspan fill="#8b93f0">❯</tspan> fix the flaky test in tests/auth</text></g>
+<g class="c5 cov"><rect x="30" y="82" width="310.0" height="22" fill="#161b22"/><rect x="30" y="83" width="8" height="17" fill="#8b93f0"/></g>
+<g class="v6"><text class="m" x="502" y="97" textLength="369.0"><tspan fill="#8b93f0">❯</tspan> add rate limiting to the login endpoint</text></g>
+<g class="c7 cov"><rect x="502" y="82" width="373.0" height="22" fill="#161b22"/><rect x="502" y="83" width="8" height="17" fill="#8b93f0"/></g>
+<g class="s8"><text class="m" x="30" y="119" textLength="297.0"><tspan fill="#8b93f0">●</tspan> claim  tests/auth/test_login.py</text></g>
+<g class="s9"><text class="m" x="30" y="141" textLength="252.0"><tspan fill="#8b93f0">●</tspan> claim  src/auth/session.py</text></g>
+<g class="s10"><text class="m" x="502" y="119" textLength="225.0"><tspan fill="#8b93f0">●</tspan> claim  src/api/login.py</text></g>
+<g class="s11"><text class="m" x="502" y="141" textLength="387.0"><tspan fill="#8b93f0">●</tspan> claim  src/auth/session.py   held by auth</text></g>
+<g class="s12"><text class="m" x="502" y="163" textLength="414.0"><tspan fill="#8b93f0">✉</tspan> to auth  I only need refresh() in session.py</text></g>
+<g class="s13"><text class="m" x="30" y="163" textLength="378.0"><tspan fill="#8b93f0">✉</tspan> api  I only need refresh() in session.py</text></g>
+<g class="s14"><text class="m" x="30" y="185" textLength="333.0"><tspan fill="#8b93f0">✉</tspan> to api  fine, I only touch expiry()</text></g>
+<g class="s15"><text class="m" x="502" y="185" textLength="315.0"><tspan fill="#8b93f0">✉</tspan> auth  fine, I only touch expiry()</text></g>
+<g class="s16"><text class="m" x="30" y="207" textLength="189.0"><tspan fill="#8b949e">✎</tspan> src/auth/session.py</text></g>
+<g class="s17"><text class="m" x="502" y="207" textLength="189.0"><tspan fill="#8b949e">✎</tspan> src/auth/session.py</text></g>
+<g class="s18"><text class="m" x="30" y="229" textLength="234.0"><tspan fill="#8b949e">✎</tspan> tests/auth/test_login.py</text></g>
+<g class="s19"><text class="m" x="502" y="229" textLength="162.0"><tspan fill="#8b949e">✎</tspan> src/api/login.py</text></g>
+<g class="s20"><text class="m" x="30" y="251" textLength="270.0"><tspan fill="#3fb950">✓</tspan> pytest tests/auth   3 passed</text></g>
+<g class="s21"><text class="m" x="30" y="273" textLength="72.0"><tspan fill="#8b93f0">●</tspan> finish</text></g>
+<g class="s22"><text class="m" x="30" y="295" textLength="405.0"><tspan fill="#3fb950">✓</tspan> main fast-forwarded  a1b2c3d fix flaky test</text></g>
+<g class="s23"><text class="m" x="502" y="251" textLength="360.0"><tspan fill="#8b93f0">✉</tspan> auth merged into main · fix flaky test</text></g>
+<g class="s24"><text class="m" x="502" y="273" textLength="198.0"><tspan fill="#3fb950">✓</tspan> npm test   48 passed</text></g>
+<g class="s25"><text class="m" x="502" y="295" textLength="72.0"><tspan fill="#8b93f0">●</tspan> finish</text></g>
+<g class="s26"><text class="m" x="502" y="317" textLength="360.0"><tspan fill="#3fb950">✓</tspan> rebased · main fast-forwarded  9e8f7a6</text></g>
 <circle class="d27 dotm" r="4" fill="#8b93f0"/>
 <circle class="d28 dotm" r="4" fill="#8b93f0"/>
-<g class="v29"><text class="m" x="30" y="386.5" fill="#8b949e" textLength="382.5">agent  tool    status  unread  active  branch  task</text></g>
-<g class="v30 ls"><text class="m" x="30" y="404.5" textLength="592.5">auth   claude  <tspan fill="#8b93f0">busy    </tspan>0       now     0       fix the flaky test in tests/auth</text><text class="m" x="30" y="422.5" textLength="645.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
-<g class="v31 ls"><text class="m" x="30" y="404.5" textLength="592.5">auth   claude  <tspan fill="#8b93f0">busy    </tspan>1       now     0       fix the flaky test in tests/auth</text><text class="m" x="30" y="422.5" textLength="645.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
-<g class="v32 ls"><text class="m" x="30" y="404.5" textLength="592.5">auth   claude  <tspan fill="#8b93f0">busy    </tspan>0       now     0       fix the flaky test in tests/auth</text><text class="m" x="30" y="422.5" textLength="645.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>1       now     0       add rate limiting to the login endpoint</text></g>
-<g class="v33 ls"><text class="m" x="30" y="404.5" textLength="592.5">auth   claude  <tspan fill="#8b93f0">busy    </tspan>0       now     0       fix the flaky test in tests/auth</text><text class="m" x="30" y="422.5" textLength="645.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
-<g class="v34 ls"><text class="m" x="30" y="404.5" textLength="592.5">auth   claude  <tspan fill="#8b93f0">busy    </tspan>0       now     1       fix the flaky test in tests/auth</text><text class="m" x="30" y="422.5" textLength="645.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
-<g class="v35 ls"><text class="m" x="30" y="404.5" textLength="592.5">auth   claude  <tspan fill="#3fb950">idle    </tspan>0       2s      0       fix the flaky test in tests/auth</text><text class="m" x="30" y="422.5" textLength="645.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
-<g class="v36 ls"><text class="m" x="30" y="404.5" textLength="592.5">auth   claude  <tspan fill="#3fb950">idle    </tspan>0       4s      0       fix the flaky test in tests/auth</text><text class="m" x="30" y="422.5" textLength="645.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     1       add rate limiting to the login endpoint</text></g>
-<g class="v37 ls last"><text class="m" x="30" y="404.5" textLength="592.5">auth   claude  <tspan fill="#3fb950">idle    </tspan>0       7s      0       fix the flaky test in tests/auth</text><text class="m" x="30" y="422.5" textLength="645.0">api    codex   <tspan fill="#3fb950">idle    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
+<g class="v29"><text class="m" x="30" y="435" fill="#8b949e" textLength="459.0">agent  tool    status  unread  active  branch  task</text></g>
+<g class="v30 ls"><text class="m" x="30" y="457" textLength="711.0">auth   claude  <tspan fill="#8b93f0">busy    </tspan>0       now     0       fix the flaky test in tests/auth</text><text class="m" x="30" y="479" textLength="774.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
+<g class="v31 ls"><text class="m" x="30" y="457" textLength="711.0">auth   claude  <tspan fill="#8b93f0">busy    </tspan>1       now     0       fix the flaky test in tests/auth</text><text class="m" x="30" y="479" textLength="774.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
+<g class="v32 ls"><text class="m" x="30" y="457" textLength="711.0">auth   claude  <tspan fill="#8b93f0">busy    </tspan>0       now     0       fix the flaky test in tests/auth</text><text class="m" x="30" y="479" textLength="774.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>1       now     0       add rate limiting to the login endpoint</text></g>
+<g class="v33 ls"><text class="m" x="30" y="457" textLength="711.0">auth   claude  <tspan fill="#8b93f0">busy    </tspan>0       now     0       fix the flaky test in tests/auth</text><text class="m" x="30" y="479" textLength="774.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
+<g class="v34 ls"><text class="m" x="30" y="457" textLength="711.0">auth   claude  <tspan fill="#8b93f0">busy    </tspan>0       now     1       fix the flaky test in tests/auth</text><text class="m" x="30" y="479" textLength="774.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
+<g class="v35 ls"><text class="m" x="30" y="457" textLength="711.0">auth   claude  <tspan fill="#3fb950">idle    </tspan>0       2s      0       fix the flaky test in tests/auth</text><text class="m" x="30" y="479" textLength="774.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
+<g class="v36 ls"><text class="m" x="30" y="457" textLength="711.0">auth   claude  <tspan fill="#3fb950">idle    </tspan>0       4s      0       fix the flaky test in tests/auth</text><text class="m" x="30" y="479" textLength="774.0">api    codex   <tspan fill="#8b93f0">busy    </tspan>0       now     1       add rate limiting to the login endpoint</text></g>
+<g class="v37 ls last"><text class="m" x="30" y="457" textLength="711.0">auth   claude  <tspan fill="#3fb950">idle    </tspan>0       7s      0       fix the flaky test in tests/auth</text><text class="m" x="30" y="479" textLength="774.0">api    codex   <tspan fill="#3fb950">idle    </tspan>0       now     0       add rate limiting to the login endpoint</text></g>
 </g>
 </svg>

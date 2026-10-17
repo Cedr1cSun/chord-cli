@@ -27,7 +27,7 @@ One repository, as many agents as you care to start. Each agent works in its own
 | Cursor CLI | planned |
 | GitHub Copilot CLI | planned |
 | Qwen Code | planned |
-| DeepSeek Harness (DSH) | planned |
+| DeepSeek Harness | planned |
 
 A new agent needs three things from its tool: a way to inject hooks and an MCP server at launch, the names and payloads of its hook events, and an idle/busy signal.
 

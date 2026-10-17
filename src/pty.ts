@@ -6,7 +6,7 @@ import { StringDecoder } from 'node:string_decoder';
 import pty from 'node-pty';
 import * as db from './db.ts';
 import type { Tool } from './hooks.ts';
-import type { Launch } from './launch.ts';
+import { withNodeOnPath, type Launch } from './launch.ts';
 
 /** First PATH entry holding `<tool>.exe` or `<tool>.cmd`. Pure Node: `where.exe` output is in the OEM code page. */
 export function whereIs(tool: string, pathVar = process.env.PATH ?? '', exists: (p: string) => boolean = p => fs.existsSync(p)): string | undefined {
@@ -176,7 +176,7 @@ export function oscState(chunk: string): 'idle' | 'busy' | null {
 
 export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<number> {
   const { file, args } = resolveCommand(tool);
-  const env: Record<string, string> = { ...process.env as Record<string, string>, ...launch.env };
+  const env: Record<string, string> = withNodeOnPath({ ...process.env as Record<string, string>, ...launch.env });
   for (const k of Object.keys(env)) if (/^CLAUDECODE/.test(k)) delete env[k]; // allow launching from inside a Claude session
   const term = pty.spawn(file, [...args, ...launch.args, ...extraArgs], {
     name: 'xterm-256color', cols: process.stdout.columns || 120, rows: process.stdout.rows || 40, cwd: launch.cwd, env,

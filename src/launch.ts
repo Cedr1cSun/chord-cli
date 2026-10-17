@@ -123,10 +123,22 @@ const EVENTS: { event: Event; claude: string; codex?: string; matcher?: { claude
   { event: 'session-end', claude: 'SessionEnd', codex: 'SessionEnd', timeout: 10 },
 ];
 
-/** The node that runs chord, by absolute path: the agent's PATH may hold an older node (nvm, a project .nvmrc) that
- *  cannot run .ts files, and a hook that fails to start lets a write through. */
+/** The node that runs chord, by absolute path, for the MCP server (spawned from an argument list, so spaces in the
+ *  path are no problem). The hook commands say plain `node`: Codex cannot run a command whose executable is quoted
+ *  ("C:/Program Files/nodejs/node.exe" fails silently, a quoted argument is fine), so instead the wrapper puts this
+ *  node's directory at the front of the agent's PATH (see withNodeOnPath), which also keeps an older node on the
+ *  user's PATH (nvm, a project .nvmrc) from being the one that cannot run .ts files. */
 export const NODE = fs.realpathSync.native(process.execPath).split(path.sep).join('/');
-export const hookCommand = (event: Event) => `"${NODE}" "${HOOKS_TS}" ${event}`;
+export const hookCommand = (event: Event) => `node "${HOOKS_TS}" ${event}`;
+
+/** The environment with the directory of the node running chord first on PATH (whatever the variable's case). */
+export function withNodeOnPath(env: Record<string, string>): Record<string, string> {
+  const key = Object.keys(env).find(k => k.toUpperCase() === 'PATH') ?? 'PATH';
+  const dir = path.dirname(fs.realpathSync.native(process.execPath));
+  const current = env[key] ?? '';
+  if (current.split(path.delimiter)[0] === dir) return env;
+  return { ...env, [key]: current ? `${dir}${path.delimiter}${current}` : dir };
+}
 
 /** CLI arguments that inject chord's hooks and MCP server into Claude Code. */
 /** `projectConfig`: also load the repository's own .claude settings and .mcp.json. Only when the user has trusted the

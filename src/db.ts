@@ -130,8 +130,10 @@ export function setTask(db: DatabaseSync, name: string, task: string, scope: str
   db.prepare('update agents set task = ?, scope = ?, updated_at = ? where name = ?').run(task, scope, Date.now(), name);
 }
 
+/** Offline is sticky here: a hook that outlives its killed agent must not revive it. Only the wrapper does, through
+ *  addAgent (relaunch) or heartbeat. */
 export function setStatus(db: DatabaseSync, name: string, status: Status): void {
-  db.prepare('update agents set status = ?, updated_at = ? where name = ?').run(status, Date.now(), name);
+  db.prepare(`update agents set status = ?, updated_at = ? where name = ? and status != 'offline'`).run(status, Date.now(), name);
 }
 
 export function getAgent(db: DatabaseSync, name: string): Agent | undefined {
@@ -161,8 +163,11 @@ export function log(line: string): void {
 /** The wrapper refreshes this every second; an agent whose heartbeat is this old is dead even if its pid is taken again. */
 export const HEARTBEAT_STALE_MS = 30_000;
 
+/** The wrapper is the one process that knows the agent is alive, so its heartbeat also revives an agent a sweep
+ *  marked offline (a machine asleep for over 30 s looks dead to the first sweep after waking). Claims are gone by
+ *  then; the agent claims again when it next writes. */
 export function heartbeat(db: DatabaseSync, name: string): void {
-  db.prepare('update agents set heartbeat_at = ? where name = ?').run(Date.now(), name);
+  db.prepare(`update agents set heartbeat_at = ?, status = case when status = 'offline' then 'idle' else status end where name = ?`).run(Date.now(), name);
 }
 
 /** Mark agents whose process is gone as offline and drop their claims. Returns the names swept. A missing

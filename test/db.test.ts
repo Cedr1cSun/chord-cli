@@ -92,3 +92,17 @@ test('sweep also kills agents whose heartbeat went stale, even when the pid is a
   db.heartbeat(d, 'beating');
   assert.deepEqual(db.sweep(d, () => true, t + 10), []);
 });
+
+test('only the wrapper brings an agent back from offline: hooks cannot, the heartbeat can', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/', heartbeat: true });
+  db.setStatus(d, 'a', 'offline');
+  db.setStatus(d, 'a', 'idle'); // a Stop hook that outlived its killed agent
+  assert.equal(db.getAgent(d, 'a')!.status, 'offline');
+  db.heartbeat(d, 'a');
+  assert.equal(db.getAgent(d, 'a')!.status, 'idle');
+  db.setStatus(d, 'a', 'busy');
+  assert.equal(db.getAgent(d, 'a')!.status, 'busy');
+  db.heartbeat(d, 'a');
+  assert.equal(db.getAgent(d, 'a')!.status, 'busy'); // a heartbeat never changes a live agent's status
+});

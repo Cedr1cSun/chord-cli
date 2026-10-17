@@ -80,7 +80,7 @@ export function finish(ctx: Ctx) {
   git(root, 'merge', '--ff-only', branch);
   db.releaseAll(ctx.db, ctx.agent);
   const online = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent && a.status !== 'offline').map(a => a.name);
-  if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\nRebase your branch when convenient.`);
+  if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\nRebase your branch when convenient. This is a notification; do not reply.`);
   return { merged: subjects, into: main, notified: online };
 }
 

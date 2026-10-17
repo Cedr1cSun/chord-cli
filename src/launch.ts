@@ -21,8 +21,11 @@ export const SERVE_TS = here('./serve.ts');
 
 export function pickName(d: DatabaseSync, tool: Tool, project: string, override?: string): string {
   if (override) {
-    const a = db.getAgent(d, override);
-    if (a && a.status !== 'offline') throw new Error(`agent "${override}" is already online`);
+    if (!/^[A-Za-z0-9._-]+$/.test(override)) throw new Error('agent names may only contain letters, digits, ".", "_" and "-"');
+    // workspace paths are case-insensitive on Windows and macOS, so names differing only in case would share one
+    const clash = db.listAgents(d).find(a => a.name.toLowerCase() === override.toLowerCase());
+    if (clash && clash.name !== override) throw new Error(`agent "${clash.name}" already exists; names must differ in more than case`);
+    if (clash && clash.status !== 'offline') throw new Error(`agent "${override}" is already online`);
     return override;
   }
   const base = path.basename(project).toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -37,8 +40,15 @@ export const workspacePath = (p: Project, name: string) => path.join(p.dir, 'cho
 
 /** Create (or reuse) a worktree of `repo` at `wt` on branch chord/<name>, forked from the current main HEAD. */
 export function ensureWorktree(repo: string, wt: string, name: string): string {
-  if (fs.existsSync(path.join(wt, '.git'))) return wt;
+  if (fs.existsSync(path.join(wt, '.git'))) {
+    try { git(wt, 'rev-parse', '--git-dir'); return wt; } catch { /* the link is broken, e.g. the project was moved */ }
+    git(repo, 'worktree', 'repair', wt);
+    git(wt, 'rev-parse', '--git-dir');
+    return wt;
+  }
+  if (fs.existsSync(wt) && fs.readdirSync(wt).length) throw new Error(`${wt} exists but is not a git worktree; remove it or pick another --name`);
   fs.mkdirSync(path.dirname(wt), { recursive: true });
+  git(repo, 'worktree', 'prune'); // a workspace deleted by hand leaves a stale registration behind
   const branch = `chord/${name}`;
   const exists = git(repo, 'branch', '--list', branch) !== '';
   if (exists) git(repo, 'worktree', 'add', wt, branch);

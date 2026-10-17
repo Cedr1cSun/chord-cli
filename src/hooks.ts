@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as db from './db.ts';
 import { patchFiles } from './patch.ts';
 import { canWrite, insideDir, normFile, type Ctx } from './tools.ts';
@@ -178,8 +179,9 @@ async function main(): Promise<void> {
   const file = process.env.CHORD_DB;
   const tool = process.env.CHORD_TOOL as Tool;
   if (!agent || !file || !tool) { process.stderr.write('chord hook: CHORD_AGENT_ID, CHORD_DB and CHORD_TOOL must be set\n'); process.exit(0); }
-  let raw = '';
-  for await (const chunk of process.stdin) raw += chunk;
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  const raw = Buffer.concat(chunks).toString('utf8'); // decode once: a multi-byte character may straddle chunks
   let payload: Record<string, any> = {};
   try { payload = JSON.parse(raw); } catch { /* no payload */ }
   // the workspace is fixed per agent; the tool's own cwd moves when the agent runs `cd`, so it is not used as the base
@@ -190,4 +192,5 @@ async function main(): Promise<void> {
   if (out !== undefined) process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out));
 }
 
-if (process.argv[1] && /hooks\.ts$/.test(process.argv[1])) main();
+const isMain = (() => { try { return fs.realpathSync.native(process.argv[1] ?? '') === fs.realpathSync.native(fileURLToPath(new URL(import.meta.url))); } catch { return false; } })();
+if (isMain) main();

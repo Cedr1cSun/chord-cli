@@ -114,3 +114,28 @@ test('claude gets --add-dir for the worktree and codex a long tool timeout', () 
   assert.equal(c[c.indexOf('--add-dir') + 1], '/w/repo');
   assert.ok(codexArgs(env).find(a => a.startsWith('mcp_servers.chord='))!.includes('tool_timeout_sec=600'));
 });
+
+test('pickName refuses invalid names and case-only variants of existing names', () => {
+  const d = db.openDb(':memory:');
+  db.addAgent(d, { name: 'Alice', tool: 'claude', pid: process.pid, cwd: '/' });
+  assert.throws(() => pickName(d, 'codex', '/x', 'alice'), /differ in more than case/);
+  assert.throws(() => pickName(d, 'codex', '/x', 'bad name'), /letters, digits/);
+  assert.throws(() => pickName(d, 'codex', '/x', 'a/b'), /letters, digits/);
+  assert.equal(pickName(d, 'codex', '/x', 'alice-2'), 'alice-2');
+});
+
+test('ensureWorktree recovers a deleted workspace and a moved project, and refuses a foreign directory', () => {
+  const proj = tempProject(); const repo = path.join(proj, 'repo');
+  const ws = path.join(proj, 'chord', 'agents', 'x');
+  const wt = ensureWorktree(repo, path.join(ws, 'repo'), 'x');
+  fs.rmSync(ws, { recursive: true, force: true }); // user deleted the workspace by hand; git still lists it
+  assert.equal(ensureWorktree(repo, path.join(ws, 'repo'), 'x'), wt);
+  assert.ok(fs.existsSync(path.join(wt, '.git')));
+  // the whole project moves: the worktree's .git file points at the old location
+  const moved = proj + '-moved'; fs.renameSync(proj, moved);
+  const wt2 = ensureWorktree(path.join(moved, 'repo'), path.join(moved, 'chord', 'agents', 'x', 'repo'), 'x');
+  assert.equal(execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: wt2, encoding: 'utf8' }).trim(), 'chord/x');
+  // a directory that is not a worktree is not silently taken over
+  const foreign = path.join(moved, 'chord', 'agents', 'y', 'repo'); fs.mkdirSync(foreign, { recursive: true }); fs.writeFileSync(path.join(foreign, 'stuff.txt'), '1');
+  assert.throws(() => ensureWorktree(path.join(moved, 'repo'), foreign, 'y'), /not a git worktree/);
+});

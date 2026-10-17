@@ -2,6 +2,7 @@
 // agent is idle with unread messages, type a nudge in as if the user had.
 import fs from 'node:fs';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import pty from 'node-pty';
 import * as db from './db.ts';
 import type { Tool } from './hooks.ts';
@@ -129,7 +130,8 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
     }
   });
   const gate = new InputGate();
-  const onKey = (x: Buffer) => { const s = x.toString(); if (process.env.CHORD_DEBUG_STDIN) db.log(`stdin ${JSON.stringify(s)}`); gate.onUserInput(s); term.write(s); };
+  const decoder = new StringDecoder('utf8'); // a multi-byte character may straddle two stdin chunks
+  const onKey = (x: Buffer) => { const s = decoder.write(x); if (!s) return; if (process.env.CHORD_DEBUG_STDIN) db.log(`stdin ${JSON.stringify(s)}`); gate.onUserInput(s); term.write(s); };
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdin.on('data', onKey);

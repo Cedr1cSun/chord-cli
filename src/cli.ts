@@ -4,10 +4,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import { fileURLToPath } from 'node:url';
 import * as db from './db.ts';
 import { prepare } from './launch.ts';
 import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
-import { run } from './pty.ts';
+import { resolveCommand, run } from './pty.ts';
 import type { Tool } from './hooks.ts';
 
 const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n';
@@ -24,7 +25,23 @@ export function ls(d: ReturnType<typeof db.openDb>): string {
 export function lsAll(): string {
   const projects = knownProjects();
   if (!projects.length) return 'no chord projects on this machine yet\n';
-  return projects.map(p => `== ${p.dir ?? p.stateDir}\n${ls(db.openDb(p.dbFile))}`).join('\n');
+  return projects.map(p => {
+    try { return `== ${p.dir ?? p.stateDir}\n${ls(db.openDb(p.dbFile))}`; } catch (e) { return `== ${p.dir ?? p.stateDir}\n(unreadable: ${(e as Error).message})\n`; }
+  }).join('\n');
+}
+
+/** `--name <x>` or `--name=<x>` anywhere before the tool's own arguments. */
+export function takeName(rest: string[]): string | undefined {
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--name') {
+      const v = rest[i + 1];
+      if (!v || v.startsWith('-')) throw new Error('--name needs a value');
+      rest.splice(i, 2); return v;
+    }
+    if (a.startsWith('--name=')) { rest.splice(i, 1); const v = a.slice(7); if (!v) throw new Error('--name needs a value'); return v; }
+  }
+  return undefined;
 }
 
 /** The folder is a repository root: offer to move it into a child directory so it fits the project layout.
@@ -56,15 +73,20 @@ async function offerRestructure(e: NeedsRestructure): Promise<void> {
 async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === 'ls') {
-    if (rest[0] !== '--all') {
-      try { process.stdout.write(ls(db.openDb(db.dbPath(resolveProject(process.cwd()).stateDir)))); return 0; } catch { /* not in a project: fall through */ }
+    if (rest.includes('--all')) { process.stdout.write(lsAll()); return 0; }
+    let project;
+    try { project = resolveProject(process.cwd()); } catch (e) {
+      if (e instanceof NeedsRestructure) throw new Error(`${e.message}; run \`chord claude\` or \`chord codex\` here to set the project up, or \`chord ls --all\` for every project`);
+      throw new Error(`${(e as Error).message}; use \`chord ls --all\` for every project on this machine`);
     }
-    process.stdout.write(lsAll());
+    const file = db.dbPath(project.stateDir);
+    if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
+    process.stdout.write(ls(db.openDb(file)));
     return 0;
   }
   if (cmd !== 'claude' && cmd !== 'codex') { process.stderr.write(USAGE); return 2; }
-  let name: string | undefined;
-  if (rest[0] === '--name') { name = rest[1]; rest.splice(0, 2); }
+  const name = takeName(rest);
+  resolveCommand(cmd); // fail before creating a workspace when the tool is not installed
   let launch;
   try {
     launch = prepare(cmd as Tool, process.cwd(), name);
@@ -77,6 +99,8 @@ async function main(argv: string[]): Promise<number> {
   return run(cmd as Tool, launch, rest);
 }
 
-if (/cli\.ts$/.test(process.argv[1] ?? '')) {
+// run only as the entry point (argv[1] may be a symlink such as an npm bin link)
+const isMain = (() => { try { return fs.realpathSync.native(process.argv[1] ?? '') === fs.realpathSync.native(fileURLToPath(import.meta.url)); } catch { return false; } })();
+if (isMain) {
   main(process.argv.slice(2)).then(code => process.exit(code), e => { process.stderr.write(`chord: ${(e as Error).message}\n`); process.exit(1); });
 }

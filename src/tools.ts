@@ -24,9 +24,16 @@ export function insideDir(dir: string, file: string): boolean {
 export function claimPath(ctx: Ctx, file: string): string {
   const repoDir = path.relative(ctx.cwd, ctx.worktree).split(path.sep).join('/');
   const asGiven = normFile(ctx, file);
-  const abs = path.isAbsolute(file) || !repoDir || repoDir === '.' || asGiven === repoDir || asGiven.startsWith(repoDir + '/') || /^\.\.(\/|$)/.test(asGiven)
-    ? path.resolve(ctx.cwd, file)
-    : path.resolve(ctx.worktree, file);
+  let abs: string;
+  if (path.isAbsolute(file) || !repoDir || repoDir === '.' || /^\.\.(\/|$)/.test(asGiven)) abs = path.resolve(ctx.cwd, file);
+  else if (asGiven === repoDir || asGiven.startsWith(repoDir + '/')) {
+    // "rich/console.py" is the workspace path of the repository's console.py, or the repository path of a package
+    // named like the repository (rich/rich/console.py); whichever exists is meant, and both existing is ambiguous
+    const asWorkspace = path.resolve(ctx.cwd, file), asRepo = path.resolve(ctx.worktree, file);
+    const w = fs.existsSync(asWorkspace), r = fs.existsSync(asRepo);
+    if (w && r && asWorkspace !== asRepo) throw new Error(`${file} is ambiguous: it could be ${normFile(ctx, asWorkspace)} or ${normFile(ctx, asRepo)}; give the path from your workspace root`);
+    abs = r && !w ? asRepo : asWorkspace;
+  } else abs = path.resolve(ctx.worktree, file);
   if (!insideDir(ctx.cwd, abs)) throw new Error(`${file} is outside your workspace; chord only coordinates files under ${ctx.cwd}`);
   return normFile(ctx, abs);
 }

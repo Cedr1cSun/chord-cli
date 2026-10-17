@@ -126,6 +126,21 @@ test('claimPath accepts workspace-relative and repository-relative forms and ref
   assert.equal(claimPath(flat, 'src/x.ts'), 'src/x.ts');
 });
 
+test('claimPath resolves a package named like the repository by what exists on disk', async () => {
+  const { claimPath } = await import('../src/tools.ts');
+  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+  const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-rich-')));
+  const wt = path.join(ws, 'rich'); fs.mkdirSync(path.join(wt, 'rich'), { recursive: true });
+  fs.writeFileSync(path.join(wt, 'rich', 'console.py'), ''); fs.writeFileSync(path.join(wt, 'README.md'), '');
+  const ctx: Ctx = { db: db.openDb(':memory:'), agent: 'a', cwd: ws, worktree: wt };
+  assert.equal(claimPath(ctx, 'rich/console.py'), 'rich/rich/console.py'); // only the package file exists
+  assert.equal(claimPath(ctx, 'rich/README.md'), 'rich/README.md'); // only the workspace reading exists
+  assert.equal(claimPath(ctx, 'rich/new.py'), 'rich/new.py'); // neither exists: the workspace reading, as before
+  fs.writeFileSync(path.join(wt, 'console.py'), '');
+  assert.throws(() => claimPath(ctx, 'rich/console.py'), /ambiguous/); // both exist
+  assert.equal(claimPath(ctx, 'rich/rich/console.py'), 'rich/rich/console.py'); // the full path is never ambiguous
+});
+
 test('a relaunched occupant must be told again: only both current sessions count', () => {
   const { d, ctx, call } = setup();
   call('a', 'claim', { file: 'f.ts', intent: 'x', kind: 'modify' });

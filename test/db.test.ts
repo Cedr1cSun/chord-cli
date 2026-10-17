@@ -58,3 +58,15 @@ test('messages: send to many, take unread once, repliedSince', () => {
   assert.equal(db.repliedSince(d, 'a', 'b', got[0].created_at + 1), false);
   assert.equal(db.repliedSince(d, 'b', 'a', 0), false);
 });
+
+test('claims on case-insensitive file systems ignore case', { skip: process.platform === 'linux' }, () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: 2, cwd: '/' });
+  db.addClaim(d, { agent: 'a', file: 'Src/A.ts', intent: 'x', kind: 'modify' });
+  assert.equal(db.claimsFor(d, 'src/a.ts').length, 1);
+  db.addClaim(d, { agent: 'a', file: 'SRC/a.TS', intent: 'y', kind: 'modify' }); // same claim, updated
+  assert.equal(db.claimsBy(d, 'a').length, 1);
+  db.addClaim(d, { agent: 'b', file: 'src/a.ts', intent: 'z', kind: 'modify' });
+  assert.equal(db.claimsFor(d, 'SRC/A.TS').length, 2);
+});

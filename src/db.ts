@@ -44,6 +44,9 @@ export const mainRoot = (cwd: string) => path.dirname(commonDir(cwd));
 /** chord.db lives in the common git dir, so every worktree of the repo shares it. */
 export const dbPath = (cwd: string) => path.join(commonDir(cwd), 'chord.db');
 
+/** Windows and macOS file systems are case-insensitive: Src/a.ts and src/a.ts are one file, so one claim key. */
+const FILE_COLLATION = process.platform === 'linux' ? '' : 'collate nocase';
+
 export function openDb(file: string): DatabaseSync {
   const db = new DatabaseSync(file);
   db.exec(`
@@ -63,7 +66,7 @@ export function openDb(file: string): DatabaseSync {
     );
     create table if not exists claims (
       agent    text not null references agents(name),
-      file     text not null,
+      file     text not null ${FILE_COLLATION},
       intent   text not null,
       kind     text not null,
       symbols    text,

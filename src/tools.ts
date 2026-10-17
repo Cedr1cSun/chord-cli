@@ -101,6 +101,17 @@ const gitOk = (cwd: string, ...args: string[]) => { try { git(cwd, ...args); ret
 const stderrOf = (e: unknown) => ((e as { stderr?: string }).stderr ?? (e as Error).message).trim();
 const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
+/** git, retried for up to five seconds when another process (an IDE polling git status, say) holds index.lock. */
+function gitRetry(cwd: string, ...args: string[]): string {
+  const t0 = Date.now();
+  for (let wait = 50; ; wait = Math.min(wait * 2, 500)) {
+    try { return git(cwd, ...args); } catch (e) {
+      if (!/index\.lock.*(File exists|exists)/i.test(stderrOf(e)) || Date.now() - t0 > 5000) throw e;
+      sleepSync(wait);
+    }
+  }
+}
+
 /** Run fn holding an exclusive lock file. Waits up to `waitMs`; a lock older than `staleMs` is taken over. */
 export function withLock<T>(file: string, fn: () => T, waitMs = 240_000, staleMs = 180_000): T {
   const t0 = Date.now();
@@ -133,6 +144,9 @@ function finishLocked(ctx: Ctx) {
     git(wt, 'rebase', '--abort'); break;
   }
   fs.rmSync(marker, { force: true });
+  // a finish killed mid-operation can leave the worktree's own index.lock behind; one older than a minute is debris
+  const indexLock = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'index.lock'));
+  try { if (Date.now() - fs.statSync(indexLock).mtimeMs > 60_000) { fs.unlinkSync(indexLock); db.log('finish: removed a stale index.lock in the worktree'); } } catch { /* none */ }
   // untracked files (build output, a venv) are not in the way of a rebase and must not be forced into a commit
   if (git(wt, 'status', '--porcelain', '--untracked-files=no')) throw new Error('your worktree has uncommitted changes to tracked files; commit them first');
   const root = db.mainRoot(wt);
@@ -143,7 +157,7 @@ function finishLocked(ctx: Ctx) {
   if (main === 'HEAD') throw new Error('the main checkout is not on a branch (detached HEAD); ask the user to check out a branch there');
   fs.writeFileSync(marker, `${Date.now()}\n`);
   try {
-    git(wt, 'rebase', main);
+    gitRetry(wt, 'rebase', main);
     fs.rmSync(marker, { force: true });
   } catch (e) {
     // a conflict is a conflict; anything else (a pre-rebase hook saying no, a lock) is reported as what it is
@@ -162,7 +176,7 @@ function finishLocked(ctx: Ctx) {
     return { merged: [] as string[], into: main, notified: [] as string[], note: 'your branch has no commits beyond main; nothing to merge' };
   }
   try {
-    git(root, 'merge', '--ff-only', branch);
+    gitRetry(root, 'merge', '--ff-only', branch);
   } catch (e) {
     // a noisy post-merge hook can make git exit non-zero after the merge went through
     if (!gitOk(root, 'merge-base', '--is-ancestor', branch, main)) throw e;

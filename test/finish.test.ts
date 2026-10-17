@@ -149,12 +149,15 @@ test('finish ignores untracked files in the worktree instead of forcing them int
   assert.throws(() => finish(ctx), /uncommitted changes to tracked files/);
 });
 
-test('finish survives a noisy post-merge hook, and does not call a hook refusal a conflict', () => {
+test('finish survives a noisy post-merge hook and a stale index.lock, and does not call a hook refusal a conflict', () => {
   const { root, wt, ctx, d } = setup();
   const hooks = path.join(root, '.git', 'hooks'); fs.mkdirSync(hooks, { recursive: true });
   fs.writeFileSync(path.join(hooks, 'post-merge'), '#!/bin/sh\nnode -e "process.stdout.write(\'x\'.repeat(2e6))"\nexit 0\n');
   fs.writeFileSync(path.join(wt, 'b.txt'), 'x\n'); git(wt, 'add', 'b.txt'); git(wt, 'commit', '-q', '-m', 'feat: b');
+  const lock = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'index.lock'));
+  fs.writeFileSync(lock, ''); const old = new Date(Date.now() - 120_000); fs.utimesSync(lock, old, old);
   assert.deepEqual(finish(ctx).merged, ['feat: b']);
+  assert.ok(!fs.existsSync(lock));
   assert.equal(git(root, 'log', '--format=%s', '-1'), 'feat: b');
   assert.equal(db.claimsBy(d, 'w').length, 0);
   // a pre-rebase hook that says no is not a conflict

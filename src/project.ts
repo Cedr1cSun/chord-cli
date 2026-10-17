@@ -66,9 +66,18 @@ export function suggestedRepoName(repo: string): string {
 }
 
 /** The nearest ancestor that already is a chord project, if any. */
+/** Child directories of `dir` that are repository roots. Looked up with stat, so a junction or symlink to a repository
+ *  counts (a Dirent reports those as links, not directories). */
+const repoChildren = (dir: string) => fs.readdirSync(dir).filter(n => { const p = path.join(dir, n); try { return fs.statSync(p).isDirectory() && isRepoDir(p); } catch { return false; } });
+
+/** The project `dir` belongs to, when it lies inside one: under the project's chord/ directory (a workspace or a
+ *  worktree) or inside its repository. A folder merely beside those, such as a new project created next to an old
+ *  one, is not claimed by the ancestor. */
 function enclosingProject(dir: string): string | null {
   for (let a = path.dirname(dir); a !== path.dirname(a); a = path.dirname(a)) {
-    if (fs.existsSync(stateDirFor(a)) || fs.existsSync(path.join(a, 'chord', 'agents'))) return a;
+    if (!fs.existsSync(stateDirFor(a)) && !fs.existsSync(path.join(a, 'chord', 'agents'))) continue;
+    const inside = (sub: string) => { const rel = path.relative(path.join(a, sub), dir); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); };
+    if (inside('chord') || repoChildren(a).some(inside)) return a;
   }
   return null;
 }
@@ -83,7 +92,7 @@ export function resolveProject(cwd: string): Project {
     if (same(enclosing, dir)) throw new NeedsRestructure(dir, suggestedRepoName(dir));
     throw new Error(`${dir} is inside the repository ${enclosing}; a chord project is the folder that contains the repository, not a folder inside it`);
   }
-  const children = fs.readdirSync(dir, { withFileTypes: true }).filter(e => e.isDirectory() && isRepoDir(path.join(dir, e.name))).map(e => e.name);
+  const children = repoChildren(dir);
   if (children.some(c => c.toLowerCase() === 'chord')) throw new Error(`${dir}/chord is a git repository, but chord/ is reserved for chord's own directory; rename it`);
   if (children.length === 0) throw new Error(`${dir} contains no git repository; a chord project is a folder with the repository in a child directory`);
   if (children.length > 1) throw new Error(`${dir} contains several repositories (${children.join(', ')}); chord supports one per project for now`);

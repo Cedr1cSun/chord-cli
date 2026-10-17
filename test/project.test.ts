@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ensureWorktree } from '../src/launch.ts';
-import { resolveProject, restructure, restructureBlocker, suggestedRepoName, validateRepoName } from '../src/project.ts';
+import { NeedsRestructure, resolveProject, restructure, restructureBlocker, suggestedRepoName, validateRepoName } from '../src/project.ts';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
 const tmp = (p: string) => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), p)));
@@ -20,6 +20,24 @@ test('resolveProject finds the enclosing project from the main checkout, a workt
   for (const where of [path.join(repo, 'src'), repo, wt, path.join(proj, 'chord', 'agents', 'x')]) {
     assert.equal(resolveProject(where).dir, proj, where);
   }
+});
+
+test('an ancestor project does not claim a new project folder created beside its repository', () => {
+  const work = tempProject();
+  ensureWorktree(path.join(work, 'repo'), path.join(work, 'chord', 'agents', 'a', 'repo'), 'a'); // the old project has been used
+  const fresh = path.join(work, 'newproj'); initRepo(path.join(fresh, 'api'));
+  const p = resolveProject(fresh);
+  assert.equal(p.dir, fresh); assert.equal(p.repoName, 'api');
+  assert.throws(() => resolveProject(path.join(fresh, 'api')), NeedsRestructure); // the new repository root is treated on its own merits, not as part of the old project
+  fs.mkdirSync(path.join(work, 'repo', 'src'));
+  assert.equal(resolveProject(path.join(work, 'repo', 'src')).dir, work); // the old project still owns its own territory
+});
+
+test('a junction to a repository counts as the project repository', () => {
+  const proj = tmp('chord-junction-'); const target = tmp('chord-target-'); initRepo(path.join(target, 'src'));
+  fs.symlinkSync(path.join(target, 'src'), path.join(proj, 'repo'), 'junction');
+  const p = resolveProject(proj);
+  assert.equal(p.repoName, 'repo'); assert.equal(p.repo, path.join(proj, 'repo'));
 });
 
 test('resolveProject ignores .git files and refuses a repository named chord', () => {

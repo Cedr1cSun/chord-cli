@@ -295,14 +295,19 @@ export const DELIVERY_BUDGET_CHARS = 6000;
 /** Unread messages for `recipient`, oldest first, marked read as they are returned. Stops after `budget`
  *  characters (always at least one message) so a flood is delivered in several rounds instead of truncated. */
 export function takeUnread(db: DatabaseSync, recipient: string, budget = DELIVERY_BUDGET_CHARS): Message[] {
-  const rows = db.prepare('select * from messages where recipient = ? and read_at is null order by id').all(recipient) as unknown as Message[];
-  const out: Message[] = [];
-  let used = 0;
-  for (const m of rows) { if (out.length && used + m.body.length > budget) break; out.push(m); used += m.body.length; }
-  if (out.length) {
-    db.prepare(`update messages set read_at = ? where recipient = ? and read_at is null and id <= ?`).run(Date.now(), recipient, out[out.length - 1].id);
-  }
-  return out;
+  // one transaction: parallel tool calls run several PostToolUse hooks at once, and each must get different messages
+  db.exec('begin immediate');
+  try {
+    const rows = db.prepare('select * from messages where recipient = ? and read_at is null order by id').all(recipient) as unknown as Message[];
+    const out: Message[] = [];
+    let used = 0;
+    for (const m of rows) { if (out.length && used + m.body.length > budget) break; out.push(m); used += m.body.length; }
+    if (out.length) {
+      db.prepare(`update messages set read_at = ? where recipient = ? and read_at is null and id <= ?`).run(Date.now(), recipient, out[out.length - 1].id);
+    }
+    db.exec('commit');
+    return out;
+  } catch (e) { db.exec('rollback'); throw e; }
 }
 
 /** Whether a message (not a notice) is waiting: only messages wake an idle agent; notices ride along with the next hook. */

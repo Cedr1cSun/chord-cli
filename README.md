@@ -5,6 +5,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
   <img alt="Node 24 or later" src="https://img.shields.io/badge/node-%E2%89%A5%2024-339933?logo=nodedotjs&logoColor=white">
+  <img alt="Windows and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue">
 </p>
 
 One repository, as many agents as you care to start. Each agent works in its own worktree; a shared board records who holds which file; an agent that wants a file another agent holds asks first and waits for the answer; when the work is committed, one call rebases the branch and fast-forwards main. Idle agents are woken the moment a message arrives, so the agents negotiate among themselves while you keep handing out work in plain language.

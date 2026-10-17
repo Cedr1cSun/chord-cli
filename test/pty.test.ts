@@ -26,6 +26,20 @@ test('InputGate holds while a draft is being typed and releases only on Enter or
   assert.equal(g.clear(), true);
 });
 
+test('InputGate.settled: chord keeps its hands off for three seconds after any key and ten after Esc', () => {
+  const g = new InputGate();
+  assert.equal(g.settled(1000), true);
+  g.onUserInput('hello\r', 1000); // a submit: the box is empty but the turn has not shown as busy yet
+  assert.equal(g.clear(), true);
+  assert.equal(g.settled(3500), false);
+  assert.equal(g.settled(4000), true);
+  g.onUserInput('\x1b', 5000); // Esc interrupts; the user is about to type a correction
+  assert.equal(g.settled(12000), false);
+  assert.equal(g.settled(15000), true);
+  g.onUserInput('\x1b[24;1R', 20000); // a terminal reply is not a key
+  assert.equal(g.settled(20000), true);
+});
+
 test('InputGate: backspace empties a draft, Ctrl+U/Ctrl+C clear it, a paste with newlines stays a draft, Shift+Enter is not a submit', () => {
   const g = new InputGate();
   g.onUserInput('ab'); g.onUserInput('\x7f'); assert.equal(g.clear(), false);

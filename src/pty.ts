@@ -69,13 +69,17 @@ export class InputGate {
   private draftLen = 0;
   private pending = '';
   private inPaste = false;
-  onUserInput(data: string): void {
+  private lastKeyAt = -Infinity; // never
+  private lastEscAt = -Infinity;
+  onUserInput(data: string, now = Date.now()): void {
     // bracketed paste: its newlines are content, not submits, and a long paste arrives in several chunks
     const pasted = this.inPaste || data.includes('\x1b[200~');
     const open = data.lastIndexOf('\x1b[200~'), close = data.lastIndexOf('\x1b[201~');
     if (open >= 0 || close >= 0) this.inPaste = open > close;
     const text = decodeKeys(this.pending + data, rest => { this.pending = rest; });
     if (!text) return;
+    this.lastKeyAt = now;
+    if (text.includes('\x1b')) this.lastEscAt = now;
     for (const ch of text) {
       if (ch === '\x15' || ch === '\x03') this.draftLen = 0;                              // Ctrl+U, Ctrl+C clear the line
       else if (ch === '\x7f' || ch === '\x08') this.draftLen = Math.max(0, this.draftLen - 1); // Backspace
@@ -89,6 +93,12 @@ export class InputGate {
   clear(): boolean {
     // ponytail: cannot see the real input box; count keystrokes since the last submit as the draft
     return this.draftLen === 0;
+  }
+  /** True when the user has not touched the keyboard for a while: three seconds after any key, ten after Esc. A
+   *  submit takes the hook up to a second to show as busy, and after an interrupt the user is about to type a
+   *  correction; chord must not slip its text in between. */
+  settled(now = Date.now()): boolean {
+    return now - this.lastKeyAt >= 3000 && now - this.lastEscAt >= 10_000;
   }
 }
 
@@ -205,7 +215,7 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
     if (wanted !== title) { title = wanted; process.stdout.write(titleSequence(title)); }
     const status = me?.status;
     if (status !== 'idle') { typed = null; typedAt = enteredAt = enters = 0; echoed = false; }
-    const s = { status, unread: db.hasUnread(d, launch.name), stop: !!me?.stop_requested_at, gateClear: gate.clear(), typed, typedAt, echoed, enters, enteredAt };
+    const s = { status, unread: db.hasUnread(d, launch.name), stop: !!me?.stop_requested_at, gateClear: gate.clear() && gate.settled(), typed, typedAt, echoed, enters, enteredAt };
     const action = nextAction(s, Date.now());
     const state = `${status}/${s.unread}/${s.stop}/${s.gateClear}/${action}`;
     if (state !== lastState) { db.log(`wake loop: status=${status} unread=${s.unread} stop=${s.stop} gateClear=${s.gateClear} action=${action}`); lastState = state; }
@@ -221,7 +231,7 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
       awaitingEcho = false;
       echoed = typedEchoed(echoBuf, text);
       if (!echoed) { db.log(`wake loop: ${action} text was not echoed, something other than the prompt has the keyboard; not pressing Enter`); return; }
-      if (!gate.clear()) { db.log('wake loop: the user typed meanwhile; not pressing Enter'); return; }
+      if (!gate.clear() || !gate.settled()) { db.log('wake loop: the user typed meanwhile; not pressing Enter'); return; }
       term.write('\r'); enteredAt = Date.now(); enters = 1;
     }, 1500);
   }, 1000);

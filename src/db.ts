@@ -19,6 +19,7 @@ export interface Agent {
 }
 
 export interface Claim {
+  rid: number;      // rowid: orders claims created in the same millisecond
   agent: string;
   file: string;
   intent: string;
@@ -28,10 +29,13 @@ export interface Claim {
   asked_at: number | null;
 }
 
+export type MessageKind = 'message' | 'notice';
+
 export interface Message {
   id: number;
   sender: string;
   recipient: string;
+  kind: MessageKind; // notices (e.g. "X merged into main") never count as replies
   body: string;
   created_at: number;
   read_at: number | null;
@@ -90,6 +94,7 @@ export function openDb(file: string): DatabaseSync {
       id         integer primary key autoincrement,
       sender     text not null,
       recipient  text not null,
+      kind       text not null default 'message',
       body       text not null,
       created_at integer not null,
       read_at    integer
@@ -177,39 +182,52 @@ export function releaseAll(db: DatabaseSync, agent: string): void {
 }
 
 export function claimsFor(db: DatabaseSync, file: string): Claim[] {
-  return db.prepare('select * from claims where file = ?').all(file) as unknown as Claim[];
+  return db.prepare('select rowid as rid, * from claims where file = ?').all(file) as unknown as Claim[];
 }
 
 export function claimsBy(db: DatabaseSync, agent: string): Claim[] {
-  return db.prepare('select * from claims where agent = ? order by file').all(agent) as unknown as Claim[];
+  return db.prepare('select rowid as rid, * from claims where agent = ? order by file').all(agent) as unknown as Claim[];
 }
 
 export function allClaims(db: DatabaseSync): Claim[] {
-  return db.prepare('select * from claims order by file, agent').all() as unknown as Claim[];
+  return db.prepare('select rowid as rid, * from claims order by file, agent').all() as unknown as Claim[];
 }
 
 // messages
 
-export function send(db: DatabaseSync, sender: string, recipients: string[], body: string): void {
+export function send(db: DatabaseSync, sender: string, recipients: string[], body: string, kind: MessageKind = 'message'): void {
   const now = Date.now();
-  const ins = db.prepare('insert into messages (sender, recipient, body, created_at) values (?, ?, ?, ?)');
-  for (const r of recipients) ins.run(sender, r, body, now);
+  const ins = db.prepare('insert into messages (sender, recipient, kind, body, created_at) values (?, ?, ?, ?, ?)');
+  for (const r of recipients) ins.run(sender, r, kind, body, now);
 }
 
-/** Unread messages for `recipient`, marked read as they are returned. */
-export function takeUnread(db: DatabaseSync, recipient: string): Message[] {
+/** Roughly what a hook may attach without the tool truncating it (Codex caps additionalContext near 2500 tokens). */
+export const DELIVERY_BUDGET_CHARS = 6000;
+
+/** Unread messages for `recipient`, oldest first, marked read as they are returned. Stops after `budget`
+ *  characters (always at least one message) so a flood is delivered in several rounds instead of truncated. */
+export function takeUnread(db: DatabaseSync, recipient: string, budget = DELIVERY_BUDGET_CHARS): Message[] {
   const rows = db.prepare('select * from messages where recipient = ? and read_at is null order by id').all(recipient) as unknown as Message[];
-  if (rows.length) {
-    db.prepare(`update messages set read_at = ? where recipient = ? and read_at is null and id <= ?`).run(Date.now(), recipient, rows[rows.length - 1].id);
+  const out: Message[] = [];
+  let used = 0;
+  for (const m of rows) { if (out.length && used + m.body.length > budget) break; out.push(m); used += m.body.length; }
+  if (out.length) {
+    db.prepare(`update messages set read_at = ? where recipient = ? and read_at is null and id <= ?`).run(Date.now(), recipient, out[out.length - 1].id);
   }
-  return rows;
+  return out;
 }
 
 export function hasUnread(db: DatabaseSync, recipient: string): boolean {
   return !!db.prepare('select 1 from messages where recipient = ? and read_at is null limit 1').get(recipient);
 }
 
-/** Has `sender` sent `recipient` anything at or after `since`? */
+/** Has `sender` sent `recipient` a real message (not a notice) at or after `since`? */
 export function repliedSince(db: DatabaseSync, sender: string, recipient: string, since: number): boolean {
-  return !!db.prepare('select 1 from messages where sender = ? and recipient = ? and created_at >= ? limit 1').get(sender, recipient, since);
+  return firstMessageAt(db, sender, recipient, since) !== null;
+}
+
+/** When `sender` first messaged `recipient` at or after `since`; null if never. Notices do not count. */
+export function firstMessageAt(db: DatabaseSync, sender: string, recipient: string, since: number): number | null {
+  const row = db.prepare("select min(created_at) t from messages where sender = ? and recipient = ? and kind = 'message' and created_at >= ?").get(sender, recipient, since) as { t: number | null };
+  return row?.t ?? null;
 }

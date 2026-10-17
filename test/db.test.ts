@@ -70,3 +70,13 @@ test('claims on case-insensitive file systems ignore case', { skip: process.plat
   db.addClaim(d, { agent: 'b', file: 'src/a.ts', intent: 'z', kind: 'modify' });
   assert.equal(db.claimsFor(d, 'SRC/A.TS').length, 2);
 });
+
+test('takeUnread delivers within a character budget, at least one message at a time', () => {
+  const d = open();
+  db.send(d, 'a', ['b'], 'x'.repeat(50));
+  db.send(d, 'a', ['b'], 'y'.repeat(50));
+  db.send(d, 'a', ['b'], 'z'.repeat(500));
+  assert.equal(db.takeUnread(d, 'b', 120).length, 2); // 50 + 50 fit, the 500 one waits
+  assert.equal(db.takeUnread(d, 'b', 120).length, 1); // too big for the budget but always delivered alone
+  assert.equal(db.hasUnread(d, 'b'), false);
+});

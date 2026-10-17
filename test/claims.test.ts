@@ -61,11 +61,35 @@ test('timeout and offline occupants unblock the latecomer', () => {
   call('a', 'claim', { file: 'f.ts', intent: 'x', kind: 'modify' });
   d.prepare('update claims set created_at = created_at - 1000').run();
   call('b', 'claim', { file: 'f.ts', intent: 'y', kind: 'modify' });
-  const asked = db.claimsFor(d, 'f.ts').find(c => c.agent === 'b')!.asked_at!;
+  // without ever telling a, time alone never unblocks b
+  assert.equal(canWrite(ctx('b'), 'f.ts', Date.now() + 10 * REPLY_TIMEOUT_MS).ok, false);
+  call('b', 'send', { to: 'a', message: 'I am changing f.ts too' });
+  const asked = db.firstMessageAt(d, 'b', 'a', 0)!;
   assert.equal(canWrite(ctx('b'), 'f.ts', asked + REPLY_TIMEOUT_MS - 1).ok, false);
-  assert.equal(canWrite(ctx('b'), 'f.ts', asked + REPLY_TIMEOUT_MS).ok, true);
+  assert.equal(canWrite(ctx('b'), 'f.ts', asked + REPLY_TIMEOUT_MS).ok, true); // a stayed silent: no objection
   db.setStatus(d, 'a', 'offline');
   assert.equal(canWrite(ctx('b'), 'f.ts').ok, true);
+});
+
+test('notices such as merge broadcasts do not count as replies', () => {
+  const { d, ctx, call } = setup();
+  call('a', 'claim', { file: 'f.ts', intent: 'x', kind: 'modify' });
+  d.prepare('update claims set created_at = created_at - 1000').run();
+  call('b', 'claim', { file: 'f.ts', intent: 'y', kind: 'modify' });
+  call('b', 'send', { to: 'a', message: 'changing the footer' });
+  db.send(d, 'a', ['b'], 'a merged into main: ...', 'notice');
+  assert.match((canWrite(ctx('b'), 'f.ts') as any).reason, /waiting for a reply from a/);
+  db.send(d, 'a', ['b'], 'fine by me');
+  assert.equal(canWrite(ctx('b'), 'f.ts').ok, true);
+});
+
+test('two claims in the same millisecond are ordered by insertion', () => {
+  const { d, ctx, call } = setup();
+  call('a', 'claim', { file: 'f.ts', intent: 'x', kind: 'modify' });
+  call('b', 'claim', { file: 'f.ts', intent: 'y', kind: 'modify' });
+  d.prepare('update claims set created_at = 1000').run(); // identical timestamps
+  assert.equal(canWrite(ctx('a'), 'f.ts').ok, true); // a was inserted first
+  assert.match((canWrite(ctx('b'), 'f.ts') as any).reason, /also claimed by a/);
 });
 
 test('release drops the claim', () => {

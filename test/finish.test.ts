@@ -101,3 +101,24 @@ test('withLock serialises callers and takes over a stale lock', async () => {
   assert.throws(() => withLock(lock, () => { throw new Error('boom'); }), /boom/);
   assert.ok(!fs.existsSync(lock)); // released even when fn throws
 });
+
+test('finish refuses a detached worktree and skips the merge when there is nothing new', () => {
+  const { root, wt, d, ctx } = setup();
+  git(wt, 'checkout', '-q', '--detach');
+  assert.throws(() => finish(ctx), /your worktree is not on its branch/);
+  git(wt, 'checkout', '-q', 'chord/w');
+  const r = finish(ctx); // no commits beyond main
+  assert.deepEqual(r.merged, []); assert.match((r as any).note, /nothing to merge/);
+  assert.equal(db.claimsBy(d, 'w').length, 0);
+  assert.equal(db.hasUnread(d, 'peer'), false); // nobody is told about an empty merge
+  assert.equal(git(root, 'log', '--format=%s', '-1'), 'init');
+});
+
+test('merge broadcasts are notices', () => {
+  const { wt, d, ctx } = setup();
+  fs.writeFileSync(path.join(wt, 'b.txt'), 'two\n'); git(wt, 'add', '.'); git(wt, 'commit', '-q', '-m', 'feat: add b');
+  finish(ctx);
+  const [m] = db.takeUnread(d, 'peer');
+  assert.equal(m.kind, 'notice');
+  assert.equal(db.repliedSince(d, 'w', 'peer', 0), false);
+});

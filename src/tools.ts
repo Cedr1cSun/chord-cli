@@ -55,17 +55,17 @@ export function peers(ctx: Ctx) {
 
 /** Online agents who claimed `file` before `mine` did. */
 function earlierOccupants(ctx: Ctx, mine: db.Claim): db.Claim[] {
-  return db.claimsFor(ctx.db, mine.file).filter(c =>
-    c.agent !== ctx.agent && c.created_at < mine.created_at && db.getAgent(ctx.db, c.agent)?.status !== 'offline');
+  const before = (c: db.Claim) => c.created_at < mine.created_at || (c.created_at === mine.created_at && c.rid < mine.rid);
+  return db.claimsFor(ctx.db, mine.file).filter(c => c.agent !== ctx.agent && before(c) && db.getAgent(ctx.db, c.agent)?.status !== 'offline');
 }
 
 export type WriteCheck = { ok: true } | { ok: false; reason: string };
 
 /**
- * May `ctx.agent` write `file` now? It must hold a claim, and if others claimed the file first it
- * must have told each of them and heard back, or waited out the timeout. Any exchange since this
- * agent's session started counts, so a peer who explained their scope before we even claimed is
- * not asked again.
+ * May `ctx.agent` write `file` now? It must hold a claim, and if others claimed the file first it must
+ * have told each of them what it will do and heard back. An occupant who does not answer within
+ * REPLY_TIMEOUT_MS of being told is taken as having no objection. Any exchange since this agent's session
+ * started counts, so a peer who explained their scope before we even claimed is not asked again.
  */
 export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
   const rel = normFile(ctx, file);
@@ -73,17 +73,20 @@ export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
   if (!mine) return { ok: false, reason: `${rel} is not claimed by you. Call claim(file, intent, kind) first.` };
   const others = earlierOccupants(ctx, mine);
   if (!others.length) return { ok: true };
-  const asked = mine.asked_at ?? mine.created_at;
-  if (now - asked >= REPLY_TIMEOUT_MS) return { ok: true };
   const since = db.getAgent(ctx.db, ctx.agent)?.started_at ?? mine.created_at;
-  const notAsked = others.filter(o => !db.repliedSince(ctx.db, ctx.agent, o.agent, since)).map(o => o.agent);
+  const notAsked: string[] = [];
+  const waiting: { agent: string; left: number }[] = [];
+  for (const o of others) {
+    const askedAt = db.firstMessageAt(ctx.db, ctx.agent, o.agent, since);
+    if (askedAt === null) notAsked.push(o.agent);
+    else if (!db.repliedSince(ctx.db, o.agent, ctx.agent, since) && now - askedAt < REPLY_TIMEOUT_MS) waiting.push({ agent: o.agent, left: REPLY_TIMEOUT_MS - (now - askedAt) });
+  }
   if (notAsked.length) {
     return { ok: false, reason: `${rel} is also claimed by ${notAsked.join(', ')}. Read their claim (claim tool output) and send each of them a message explaining what you intend to change before writing.` };
   }
-  const waiting = others.filter(o => !db.repliedSince(ctx.db, o.agent, ctx.agent, since)).map(o => o.agent);
   if (waiting.length) {
-    const left = Math.ceil((REPLY_TIMEOUT_MS - (now - asked)) / 60000);
-    return { ok: false, reason: `waiting for a reply from ${waiting.join(', ')} about ${rel} (you may write without one in ${left} min). Work on something else meanwhile.` };
+    const left = Math.ceil(Math.max(...waiting.map(w => w.left)) / 60000);
+    return { ok: false, reason: `waiting for a reply from ${waiting.map(w => w.agent).join(', ')} about ${rel} (you may write without one in ${left} min). Work on something else meanwhile.` };
   }
   return { ok: true };
 }
@@ -94,7 +97,7 @@ const stderrOf = (e: unknown) => ((e as { stderr?: string }).stderr ?? (e as Err
 const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 /** Run fn holding an exclusive lock file. Waits up to `waitMs`; a lock older than `staleMs` is taken over. */
-export function withLock<T>(file: string, fn: () => T, waitMs = 120_000, staleMs = 180_000): T {
+export function withLock<T>(file: string, fn: () => T, waitMs = 240_000, staleMs = 180_000): T {
   const t0 = Date.now();
   for (;;) {
     try { fs.writeFileSync(file, String(process.pid), { flag: 'wx' }); break; } catch (e) {
@@ -124,6 +127,7 @@ function finishLocked(ctx: Ctx) {
   const root = db.mainRoot(wt);
   if (git(root, 'status', '--porcelain', '--untracked-files=no')) throw new Error('the main checkout has uncommitted changes; ask the user to commit or stash them');
   const branch = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD');
+  if (branch === 'HEAD') throw new Error('your worktree is not on its branch (detached HEAD); check out your chord/ branch first');
   const main = git(root, 'rev-parse', '--abbrev-ref', 'HEAD');
   if (main === 'HEAD') throw new Error('the main checkout is not on a branch (detached HEAD); ask the user to check out a branch there');
   try {
@@ -134,11 +138,16 @@ function finishLocked(ctx: Ctx) {
     throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${stderrOf(e)}`);
   }
   const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
+  if (!subjects.length) {
+    db.log(`finish: ${branch} has nothing beyond ${main}; claims released, nothing merged`);
+    db.releaseAll(ctx.db, ctx.agent);
+    return { merged: [] as string[], into: main, notified: [] as string[], note: 'your branch has no commits beyond main; nothing to merge' };
+  }
   git(root, 'merge', '--ff-only', branch);
   db.log(`finish: merged ${branch} into ${main} (${subjects.length} commit(s))`);
   db.releaseAll(ctx.db, ctx.agent);
   const online = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent && a.status !== 'offline').map(a => a.name);
-  if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\nRebase your branch when convenient. This is a notification; do not reply.`);
+  if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\nRebase your branch when convenient. This is a notification; do not reply.`, 'notice');
   return { merged: subjects, into: main, notified: online };
 }
 
@@ -184,7 +193,6 @@ export function tools(ctx: Ctx): Tool[] {
         const mine = db.claimsFor(ctx.db, file).find(c => c.agent === ctx.agent)!;
         const others = earlierOccupants(ctx, mine);
         db.log(`claim ${file} by ${ctx.agent} (cwd ${ctx.cwd}): rows=${JSON.stringify(db.claimsFor(ctx.db, file).map(c => [c.agent, c.created_at]))} agents=${JSON.stringify(db.listAgents(ctx.db).map(a => [a.name, a.status, a.pid]))} others=${others.map(o => o.agent)}`);
-        if (others.length && mine.asked_at === null) db.setAskedAt(ctx.db, ctx.agent, file, Date.now());
         return {
           claimed: file,
           must_talk_to: others.map(o => ({ agent: o.agent, intent: o.intent, kind: o.kind, symbols: o.symbols })),

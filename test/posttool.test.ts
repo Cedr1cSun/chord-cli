@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
 import { handleHook } from '../src/hooks.ts';
+import { ensureWorktree } from '../src/launch.ts';
 import type { Ctx } from '../src/tools.ts';
 
 function repo() {
@@ -62,7 +63,7 @@ test('post-tool-use handles renames and names with spaces or accents', () => {
   fs.mkdirSync(path.join(root, 'newdir')); fs.writeFileSync(path.join(root, 'newdir', 'inner.md'), 'z');
   const out = handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Bash' }) as any;
   const text = out.hookSpecificOutput.additionalContext as string;
-  assert.match(text, /renamed notes.txt/); assert.ok(!/(^|[ ,])notes.txt/.test(text.replace('renamed notes.txt', '')));
+  assert.match(text, /renamed notes.txt/); assert.match(text, /(^|[ ,])notes.txt/); // both ends of a rename changed
   assert.match(text, /ünï cødé.txt/); assert.match(text, /, newdir[.,]/); assert.doesNotMatch(text, /inner\.md/); // an untracked directory is one entry, not every file in it
 });
 
@@ -73,4 +74,29 @@ test('post-tool-use names at most twenty unclaimed files and counts the rest', (
   assert.equal((text.match(/gen-\d\d\.txt/g) || []).length, 20);
   assert.match(text, / and 5 more\./);
   assert.ok(text.length < 1200);
+});
+
+test('post-tool-use also warns about commits to unclaimed files, git stash, and a dirtied main checkout', () => {
+  const proj = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-post2-')));
+  const root = path.join(proj, 'repo'); fs.mkdirSync(root);
+  const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
+  git(root, 'init', '-q', '-b', 'main'); fs.writeFileSync(path.join(root, 'a.txt'), 'a\n'); git(root, 'add', '.'); git(root, 'commit', '-q', '-m', 'init');
+  const ws = path.join(proj, 'chord', 'agents', 'w');
+  const wt = ensureWorktree(root, path.join(ws, 'repo'), 'w');
+  const d = db.openDb(':memory:');
+  db.addAgent(d, { name: 'w', tool: 'claude', pid: process.pid, cwd: ws, worktree: wt });
+  const ctx: Ctx = { db: d, agent: 'w', cwd: ws, worktree: wt };
+  const run = (command: string) => ((handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Bash', tool_input: { command } }) as any)?.hookSpecificOutput?.additionalContext ?? '') as string;
+  assert.equal(run('ls'), '');
+  // committed straight from the shell: still not claimed
+  fs.writeFileSync(path.join(wt, 'b.txt'), 'b\n'); git(wt, 'add', 'b.txt'); git(wt, 'commit', '-q', '-m', 'add b');
+  assert.match(run('git commit -am x'), /changed files you have not claimed: repo\/b.txt/);
+  db.addClaim(d, { agent: 'w', file: 'repo/b.txt', intent: 'x', kind: 'add' });
+  assert.equal(run('ls'), '');
+  // stash is shared between worktrees
+  assert.match(run('git stash && npm test && git stash pop'), /git stash is shared by every worktree/);
+  assert.equal(run('echo stash'), '');
+  // the main checkout dirtied by the shell blocks everyone's finish
+  fs.appendFileSync(path.join(root, 'a.txt'), 'oops');
+  assert.match(run('ls'), /main checkout \(.*\) has uncommitted changes.*a.txt/);
 });

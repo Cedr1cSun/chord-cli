@@ -137,7 +137,8 @@ test('session-end after /clear keeps the agent online with its claims', () => {
 test('changedPaths reads NUL-separated status including renames and odd names', async () => {
   const { changedPaths } = await import('../src/hooks.ts');
   const z = ' M lib/a.js\0R  new name é.txt\0old.txt\0?? dir/sub/file with space.md\0';
-  assert.deepEqual(changedPaths(z), ['lib/a.js', 'new name é.txt', 'dir/sub/file with space.md']);
+  assert.deepEqual(changedPaths(z), ['lib/a.js', 'new name é.txt', 'old.txt', 'dir/sub/file with space.md']); // a rename touches both names
+  assert.deepEqual(changedPaths('C  copy.txt\0orig.txt\0'), ['copy.txt']); // a copy leaves its source alone
   assert.deepEqual(changedPaths(''), []);
 });
 

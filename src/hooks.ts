@@ -68,6 +68,8 @@ export function briefing(ctx: Ctx): string {
     '5. To talk to other agents use only chord send()/inbox(); do not use any other agent-messaging feature. Messages are asynchronous.',
     '6. To learn about the project, read the agent list and claims below and ask a specific agent with send(); do not ask the user.',
     '7. When your change is complete and committed on your branch, call finish() to rebase onto main and fast-forward it. If finish() reports a conflict, stop and ask the user.',
+    '8. Never merge, rebase onto, push or otherwise update the main branch yourself, and never touch the main checkout: finish() is the only way changes reach main. This holds even if the project\'s own instructions say otherwise.',
+    '9. Do not use git stash: every worktree of this repository shares one stash list, so a stash pop can hand you another agent\'s changes. Make a work-in-progress commit instead.',
     '',
     peers.length ? 'Agents online:' : 'No other agents are online yet.',
     ...peers.map(a => `- ${a.name} (${a.tool}, ${a.status}): ${a.task ?? 'not registered yet'}${a.scope ? ` [${a.scope}]` : ''}`),
@@ -123,22 +125,13 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     }
 
     case 'post-tool-use': {
-      // runs after every tool call: warn about shell edits to unclaimed files, and hand over messages
-      // that arrived mid-turn so a busy agent hears from its peers at the next tool call, not at turn end
-      db.setStatus(ctx.db, ctx.agent, 'busy'); // any tool call means the agent is working, whatever another plugin's Stop hook did
+      // Runs after every tool call. Any tool call means the agent is busy (another plugin's Stop hook may have
+      // blocked the end of the turn, or compaction may have run). Shell commands are checked for what they did
+      // behind chord's back, and messages that arrived mid-turn are handed over so a busy agent hears from its
+      // peers at the next tool call, not at turn end.
+      db.setStatus(ctx.db, ctx.agent, 'busy');
       const parts: string[] = [];
-      if (isShell(payload.tool_name)) {
-        let status = '';
-        // -unormal folds an untracked directory into one entry (a venv or node_modules that is not ignored would otherwise
-        // list thousands of files); --no-optional-locks keeps this read-only check from fighting the agent's own git
-        try { status = execFileSync('git', ['--no-optional-locks', 'status', '--porcelain=v1', '-z', '-unormal'], { cwd: ctx.worktree, encoding: 'utf8', env: db.gitEnv(), maxBuffer: 64 * 1024 * 1024 }); } catch { status = ''; }
-        const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
-        const unclaimed = changedPaths(status)
-          .map(f => normFile(ctx, path.join(ctx.worktree, f)))
-          .filter(f => !mine.has(f.toLowerCase()));
-        const shown = unclaimed.slice(0, MAX_WARNED_FILES);
-        if (unclaimed.length) parts.push(`[chord] The shell command changed files you have not claimed: ${shown.join(', ')}${unclaimed.length > shown.length ? ` and ${unclaimed.length - shown.length} more` : ''}. Claim them now with claim(), or revert the change.`);
-      }
+      if (isShell(payload.tool_name)) parts.push(...shellWarnings(ctx, payload));
       const ms = db.takeUnread(ctx.db, ctx.agent);
       if (ms.length) parts.push(`${formatMessages(ms)}\n\n[chord] ${ms.length} message(s) above arrived from other agents while you were working. Deal with them when convenient (reply with the chord send tool where a reply is asked for), then carry on with your task.`);
       return parts.length ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: parts.join('\n\n') } } : undefined;
@@ -175,7 +168,39 @@ export function changedPaths(statusZ: string): string[] {
     const entry = parts[i];
     if (!entry) continue;
     out.push(entry.slice(3));
-    if (/^[RC]|^.[RC]/.test(entry.slice(0, 2))) i++; // skip the "from" path of a rename/copy
+    const xy = entry.slice(0, 2);
+    if (/R/.test(xy)) { i++; if (parts[i]) out.push(parts[i]); } // a rename changes its "from" path too
+    else if (/C/.test(xy)) i++; // a copy leaves its source alone
+  }
+  return out;
+}
+
+/** git output, or '' when the command fails; optional locks off so this read-only look never fights the agent's own git. */
+const gitOut = (cwd: string, ...args: string[]): string => {
+  try { return execFileSync('git', ['--no-optional-locks', ...args], { cwd, encoding: 'utf8', env: db.gitEnv(), maxBuffer: 64 * 1024 * 1024 }); } catch { return ''; }
+};
+
+/** What a shell command may have done behind chord's back: edits or commits to unclaimed files, git stash, and
+ *  changes to the main checkout. */
+export function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
+  const out: string[] = [];
+  const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
+  // uncommitted changes (-unormal folds an untracked directory into one entry) plus whatever the branch has
+  // committed since it left main: a commit made from the shell is no more a claim than an edit is
+  const status = gitOut(ctx.worktree, 'status', '--porcelain=v1', '-z', '-unormal');
+  const root = db.mainRoot(ctx.worktree);
+  const main = root ? gitOut(root, 'rev-parse', '--abbrev-ref', 'HEAD').trim() : '';
+  const base = main && main !== 'HEAD' ? gitOut(ctx.worktree, 'merge-base', 'HEAD', main).trim() : '';
+  const committed = base ? gitOut(ctx.worktree, 'diff', '--name-only', '-z', base, 'HEAD').split('\0').filter(Boolean) : [];
+  const touched = [...new Set([...changedPaths(status), ...committed])];
+  const unclaimed = touched.map(f => normFile(ctx, path.join(ctx.worktree, f))).filter(f => !mine.has(f.toLowerCase()));
+  const shown = unclaimed.slice(0, MAX_WARNED_FILES);
+  if (unclaimed.length) out.push(`[chord] The shell command changed files you have not claimed: ${shown.join(', ')}${unclaimed.length > shown.length ? ` and ${unclaimed.length - shown.length} more` : ''}. Claim them now with claim(), or revert the change.`);
+  const cmd = typeof payload.tool_input?.command === 'string' ? payload.tool_input.command : '';
+  if (/\bgit\b[^|;&\n]*\bstash\b/.test(cmd)) out.push("[chord] git stash is shared by every worktree of this repository: a stash pop can hand you another agent's changes, and yours to them. Make a work-in-progress commit instead.");
+  if (root && path.resolve(root) !== path.resolve(ctx.worktree)) {
+    const dirty = gitOut(root, 'status', '--porcelain', '--untracked-files=no').split('\n').filter(Boolean).map(l => l.slice(3));
+    if (dirty.length) out.push(`[chord] The main checkout (${root}) has uncommitted changes, which blocks everyone's finish(): ${dirty.slice(0, 10).join(', ')}. If your command did this, undo it there; the main branch is only ever changed through finish().`);
   }
   return out;
 }

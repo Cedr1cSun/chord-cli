@@ -1,12 +1,19 @@
 // Run the agent under a pseudo-terminal: pass the user's keyboard through, and when the
-// agent is idle with unread messages, type them in as if the user had.
-import { execFileSync } from 'node:child_process';
+// agent is idle with unread messages, type a nudge in as if the user had.
 import fs from 'node:fs';
 import path from 'node:path';
 import pty from 'node-pty';
 import * as db from './db.ts';
 import type { Tool } from './hooks.ts';
 import type { Launch } from './launch.ts';
+
+/** First PATH entry holding `<tool>.exe` or `<tool>.cmd`. Pure Node: `where.exe` output is in the OEM code page. */
+export function whereIs(tool: string, pathVar = process.env.PATH ?? '', exists: (p: string) => boolean = p => fs.existsSync(p)): string | undefined {
+  for (const dir of pathVar.split(path.delimiter).filter(Boolean)) {
+    for (const ext of ['.exe', '.cmd']) { const p = path.join(dir, tool + ext); if (exists(p)) return p; }
+  }
+  return undefined;
+}
 
 /** Executable and leading args for a tool. On Windows an npm .cmd shim is unwrapped to
  *  `node <script>` so JSON arguments reach the process intact instead of going through cmd.exe. */
@@ -15,53 +22,68 @@ export function resolveCommand(tool: string, readFile = (f: string) => fs.readFi
   const hit = lookup(tool);
   if (!hit) throw new Error(`${tool} not found on PATH`);
   if (!/\.cmd$/i.test(hit)) return { file: hit, args: [] };
-  const m = /"%dp0%\\([^"]+\.(?:js|mjs|cjs))"/.exec(readFile(hit));
+  const m = /"%~?dp0%?\\([^"]+\.(?:js|mjs|cjs))"/.exec(readFile(hit)); // npm writes %dp0%\, pnpm and yarn %~dp0\
   if (!m) throw new Error(`cannot read the script path from ${hit}`);
   return { file: process.execPath, args: [path.join(path.dirname(hit), m[1])] };
 }
 
-function whereIs(tool: string): string | undefined {
-  try {
-    const hits = execFileSync('where', [tool], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
-    return hits.find(h => /\.(exe|cmd)$/i.test(h)) ?? hits[0];
-  } catch { return undefined; }
-}
+const ESC_KEY = '';   // a decoded Esc key, kept apart from escape sequences while they are stripped
+const SOFT_NL = '';   // Shift+Enter: a newline inside the draft, not a submit
 
 /**
  * Characters the user typed, out of a raw stdin chunk. Under ConPTY keys arrive in win32-input-mode,
- * `ESC [ Vk ; Sc ; Uc ; KeyDown ; Ctrl ; Repeat _`, one event per key press and release, and a chunk
- * may end mid-sequence; `hold` receives such a tail to prepend to the next chunk. Other escape
- * sequences (arrows, terminal replies to queries) are dropped: they are not a draft.
+ * `ESC [ Vk ; Sc ; Uc ; KeyDown ; Ctrl ; Repeat _`, one event per key press and release, and a chunk may
+ * end mid-sequence; `hold` receives such a tail to prepend to the next chunk. Other escape sequences
+ * (arrows, mouse reports, terminal replies to queries) are dropped: they are not a draft.
  */
 export function decodeKeys(data: string, hold: (rest: string) => void): string {
-  if (data === '\x1b') { hold(''); return data; } // a bare Esc key outside win32-input-mode
-  const tail = data.lastIndexOf('\x1b');
-  if (tail >= 0 && !/^\x1b(\[[0-9;?]*[ -/]*[@-~]|[^[])/.test(data.slice(tail))) { hold(data.slice(tail)); data = data.slice(0, tail); } else hold('');
-  const ESC = ''; // stands in for a decoded Esc key while other sequences are stripped
+  if (data === '\x1b') { hold(''); return '\x1b'; } // a bare Esc key outside win32-input-mode
+  const lastEsc = data.lastIndexOf('\x1b');
+  if (lastEsc >= 0) {
+    const tail = data.slice(lastEsc);
+    const complete = /^\x1b(\[[0-9;?<>=]*[ -/]*[@-~]|\][^\x07\x1b]*(\x07|\x1b\\)|P[^\x1b]*\x1b\\|O.|[^[\]PO\x1b])/.test(tail) || tail === '\x1b\x1b';
+    if (!complete) { hold(tail); data = data.slice(0, lastEsc); } else hold('');
+  } else hold('');
   return data
-    .replace(/\x1b\[(\d+);(\d+);(\d+);(\d+);(\d+);(\d+)_/g, (_, _vk, _sc, uc, down) =>
-      down !== '1' || Number(uc) === 0 ? '' : Number(uc) === 27 ? ESC : String.fromCharCode(Number(uc)))
-    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[^[]/g, '')
-    .replaceAll(ESC, '\x1b');
+    .replace(/\x1b\[(\d+);(\d+);(\d+);(\d+);(\d+);(\d+)_/g, (_, _vk, _sc, uc, down, ctrl) => {
+      if (down !== '1' || Number(uc) === 0) return '';
+      const code = Number(uc);
+      if (code === 27) return ESC_KEY;
+      if (code === 13 && (Number(ctrl) & 0x10)) return SOFT_NL; // SHIFT_PRESSED
+      return String.fromCharCode(code);
+    })
+    .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')  // OSC (terminal replies, titles)
+    .replace(/\x1bP[^\x1b]*\x1b\\/g, '')               // DCS (e.g. XTVERSION replies)
+    .replace(/\x1b\[[0-9;?<>=]*[ -/]*[@-~]/g, '')      // CSI (arrows, mouse, replies)
+    .replace(/\x1bO./g, '')                            // SS3 (application-mode arrows)
+    .replace(/\x1b\x1b/g, ESC_KEY)                     // Esc pressed twice outside win32 mode
+    .replace(/\x1b[^\x1b]/g, '')                       // Alt+key and other two-byte sequences
+    .replaceAll(ESC_KEY, '\x1b');
 }
 
-/** Decide whether chord may type into the terminal right now. */
+/** Decide whether chord may type into the terminal right now, by tracking what the user has typed but not sent. */
 export class InputGate {
-  private typedSinceEnter = false;
+  private draftLen = 0;
   private lastKeyAt = 0;
   private staleMs: number;
-  constructor(staleMs = 60_000) { this.staleMs = staleMs; }
   private pending = '';
+  constructor(staleMs = 60_000) { this.staleMs = staleMs; }
   onUserInput(data: string, now = Date.now()): void {
+    const pasted = data.includes('\x1b[200~'); // bracketed paste: its newlines are content, not submits
     const text = decodeKeys(this.pending + data, rest => { this.pending = rest; });
     if (!text) return;
     this.lastKeyAt = now;
-    this.typedSinceEnter = !/[\r\n\x1b]$/.test(text);
+    for (const ch of text) {
+      if (ch === '\x1b' || ch === '\x15' || ch === '\x03') this.draftLen = 0;         // Esc, Ctrl+U, Ctrl+C clear the line
+      else if (ch === '\x7f' || ch === '\x08') this.draftLen = Math.max(0, this.draftLen - 1); // Backspace
+      else if ((ch === '\r' || ch === '\n') && !pasted) this.draftLen = 0;           // submitted
+      else this.draftLen++;
+    }
   }
   /** True when the input box is believed empty, or the user walked away mid-sentence. */
   clear(now = Date.now()): boolean {
-    // ponytail: cannot see the real input box; treat any keystroke since the last Enter/Esc as a draft
-    return !this.typedSinceEnter || now - this.lastKeyAt > this.staleMs;
+    // ponytail: cannot see the real input box; count keystrokes since the last submit as the draft
+    return this.draftLen === 0 || now - this.lastKeyAt > this.staleMs;
   }
 }
 
@@ -69,13 +91,22 @@ export const NUDGE = '[chord] You have new messages from other agents; they are 
 
 export type Action = 'nudge' | 'enter' | null;
 
-/** What the idle-wake loop should do this tick. Messages stay in the inbox until the
- *  UserPromptSubmit hook takes them, so a lost keystroke is retried, never dropped. */
-export function nextAction(s: { status: string | undefined; unread: boolean; gateClear: boolean; nudgedAt: number }, now: number): Action {
+/** What the idle-wake loop should do this tick. Messages stay in the inbox until the UserPromptSubmit hook
+ *  takes them, so a lost keystroke is retried, never dropped. `nudgedAt` is when the nudge text was typed,
+ *  `enteredAt` when Enter was last pressed; only a fresh nudge resets the former. */
+export function nextAction(s: { status: string | undefined; unread: boolean; gateClear: boolean; nudgedAt: number; enteredAt: number }, now: number): Action {
   if (s.status !== 'idle' || !s.unread || !s.gateClear) return null;
   if (!s.nudgedAt || now - s.nudgedAt > 30_000) return 'nudge'; // first try, or the typed text was lost
-  if (now - s.nudgedAt > 5_000) return 'enter'; // typed but not submitted: press Enter again
+  if (now - s.enteredAt > 5_000) return 'enter'; // typed but not submitted: press Enter again
   return null;
+}
+
+/** Codex reports its state to the terminal as OSC 7501 ("state=idle" / "state=working"); Claude Code does not. */
+export function oscState(chunk: string): 'idle' | 'busy' | null {
+  const m = /\x1b\]7501;state=(\w+)/g;
+  let last: 'idle' | 'busy' | null = null;
+  for (const x of chunk.matchAll(m)) last = x[1] === 'idle' ? 'idle' : 'busy';
+  return last;
 }
 
 export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<number> {
@@ -88,7 +119,15 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   const d = db.openDb(launch.dbFile);
   db.addAgent(d, { name: launch.name, tool, pid: term.pid, cwd: launch.cwd, worktree: launch.worktree });
 
-  term.onData(x => process.stdout.write(x));
+  let outTail = '';
+  term.onData(x => {
+    process.stdout.write(x);
+    if (tool === 'codex') { // the hooks set status too; the terminal report catches turns the hooks miss (Esc, untrusted hooks)
+      const state = oscState(outTail + x);
+      if (state) db.setStatus(d, launch.name, state);
+      outTail = x.slice(-64);
+    }
+  });
   const gate = new InputGate();
   const onKey = (x: Buffer) => { const s = x.toString(); if (process.env.CHORD_DEBUG_STDIN) db.log(`stdin ${JSON.stringify(s)}`); gate.onUserInput(s); term.write(s); };
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
@@ -98,18 +137,21 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   process.stdout.on('resize', onResize);
 
   Object.assign(process.env, launch.env); // so the wrapper writes to the same chord.db.log as the hooks
-  let nudgedAt = 0, lastState = '';
+  let nudgedAt = 0, enteredAt = 0, lastState = '';
   const timer = setInterval(() => {
     const status = db.getAgent(d, launch.name)?.status;
-    if (status !== 'idle') nudgedAt = 0;
-    const s = { status, unread: db.hasUnread(d, launch.name), gateClear: gate.clear(), nudgedAt };
+    if (status !== 'idle') nudgedAt = enteredAt = 0;
+    const s = { status, unread: db.hasUnread(d, launch.name), gateClear: gate.clear(), nudgedAt, enteredAt };
     const action = nextAction(s, Date.now());
     const state = `${status}/${s.unread}/${s.gateClear}/${action}`;
     if (state !== lastState) { db.log(`wake loop: status=${status} unread=${s.unread} gateClear=${s.gateClear} action=${action}`); lastState = state; }
     if (!action) return;
-    nudgedAt = Date.now();
-    if (action === 'nudge') { term.write(NUDGE); setTimeout(() => term.write('\r'), 1000); } // Enter must arrive separately or the TUI treats it as pasted text
-    else term.write('\r');
+    if (action === 'nudge') {
+      nudgedAt = enteredAt = Date.now();
+      term.write(NUDGE);
+      // Enter must arrive separately or the TUI treats it as pasted text; skip it if the user started typing meanwhile
+      setTimeout(() => { if (gate.clear()) { term.write('\r'); enteredAt = Date.now(); } }, 1000);
+    } else { enteredAt = Date.now(); term.write('\r'); }
   }, 1000);
 
   return new Promise(resolve => {

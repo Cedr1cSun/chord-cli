@@ -26,9 +26,8 @@ test('session-start sets busy and briefs with peers and claims', () => {
   const { d, ctx } = setup();
   db.setTask(d, 'b', 'write tests', 'test/');
   db.addClaim(d, { agent: 'b', file: 'test/x.test.ts', intent: 'cover parser', kind: 'add' });
-  db.setStatus(d, 'a', 'idle');
   const out = (handleHook(ctx('a'), 'claude', 'session-start', {}) as any).hookSpecificOutput.additionalContext as string;
-  assert.equal(db.getAgent(d, 'a')!.status, 'busy');
+  assert.equal(db.getAgent(d, 'a')!.status, 'idle'); // waiting for its first prompt
   assert.match(out, /You are agent "a"/);
   assert.match(out, /- b \(codex, busy\): write tests \[test\/\]/);
   assert.match(out, /- test\/x.test.ts <- b: add, cover parser/);

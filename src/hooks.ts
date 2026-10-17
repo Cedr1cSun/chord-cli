@@ -65,7 +65,8 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
   db.sweep(ctx.db);
   switch (event) {
     case 'session-start':
-      db.setStatus(ctx.db, ctx.agent, 'busy');
+      // the agent now waits for its first prompt: idle, so messages that arrive before the user types still wake it
+      db.setStatus(ctx.db, ctx.agent, 'idle');
       return context('SessionStart', briefing(ctx));
 
     case 'user-prompt-submit': {

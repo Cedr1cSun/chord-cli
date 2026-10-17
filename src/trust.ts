@@ -38,6 +38,18 @@ export function pretrustClaude(workspace: string, file = claudeConfigPath()): bo
   return true;
 }
 
+/** Which of a repository's .mcp.json servers the user has approved or rejected in Claude Code, and whether they
+ *  approved them all at once. Claude asks per server when it runs in the repository; chord has no prompt, so it only
+ *  starts what the user has already approved there. */
+export function claudeMcpChoices(dir: string, file = claudeConfigPath()): { all: boolean; enabled: string[]; disabled: string[] } {
+  try {
+    const projects = JSON.parse(fs.readFileSync(file, 'utf8')).projects ?? {};
+    const key = Object.keys(projects).find(k => norm(k) === norm(dir));
+    const p = key ? projects[key] : {};
+    return { all: p.enableAllProjectMcpServers === true, enabled: p.enabledMcpjsonServers ?? [], disabled: p.disabledMcpjsonServers ?? [] };
+  } catch { return { all: false, enabled: [], disabled: [] }; }
+}
+
 export const codexConfigPath = () => path.join(os.homedir(), '.codex', 'config.toml');
 
 /** Codex keeps a trust hash and an on/off switch per hook in ~/.codex/config.toml. One keypress in its

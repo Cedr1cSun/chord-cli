@@ -223,13 +223,16 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   fs.mkdirSync(path.join(wt, '.claude'));
   fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'] }, env: { A: 'json', B: 'json' }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo theirs' }] }], PreCompact: [{ hooks: [{ type: 'command', command: 'echo pc' }] }] } }));
   fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', env: { A: 'local' }, disableAllHooks: true, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo local' }] }] } }));
-  fs.writeFileSync(path.join(wt, '.mcp.json'), '{"mcpServers":{}}');
+  // three repository MCP servers: the user approved a, rejected b and never saw c; $CLAUDE_PROJECT_DIR means the worktree
+  fs.writeFileSync(path.join(wt, '.mcp.json'), JSON.stringify({ mcpServers: { a: { command: 'node', args: ['$CLAUDE_PROJECT_DIR/srv.js'] }, b: { command: 'x' }, c: { command: 'y' } } }));
+  const claudeJson = path.join(wt, 'claude.json');
+  fs.writeFileSync(claudeJson, JSON.stringify({ projects: { [wt.replace(/\\/g, '/')]: { hasTrustDialogAccepted: true, enabledMcpjsonServers: ['a'], disabledMcpjsonServers: ['b'] } } }));
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: wt };
   // without the user's trust in the repository nothing of its own rides along
   const bare = claudeArgs(env);
   assert.equal(JSON.parse(bare[bare.indexOf('--settings') + 1]).model, undefined);
-  assert.ok(!bare.some(a => a.endsWith('.mcp.json')));
-  const args = claudeArgs(env, true);
+  assert.equal(bare.filter(a => a.includes('mcpServers')).length, 1); // chord's own server only
+  const args = claudeArgs(env, { repo: wt, claudeConfig: claudeJson });
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
   assert.deepEqual(settings.permissions, { allow: ['mcp__chord', 'Bash(npm test)'] }); // chord's own tools stay pre-approved; the repository's list adds to it
   assert.equal(settings.model, 'opus');
@@ -238,15 +241,23 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   assert.deepEqual(settings.hooks.Stop.map((h: any) => h.hooks[0].command), [hookCommand('stop'), 'echo theirs', 'echo local']);
   assert.equal(settings.hooks.PreCompact[0].hooks[0].command, 'echo pc');
   assert.equal(settings.hooks.Notification[0].matcher, 'idle_prompt');
-  assert.ok(args.includes(path.join(wt, '.mcp.json')), 'repo .mcp.json passed to --mcp-config');
-  assert.ok(args.indexOf(path.join(wt, '.mcp.json')) > args.indexOf('--mcp-config'));
+  const mcpConfigs = args.filter(a => a.includes('mcpServers')).map(a => JSON.parse(a));
+  assert.equal(mcpConfigs.length, 2);
+  assert.ok(args.indexOf(args.find(a => a.includes('"a"'))!) > args.indexOf('--mcp-config'));
+  assert.deepEqual(Object.keys(mcpConfigs[1].mcpServers), ['a']); // approved only: b rejected, c never approved
+  assert.equal(mcpConfigs[1].mcpServers.a.args[0], `${wt.replace(/\\/g, '/')}/srv.js`);
+  // $CLAUDE_PROJECT_DIR in a repository hook means the worktree too
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'python "$CLAUDE_PROJECT_DIR/.claude/guard.py"' }] }] } }));
+  assert.equal(mergeProjectSettings({ hooks: {} }, wt).hooks.Stop[1].hooks[0].command, `python "${wt.replace(/\\/g, '/')}/.claude/guard.py"`);
   // a broken settings file is skipped, not fatal
   fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), '{oops');
-  assert.equal(mergeProjectSettings({ hooks: {} }, wt).model, 'opus');
+  assert.equal(mergeProjectSettings({ hooks: {} }, wt).hooks.PreCompact, undefined);
   assert.deepEqual(mergeProjectSettings({ hooks: { X: [1] } }), { hooks: { X: [1] } });
-  // without a .mcp.json nothing extra is passed
+  // a broken .mcp.json is skipped too, and without one nothing extra is passed
+  fs.writeFileSync(path.join(wt, '.mcp.json'), '{oops');
+  assert.equal(claudeArgs(env, { repo: wt, claudeConfig: claudeJson }).filter(a => a.includes('mcpServers')).length, 1);
   fs.rmSync(path.join(wt, '.mcp.json'));
-  assert.ok(!claudeArgs(env, true).some(a => a.endsWith('.mcp.json')));
+  assert.equal(claudeArgs(env, { repo: wt, claudeConfig: claudeJson }).filter(a => a.includes('mcpServers')).length, 1);
   assert.ok(!codexArgs(env).some(a => a.includes('Notification')));
 });
 

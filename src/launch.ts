@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import * as db from './db.ts';
 import { ensureStateDir, resolveProject, type Project } from './project.ts';
-import { claudeTrusts } from './trust.ts';
+import { claudeMcpChoices, claudeTrusts } from './trust.ts';
 import type { Event, Tool } from './hooks.ts';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -132,7 +132,37 @@ export const hookCommand = (event: Event) => `"${NODE}" "${HOOKS_TS}" ${event}`;
 /** `projectConfig`: also load the repository's own .claude settings and .mcp.json. Only when the user has trusted the
  *  repository in Claude Code, because Claude's trust dialogue is what normally stands between a cloned repository's
  *  hooks and MCP servers and running them. */
-export function claudeArgs(env: Record<string, string>, projectConfig = false): string[] {
+export interface ProjectConfigSource { repo: string; claudeConfig?: string }
+
+/** `$CLAUDE_PROJECT_DIR` in a repository's hook commands and MCP definitions means the repository, which for an agent
+ *  is its worktree; Claude would point it at the workspace. */
+export function substituteProjectDir<T>(value: T, worktree: string): T {
+  const dir = worktree.split(path.sep).join('/');
+  const walk = (v: unknown): unknown => {
+    if (typeof v === 'string') return v.replace(/\$\{CLAUDE_PROJECT_DIR\}|\$CLAUDE_PROJECT_DIR/g, dir);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+    return v;
+  };
+  return walk(value) as T;
+}
+
+/** The repository's .mcp.json as an --mcp-config value, reduced to the servers the user approved in Claude Code, or
+ *  null when there is nothing to pass. */
+export function projectMcpConfig(worktree: string, source: ProjectConfigSource): string | null {
+  const file = path.join(worktree, '.mcp.json');
+  if (!fs.existsSync(file)) return null;
+  let parsed: { mcpServers?: Record<string, unknown> };
+  try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { process.stderr.write(`chord: ${file} is not valid JSON (${(e as Error).message}); its servers are not loaded\n`); return null; }
+  const servers = parsed?.mcpServers ?? {};
+  const choice = claudeMcpChoices(source.repo, source.claudeConfig);
+  const keep = Object.fromEntries(Object.entries(servers).filter(([name]) => !choice.disabled.includes(name) && (choice.all || choice.enabled.includes(name))));
+  const skipped = Object.keys(servers).filter(n => !(n in keep));
+  if (skipped.length) process.stderr.write(`chord: not starting the repository's MCP server(s) ${skipped.join(', ')}: run claude in ${source.repo} once and approve them there first\n`);
+  return Object.keys(keep).length ? JSON.stringify({ mcpServers: substituteProjectDir(keep, worktree) }) : null;
+}
+
+export function claudeArgs(env: Record<string, string>, projectConfig: boolean | ProjectConfigSource = false): string[] {
   const hooks: Record<string, unknown[]> = {};
   for (const e of EVENTS) {
     hooks[e.claude] = [{
@@ -148,8 +178,10 @@ export function claudeArgs(env: Record<string, string>, projectConfig = false): 
   // own CLAUDE.md, .claude/settings*.json or .mcp.json. --add-dir covers CLAUDE.md; the others are passed along.
   const wt = env.CHORD_WORKTREE;
   const addDir = wt ? ['--add-dir', wt] : [];
-  const mcpFiles = projectConfig && wt ? [path.join(wt, '.mcp.json')].filter(f => fs.existsSync(f)) : [];
-  const settings = projectConfig ? mergeProjectSettings(ours, wt) : ours;
+  const source: ProjectConfigSource | null = projectConfig === true ? { repo: wt ?? '' } : projectConfig || null;
+  const projectMcp = source && wt ? projectMcpConfig(wt, source) : null;
+  const mcpFiles = projectMcp ? [projectMcp] : [];
+  const settings = source ? mergeProjectSettings(ours, wt) : ours;
   // --add-dir and --mcp-config take any number of values, so they must not come last: the user's own arguments
   // follow these, and a prompt such as `chord claude "fix the tests"` would be read as another directory.
   // --settings takes exactly one value and closes the list.
@@ -198,6 +230,7 @@ export function mergeProjectSettings(ours: Record<string, any>, worktree?: strin
     let one: Record<string, any>;
     try { one = JSON.parse(fs.readFileSync(path.join(worktree, '.claude', name), 'utf8')); } catch { continue; }
     if (typeof one !== 'object' || one === null) continue;
+    one = substituteProjectDir(one, worktree);
     theirs = { ...theirs, ...one, hooks: concatHooks(theirs, one) };
   }
   return mergeSettings(ours, theirs);
@@ -262,9 +295,9 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
       fs.mkdirSync(path.dirname(marker), { recursive: true });
       fs.writeFileSync(marker, `${Date.now()}\n`);
     }
-    let projectConfig = false;
+    let projectConfig: boolean | ProjectConfigSource = false;
     if (tool === 'claude' && hasProjectConfig(worktree)) {
-      projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir);
+      projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir) ? { repo: project.repo } : false;
       if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
     }
     return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env, [path.join(project.repo, '.git')]) };

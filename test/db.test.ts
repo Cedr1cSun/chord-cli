@@ -104,11 +104,11 @@ test('only the wrapper brings an agent back from offline: hooks cannot, the hear
   db.setStatus(d, 'a', 'idle'); // a Stop hook that outlived its killed agent
   assert.equal(db.getAgent(d, 'a')!.status, 'offline');
   db.heartbeat(d, 'a');
+  assert.equal(db.getAgent(d, 'a')!.status, 'busy'); // revived as busy: it may have been working the whole time
+  db.setStatus(d, 'a', 'idle');
   assert.equal(db.getAgent(d, 'a')!.status, 'idle');
-  db.setStatus(d, 'a', 'busy');
-  assert.equal(db.getAgent(d, 'a')!.status, 'busy');
   db.heartbeat(d, 'a');
-  assert.equal(db.getAgent(d, 'a')!.status, 'busy'); // a heartbeat never changes a live agent's status
+  assert.equal(db.getAgent(d, 'a')!.status, 'idle'); // a heartbeat never changes a live agent's status
 });
 
 test('sweep: when every heartbeat is stale the machine slept, so nobody is killed for it', () => {

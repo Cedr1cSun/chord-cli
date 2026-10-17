@@ -192,7 +192,9 @@ export const HEARTBEAT_STALE_MS = 30_000;
  *  marked offline (a machine asleep for over 30 s looks dead to the first sweep after waking). Claims are gone by
  *  then; the agent claims again when it next writes. */
 export function heartbeat(db: DatabaseSync, name: string): void {
-  db.prepare(`update agents set heartbeat_at = ?, status = case when status = 'offline' then 'idle' else status end where name = ?`).run(Date.now(), name);
+  // revived as busy, the safe direction: a wake-up or a stop must not be typed into an agent that was in fact
+  // working all along; the next Stop, idle report or idle_prompt makes it idle again
+  db.prepare(`update agents set heartbeat_at = ?, status = case when status = 'offline' then 'busy' else status end where name = ?`).run(Date.now(), name);
 }
 
 /** Mark agents whose process is gone as offline and drop their claims. Returns the names swept. A missing

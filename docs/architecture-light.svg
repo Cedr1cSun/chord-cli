@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 432" width="880" height="432">
+  <defs>
+    <style>
+      text { font-family: ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; }
+      .card { fill: #ffffff; stroke: #e4e4e7; stroke-width: 1; }
+      .name { fill: #18181b; font-size: 15px; font-weight: 600; }
+      .lbl { fill: #52525b; font-size: 13px; font-weight: 500; }
+      .sub { fill: #6b7280; font-size: 13px; }
+      .chip { fill: #f6f6f8; stroke: #e4e4e7; stroke-width: 1; }
+      .chipt { fill: #6b7280; font-size: 13px; }
+      .cluster { fill: #5e6ad2; fill-opacity: .045; stroke: #5e6ad2; stroke-opacity: .35; stroke-width: 1; }
+      .pill { fill: #ffffff; stroke: #5e6ad2; stroke-opacity: .45; stroke-width: 1; }
+      .pillt { fill: #4f5bc4; font-size: 13px; font-weight: 500; }
+      .tile { fill: #5e6ad2; fill-opacity: .1; }
+      .glyph { fill: none; stroke: #5e6ad2; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+      .gdot { fill: #5e6ad2; }
+      .wire { fill: none; stroke: #5e6ad2; stroke-width: 1.25; }
+      .head { fill: #5e6ad2; }
+      .more { fill: #5e6ad2; fill-opacity: .55; }
+    </style>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="180%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#18181b" flood-opacity=".06"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#18181b" flood-opacity=".05"/>
+    </filter>
+  </defs>
+
+  <!-- you -->
+  <rect class="card" x="16" y="196" width="104" height="64" rx="10" filter="url(#shadow)"/>
+  <rect class="tile" x="32" y="212" width="32" height="32" rx="8"/>
+  <circle class="glyph" cx="48" cy="224" r="3"/>
+  <path class="glyph" d="M42.5 235a5.5 5.5 0 0 1 11 0"/>
+  <text class="name" x="76" y="233">you</text>
+
+  <!-- you -> cluster -->
+  <text class="lbl" x="160" y="218" text-anchor="middle">tasks</text>
+  <path class="wire" d="M120 228H193"/>
+  <path class="head" d="M200 228L193 224.5V231.5Z"/>
+
+  <!-- cluster -->
+  <rect class="cluster" x="200" y="52" width="320" height="340" rx="16"/>
+  <rect class="pill" x="219" y="39" width="282" height="26" rx="13"/>
+  <text class="pillt" x="360" y="56.5" text-anchor="middle">one project · N agents · one worktree each</text>
+
+  <g id="agent1">
+    <rect class="card" x="224" y="92" width="272" height="64" rx="10" filter="url(#shadow)"/>
+    <rect class="tile" x="240" y="108" width="32" height="32" rx="8"/>
+    <path class="glyph" d="M250 119L254.5 124L250 129M257 129H262"/>
+    <text class="name" x="284" y="129">agent 1</text>
+    <rect class="chip" x="396" y="112" width="84" height="24" rx="12"/>
+    <text class="chipt mono" x="438" y="128.5" text-anchor="middle">worktree</text>
+  </g>
+  <g id="agent2">
+    <rect class="card" x="224" y="196" width="272" height="64" rx="10" filter="url(#shadow)"/>
+    <rect class="tile" x="240" y="212" width="32" height="32" rx="8"/>
+    <path class="glyph" d="M250 223L254.5 228L250 233M257 233H262"/>
+    <text class="name" x="284" y="233">agent 2</text>
+    <rect class="chip" x="396" y="216" width="84" height="24" rx="12"/>
+    <text class="chipt mono" x="438" y="232.5" text-anchor="middle">worktree</text>
+  </g>
+  <circle class="more" cx="360" cy="272" r="2"/>
+  <circle class="more" cx="360" cy="280" r="2"/>
+  <circle class="more" cx="360" cy="288" r="2"/>
+  <g id="agentN">
+    <rect class="card" x="224" y="300" width="272" height="64" rx="10" filter="url(#shadow)"/>
+    <rect class="tile" x="240" y="316" width="32" height="32" rx="8"/>
+    <path class="glyph" d="M250 327L254.5 332L250 337M257 337H262"/>
+    <text class="name" x="284" y="337">agent N</text>
+    <rect class="chip" x="396" y="320" width="84" height="24" rx="12"/>
+    <text class="chipt mono" x="438" y="336.5" text-anchor="middle">worktree</text>
+  </g>
+
+  <!-- cluster <-> shared board -->
+  <text class="lbl" x="600" y="159" text-anchor="middle">claims · messages</text>
+  <path class="wire" d="M520 171H673"/>
+  <path class="head" d="M680 171L673 167.5V174.5Z"/>
+  <path class="wire" d="M680 181H527"/>
+  <path class="head" d="M520 181L527 177.5V184.5Z"/>
+
+  <!-- shared board -->
+  <rect class="card" x="680" y="144" width="184" height="64" rx="10" filter="url(#shadow)"/>
+  <rect class="tile" x="696" y="160" width="32" height="32" rx="8"/>
+  <circle class="gdot" cx="706" cy="171" r="1.3"/>
+  <circle class="gdot" cx="706" cy="176" r="1.3"/>
+  <circle class="gdot" cx="706" cy="181" r="1.3"/>
+  <path class="glyph" d="M710 171H719M710 176H719M710 181H716"/>
+  <text class="name" x="740" y="181">shared board</text>
+
+  <!-- cluster -> main -->
+  <text class="lbl" x="600" y="270" text-anchor="middle">finish</text>
+  <path class="wire" d="M520 280H673"/>
+  <path class="head" d="M680 280L673 276.5V283.5Z"/>
+  <text class="sub" x="600" y="299" text-anchor="middle">rebase · fast-forward</text>
+
+  <!-- main -->
+  <rect class="card" x="680" y="248" width="184" height="64" rx="10" filter="url(#shadow)"/>
+  <rect class="tile" x="696" y="264" width="32" height="32" rx="8"/>
+  <circle class="glyph" cx="709" cy="274" r="2"/>
+  <circle class="glyph" cx="709" cy="286" r="2"/>
+  <circle class="glyph" cx="716" cy="274" r="2"/>
+  <path class="glyph" d="M709 276V284M716 276C716 280.5 709 279.5 709 284"/>
+  <text class="name" x="740" y="285">main</text>
+</svg>

@@ -38,19 +38,12 @@ A new agent needs three things from its tool: a way to inject hooks and an MCP s
 
 ## 🧩 How it works
 
-```mermaid
-flowchart LR
-  you([you]) -->|tasks| A1
-  you -->|tasks| A2
-  you -->|tasks| A3
-  subgraph cluster["one project, N agents, one worktree each"]
-    A1[agent 1]
-    A2[agent 2]
-    A3[agent N]
-  end
-  A1 & A2 & A3 <-->|claims · messages| board[(shared board)]
-  A1 & A2 & A3 -->|finish| main[(main)]
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
+    <img alt="you hand tasks to a cluster of agents, one worktree each; the agents share a board of claims and messages and finish into main" src="docs/architecture-light.svg" width="100%">
+  </picture>
+</p>
 
 1. **Isolation.** Every agent works on its own branch in its own worktree. The main checkout changes through `finish` alone.
 2. **Coordination.** A shared board holds claims, messages and events. Agents register, claim and talk through tools chord gives them; hooks check claims before each write and hand new messages to the agent as it works.

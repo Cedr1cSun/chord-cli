@@ -107,6 +107,6 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
   const name = pickName(d, tool, project.dir, override);
   const ws = workspacePath(project, name);
   const worktree = ensureWorktree(project.repo, path.join(ws, project.repoName), name);
-  const env = { CHORD_AGENT_ID: name, CHORD_DB: fwd(dbFile), CHORD_TOOL: tool, CHORD_WORKTREE: fwd(worktree) };
+  const env = { CHORD_AGENT_ID: name, CHORD_DB: fwd(dbFile), CHORD_TOOL: tool, CHORD_PROJECT: fwd(project.dir), CHORD_WORKSPACE: fwd(ws), CHORD_WORKTREE: fwd(worktree) };
   return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env) : codexArgs(env) };
 }

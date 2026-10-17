@@ -86,3 +86,18 @@ test('a peer who explained their scope before the latecomer claimed counts as ha
   call('b', 'send', { to: 'a', message: 'I only touch the footer' });
   assert.equal(canWrite(ctx('b'), 'f.ts').ok, true); // a's earlier note is the reply
 });
+
+test('claimPath accepts workspace-relative and repository-relative forms and refuses paths outside the workspace', async () => {
+  const { claimPath } = await import('../src/tools.ts');
+  const ctx: Ctx = { db: db.openDb(':memory:'), agent: 'a', cwd: '/P/chord/agents/a', worktree: '/P/chord/agents/a/repo' };
+  assert.equal(claimPath(ctx, 'repo/src/x.ts'), 'repo/src/x.ts');
+  assert.equal(claimPath(ctx, 'src/x.ts'), 'repo/src/x.ts');
+  assert.equal(claimPath(ctx, 'repo'), 'repo');
+  assert.equal(claimPath(ctx, '/P/chord/agents/a/repo/src/x.ts'), 'repo/src/x.ts');
+  assert.equal(claimPath(ctx, 'notes.txt'), 'repo/notes.txt'); // bare names are repository files
+  assert.throws(() => claimPath(ctx, '../verification/x.patch'), /outside your workspace/);
+  assert.throws(() => claimPath(ctx, '/P/repo/src/x.ts'), /outside your workspace/);
+  // workspace == worktree (no repo subdirectory): everything is relative to it
+  const flat: Ctx = { db: ctx.db, agent: 'a', cwd: '/wt', worktree: '/wt' };
+  assert.equal(claimPath(flat, 'src/x.ts'), 'src/x.ts');
+});

@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import * as db from '../src/db.ts';
 import { handleHook, filesTouched } from '../src/hooks.ts';
 import type { Ctx } from '../src/tools.ts';
@@ -73,4 +75,19 @@ test('session-end goes offline and releases claims', () => {
   handleHook(ctx('a'), 'codex', 'session-end', {});
   assert.equal(db.getAgent(d, 'a')!.status, 'offline');
   assert.equal(db.claimsBy(d, 'a').length, 0);
+});
+
+test('pre-tool-use polices only the worktree and forbids other checkouts in the project', () => {
+  const d = db.openDb(':memory:');
+  const P = process.platform === 'win32' ? 'D:\\P' : '/P';
+  const cwd = `${P}/chord/agents/a`.split('/').join(path.sep);
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: `${cwd}/repo`, project: P };
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd, worktree: `${cwd}/repo` });
+  const write = (file_path: string) => handleHook(ctx, 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path } }) as any;
+  assert.match(write(`${cwd}/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /not claimed/); // inside the worktree: needs a claim
+  assert.equal(write(`${cwd}/notes.md`), undefined); // workspace scratch file outside the repo: not policed
+  assert.match(write(`${P}/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /outside your workspace/); // the main checkout
+  assert.match(write(`${P}/chord/agents/b/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /outside your workspace/); // another agent
+  assert.equal(write(os.tmpdir() + '/scratch.txt'), undefined); // elsewhere: not ours
+  if (process.platform === 'win32') assert.equal(write('C:\\elsewhere\\x.txt'), undefined); // another drive is not "inside" anything
 });

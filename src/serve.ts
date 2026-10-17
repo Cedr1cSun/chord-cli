@@ -9,5 +9,5 @@ if (!agent || !file) {
   process.stderr.write('chord: CHORD_AGENT_ID and CHORD_DB must be set\n');
   process.exit(2);
 }
-const cwd = process.cwd();
-serve(tools({ db: openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd }));
+const cwd = process.env.CHORD_WORKSPACE ?? process.cwd();
+serve(tools({ db: openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd, project: process.env.CHORD_PROJECT }));

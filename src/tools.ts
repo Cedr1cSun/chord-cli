@@ -5,8 +5,31 @@ import path from 'node:path';
 import * as db from './db.ts';
 import type { Tool } from './mcp.ts';
 
-/** cwd is the agent's workspace (claims are relative to it); worktree is the repository checkout inside it. */
-export interface Ctx { db: DatabaseSync; agent: string; cwd: string; worktree: string }
+/** cwd is the agent's workspace (claims are relative to it); worktree is the repository checkout inside it;
+ *  project, when known, is the project folder that holds the main checkout and every agent's workspace. */
+export interface Ctx { db: DatabaseSync; agent: string; cwd: string; worktree: string; project?: string }
+
+/** Is `file` inside `dir`? False for paths on another drive or above it. */
+export function insideDir(dir: string, file: string): boolean {
+  const rel = path.relative(dir, path.resolve(dir, file));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+/**
+ * The claim key for a path an agent names: workspace-relative with forward slashes. Absolute paths and
+ * paths starting with the repository directory are taken as given; any other relative path is read as
+ * repository-relative (what the schema used to say, and what agents working inside the repo naturally
+ * write). Paths outside the workspace are refused: chord cannot coordinate them.
+ */
+export function claimPath(ctx: Ctx, file: string): string {
+  const repoDir = path.relative(ctx.cwd, ctx.worktree).split(path.sep).join('/');
+  const asGiven = normFile(ctx, file);
+  const abs = path.isAbsolute(file) || !repoDir || repoDir === '.' || asGiven === repoDir || asGiven.startsWith(repoDir + '/') || /^\.\.(\/|$)/.test(asGiven)
+    ? path.resolve(ctx.cwd, file)
+    : path.resolve(ctx.worktree, file);
+  if (!insideDir(ctx.cwd, abs)) throw new Error(`${file} is outside your workspace; chord only coordinates files under ${ctx.cwd}`);
+  return normFile(ctx, abs);
+}
 
 /** How long a latecomer waits for replies before it may write anyway. */
 export const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -146,7 +169,7 @@ export function tools(ctx: Ctx): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          file: str('Path relative to the worktree root'),
+          file: str('The file, as a path from your working directory (e.g. <repo>/src/x.ts) or relative to the repository root (src/x.ts)'),
           intent: str('One sentence: what you will change and why'),
           kind: { type: 'string', enum: ['add', 'modify', 'delete', 'rename'] },
           symbols: str('Optional: functions or blocks you will touch'),
@@ -154,7 +177,7 @@ export function tools(ctx: Ctx): Tool[] {
         required: ['file', 'intent', 'kind'],
       },
       handler: a => {
-        const file = normFile(ctx, req(a, 'file'));
+        const file = claimPath(ctx, req(a, 'file'));
         const kind = req(a, 'kind');
         if (!['add', 'modify', 'delete', 'rename'].includes(kind)) throw new Error('kind must be add, modify, delete or rename');
         db.addClaim(ctx.db, { agent: ctx.agent, file, intent: req(a, 'intent'), kind, symbols: typeof a.symbols === 'string' ? a.symbols : null });
@@ -172,8 +195,8 @@ export function tools(ctx: Ctx): Tool[] {
     {
       name: 'release',
       description: 'Drop your claim on a file you no longer intend to change.',
-      inputSchema: { type: 'object', properties: { file: str('Path relative to the worktree root') }, required: ['file'] },
-      handler: a => { db.removeClaim(ctx.db, ctx.agent, normFile(ctx, req(a, 'file'))); return { released: normFile(ctx, req(a, 'file')) }; },
+      inputSchema: { type: 'object', properties: { file: str('The file, as given to claim()') }, required: ['file'] },
+      handler: a => { const file = claimPath(ctx, req(a, 'file')); db.removeClaim(ctx.db, ctx.agent, file); return { released: file }; },
     },
     {
       name: 'send',

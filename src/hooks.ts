@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import * as db from './db.ts';
 import { patchFiles } from './patch.ts';
-import { canWrite, normFile, type Ctx } from './tools.ts';
+import { canWrite, insideDir, normFile, type Ctx } from './tools.ts';
 
 export type Event = 'session-start' | 'user-prompt-submit' | 'pre-tool-use' | 'post-tool-use' | 'stop' | 'session-end';
 export type Tool = 'claude' | 'codex';
@@ -37,7 +37,7 @@ export function briefing(ctx: Ctx): string {
   const claims = db.allClaims(ctx.db);
   const repoDir = path.relative(ctx.cwd, ctx.worktree) || '.';
   const lines = [
-    `You are agent "${ctx.agent}" (${me?.tool ?? 'unknown'}), one of several coding agents working on the same project. Your working directory is your own workspace; the repository is the directory "${repoDir}" inside it, a git worktree on your own branch. Run git commands inside "${repoDir}". Other agents have their own worktrees of the same repository. Coordination goes through the "chord" MCP tools.`,
+    `You are agent "${ctx.agent}" (${me?.tool ?? 'unknown'}), one of several coding agents working on the same project. Your working directory is your own workspace; the repository is the directory "${repoDir}" inside it, a git worktree on your own branch. Run git commands inside "${repoDir}". Name files as paths from your working directory, e.g. "${repoDir}/src/x.ts" (claim() also accepts repository-relative paths like "src/x.ts"). Other agents have their own worktrees of the same repository; never edit files outside your workspace. Coordination goes through the "chord" MCP tools.`,
     '',
     'Rules:',
     '1. First thing: call register(task, scope) to say what you are doing.',
@@ -76,7 +76,14 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
 
     case 'pre-tool-use': {
       for (const f of filesTouched(tool, payload)) {
-        if (normFile(ctx, f).startsWith('..')) continue; // outside the worktree, not ours to police
+        const abs = path.resolve(ctx.cwd, f);
+        if (!insideDir(ctx.worktree, abs)) {
+          // the main checkout and the other agents' workspaces are off limits; anything else is not ours to police
+          if (ctx.project && insideDir(ctx.project, abs) && !insideDir(ctx.cwd, abs)) {
+            return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `${f} is outside your workspace: edit files only inside your own worktree ${ctx.worktree}` } };
+          }
+          continue;
+        }
         const check = canWrite(ctx, f);
         if (!check.ok) {
           return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: check.reason } };
@@ -123,8 +130,9 @@ async function main(): Promise<void> {
   for await (const chunk of process.stdin) raw += chunk;
   let payload: Record<string, any> = {};
   try { payload = JSON.parse(raw); } catch { /* no payload */ }
-  const cwd = typeof payload.cwd === 'string' ? payload.cwd : process.cwd();
-  const ctx: Ctx = { db: db.openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd };
+  // the workspace is fixed per agent; the tool's own cwd moves when the agent runs `cd`, so it is not used as the base
+  const cwd = process.env.CHORD_WORKSPACE ?? (typeof payload.cwd === 'string' ? payload.cwd : process.cwd());
+  const ctx: Ctx = { db: db.openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd, project: process.env.CHORD_PROJECT };
   const out = handleHook(ctx, tool, event, payload);
   db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `${typeof out === 'string' ? 'text' : 'json'} ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
   if (out !== undefined) process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out));

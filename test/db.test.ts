@@ -111,6 +111,21 @@ test('only the wrapper brings an agent back from offline: hooks cannot, the hear
   assert.equal(db.getAgent(d, 'a')!.status, 'busy'); // a heartbeat never changes a live agent's status
 });
 
+test('sweep: when every heartbeat is stale the machine slept, so nobody is killed for it', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/', heartbeat: true });
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: 2, cwd: '/', heartbeat: true });
+  const t = Date.now();
+  d.prepare('update agents set heartbeat_at = ?').run(t - db.HEARTBEAT_STALE_MS - 5000);
+  assert.deepEqual(db.sweep(d, () => true, t), []); // both stale: asleep, not dead
+  assert.deepEqual(db.sweep(d, pid => pid !== 2, t), ['b']); // a missing pid still counts
+  db.heartbeat(d, 'a');
+  assert.deepEqual(db.sweep(d, () => true, Date.now()), []); // b already offline; a fresh
+  db.addAgent(d, { name: 'c', tool: 'codex', pid: 3, cwd: '/', heartbeat: true });
+  d.prepare("update agents set heartbeat_at = ? where name = 'c'").run(t - db.HEARTBEAT_STALE_MS - 5000);
+  assert.deepEqual(db.sweep(d, () => true, Date.now()), ['c']); // one stale among fresh ones: dead
+});
+
 test('openDb upgrades a database from before heartbeat_at and keeps its rows', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-mig-')), 'chord.db');
   const old = new DatabaseSync(file);

@@ -188,7 +188,14 @@ export function heartbeat(db: DatabaseSync, name: string): void {
 /** Mark agents whose process is gone as offline and drop their claims. Returns the names swept. A missing
  *  process or a stale heartbeat both count: Windows reuses pids quickly, so the pid alone can lie. */
 export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAlive, now = Date.now()): string[] {
-  const dead = listAgents(db).filter(a => a.status !== 'offline' && (!alive(a.pid) || (a.heartbeat_at !== null && now - a.heartbeat_at > HEARTBEAT_STALE_MS))).map(a => a.name);
+  const online = listAgents(db).filter(a => a.status !== 'offline');
+  // Every heartbeat stale at once means the machine was asleep, not that everyone died: judge by pid alone then.
+  // ponytail: a lone dead agent whose pid was reused is therefore missed until a second agent comes online.
+  const beating = online.filter(a => a.heartbeat_at !== null);
+  const stale = (a: Agent) => a.heartbeat_at !== null && now - a.heartbeat_at > HEARTBEAT_STALE_MS;
+  const slept = beating.length > 0 && beating.every(stale);
+  if (slept) log('sweep: every heartbeat is stale, the machine was probably asleep; judging by pid only');
+  const dead = online.filter(a => !alive(a.pid) || (!slept && stale(a))).map(a => a.name);
   for (const name of dead) {
     log(`sweep: ${name} marked offline, claims released`);
     setStatus(db, name, 'offline');

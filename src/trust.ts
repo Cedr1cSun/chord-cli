@@ -28,3 +28,23 @@ export function pretrustClaude(workspace: string, file = claudeConfigPath()): bo
   fs.renameSync(tmp, file);
   return true;
 }
+
+export const codexConfigPath = () => path.join(os.homedir(), '.codex', 'config.toml');
+
+/** Codex keeps a trust hash and an on/off switch per hook in ~/.codex/config.toml. One keypress in its
+ *  "Hooks need review" screen switches a hook off, and chord then silently loses the feature behind it, so
+ *  chord names the switched-off hooks at launch. Returns Codex event names such as "session_start". */
+export function disabledCodexHooks(file = codexConfigPath()): string[] {
+  let text: string;
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return []; }
+  const off: string[] = [];
+  let event: string | null = null; // the chord hook whose [hooks.state...] table we are in, if any
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith('[')) {
+      const m = /^\[hooks\.state\.['"].*<session-flags>.*:([a-z_]+):\d+:\d+['"]\]/.exec(line);
+      event = m ? m[1] : null;
+    } else if (event && /^enabled\s*=\s*false\b/.test(line)) off.push(event);
+  }
+  return off;
+}

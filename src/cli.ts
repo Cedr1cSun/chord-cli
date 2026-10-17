@@ -11,7 +11,7 @@ import * as db from './db.ts';
 import { prepare } from './launch.ts';
 import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
 import { resolveCommand, run } from './pty.ts';
-import { pretrustClaude } from './trust.ts';
+import { disabledCodexHooks, pretrustClaude } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
 const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord clean [--force] [agent...]\n';
@@ -111,6 +111,10 @@ async function main(argv: string[]): Promise<number> {
   }
   process.stderr.write(`chord: agent ${launch.name} in ${launch.cwd}\n`);
   if (cmd === 'claude') pretrustClaude(launch.cwd); // otherwise every new workspace asks "do you trust this folder?"
+  if (cmd === 'codex') {
+    const off = disabledCodexHooks();
+    if (off.length) process.stderr.write(`chord: Codex has chord's ${off.join(', ')} hook(s) switched off in ~/.codex/config.toml, so the matching chord features will not work. Remove the "enabled = false" line(s) under the [hooks.state.'...<session-flags>...'] tables to switch them back on.\n`);
+  }
   return run(cmd as Tool, launch, rest);
 }
 

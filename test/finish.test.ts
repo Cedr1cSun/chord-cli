@@ -201,3 +201,20 @@ test('finish ignores line-ending-only differences a repository shows from the mo
   db.addAgent(ctx.db, { name: 'w2', tool: 'claude', pid: process.pid, cwd: ws2, worktree: wt2 });
   assert.deepEqual(finish({ ...ctx, agent: 'w2', cwd: ws2, worktree: wt2 }).merged, ['feat: c']);
 });
+
+test('finish refuses a submodule commit that only exists inside the worktree', () => {
+  const { root, wt, ctx } = setup();
+  const subsrc = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-subsrc-')));
+  git(subsrc, 'init', '-q', '-b', 'main'); fs.writeFileSync(path.join(subsrc, 's.txt'), '1\n'); git(subsrc, 'add', '.'); git(subsrc, 'commit', '-q', '-m', 'sub init');
+  git(root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', subsrc, 'sub'); git(root, 'commit', '-q', '-m', 'add submodule');
+  git(wt, 'rebase', '-q', 'main');
+  git(wt, '-c', 'protocol.file.allow=always', 'submodule', 'update', '-q', '--init');
+  const sub = path.join(wt, 'sub');
+  fs.writeFileSync(path.join(sub, 's.txt'), '2\n'); git(sub, 'commit', '-q', '-am', 'sub change');
+  git(wt, 'add', 'sub'); git(wt, 'commit', '-q', '-m', 'bump submodule');
+  assert.throws(() => finish(ctx), /submodule .* does not have; push that commit/);
+  assert.equal(git(root, 'log', '--format=%s', '-1'), 'add submodule');
+  // once the commit is where the main checkout's submodule can see it, finish goes ahead
+  git(path.join(root, 'sub'), 'fetch', '-q', sub, 'HEAD');
+  assert.deepEqual(finish(ctx).merged, ['bump submodule']);
+});

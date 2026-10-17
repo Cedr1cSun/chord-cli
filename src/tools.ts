@@ -191,6 +191,14 @@ function finishLocked(ctx: Ctx) {
     throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${stderrOf(e)}`);
   }
   const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
+  // A submodule commit the branch points at must exist in the main checkout's copy of the submodule, or the
+  // fast-forward leaves main pointing at a commit that is nowhere but inside this agent's worktree.
+  for (const line of git(root, 'diff', '--raw', main, branch).split('\n')) {
+    const m = /^:\d{6} 160000 [0-9a-f]+ ([0-9a-f]+) [AM]\t(.+)$/.exec(line);
+    if (!m) continue;
+    const [, sha, sub] = m;
+    if (!gitOk(path.join(root, sub), 'cat-file', '-e', `${sha}^{commit}`)) throw new Error(`${sub} is a submodule and your branch points it at commit ${sha.slice(0, 7)}, which the main checkout's submodule does not have; push that commit to the submodule's remote (and fetch it in ${path.join(root, sub)}) before finishing. Nothing was merged.`);
+  }
   if (!subjects.length) {
     db.log(`finish: ${branch} has nothing beyond ${main}; claims released, nothing merged`);
     db.releaseAll(ctx.db, ctx.agent, 'finish');

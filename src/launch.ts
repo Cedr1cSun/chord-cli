@@ -20,7 +20,10 @@ const here = (f: string) => fs.realpathSync.native(fileURLToPath(new URL(f, impo
 export const HOOKS_TS = here('./hooks.ts');
 export const SERVE_TS = here('./serve.ts');
 
-export function pickName(d: DatabaseSync, tool: Tool, project: string, override?: string): string {
+const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/** `staleWaitMs`: how long to watch a stale heartbeat before calling its agent dead (tests shorten it). */
+export function pickName(d: DatabaseSync, tool: Tool, project: string, override?: string, staleWaitMs = 2500): string {
   if (override) {
     if (!/^[A-Za-z0-9._-]+$/.test(override)) throw new Error('agent names may only contain letters, digits, ".", "_" and "-"');
     // the name becomes a directory and a branch: ".." would escape agents/, git refuses components starting with "."
@@ -29,7 +32,18 @@ export function pickName(d: DatabaseSync, tool: Tool, project: string, override?
     // workspace paths are case-insensitive on Windows and macOS, so names differing only in case would share one
     const clash = db.listAgents(d).find(a => a.name.toLowerCase() === override.toLowerCase());
     if (clash && clash.name !== override) throw new Error(`agent "${clash.name}" already exists; names must differ in more than case`);
-    if (clash && clash.status !== 'offline') throw new Error(`agent "${override}" is already online`);
+    if (clash && clash.status !== 'offline') {
+      // A lone agent killed outright, whose pid Windows has since handed to another process, is never swept: nobody
+      // else's heartbeat is fresh to compare with. A heartbeat that stays stale while we watch it is a dead wrapper
+      // (a live one writes every second), and this launch itself proves the machine is awake.
+      const stale = clash.heartbeat_at !== null && Date.now() - clash.heartbeat_at > db.HEARTBEAT_STALE_MS;
+      if (stale) sleepSync(staleWaitMs);
+      const again = stale ? db.getAgent(d, clash.name) : clash;
+      if (!stale || again?.heartbeat_at !== clash.heartbeat_at) throw new Error(`agent "${override}" is already online`);
+      db.log(`launch: ${override} has not had a heartbeat for ${Math.round((Date.now() - clash.heartbeat_at!) / 1000)}s; taking it for dead`);
+      db.setStatus(d, clash.name, 'offline');
+      db.releaseAll(d, clash.name, 'swept');
+    }
     return override;
   }
   // the project name makes the agent recognisable in `chord ls --all`; kept short so the worktree path stays short

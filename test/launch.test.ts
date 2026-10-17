@@ -134,6 +134,14 @@ test('pickName refuses invalid names and case-only variants of existing names', 
   assert.throws(() => pickName(d, 'codex', '/x', 'bad name'), /letters, digits/);
   assert.throws(() => pickName(d, 'codex', '/x', 'a/b'), /letters, digits/);
   for (const bad of ['..', '.', 'x.', 'a..b', 'x.lock', '.hidden', '-x', 'NUL', 'con', 'COM1', 'lpt3.txt']) assert.throws(() => pickName(d, 'codex', '/x', bad), /cannot be an agent name/, bad);
+  // a lone agent whose heartbeat stopped long ago is dead even though its (reused) pid is alive: its name is free
+  db.addAgent(d, { name: 'ghost', tool: 'codex', pid: process.pid, cwd: '/', heartbeat: true });
+  db.addClaim(d, { agent: 'ghost', file: 'g.ts', intent: 'x', kind: 'add' });
+  assert.throws(() => pickName(d, 'codex', '/x', 'ghost', 10), /already online/); // heartbeat fresh
+  d.prepare("update agents set heartbeat_at = ? where name = 'ghost'").run(Date.now() - db.HEARTBEAT_STALE_MS - 1000);
+  assert.equal(pickName(d, 'codex', '/x', 'ghost', 10), 'ghost');
+  assert.equal(db.getAgent(d, 'ghost')!.status, 'offline');
+  assert.equal(db.claimsBy(d, 'ghost').length, 0);
   assert.equal(pickName(d, 'codex', '/x', 'a.b-c_d'), 'a.b-c_d');
   assert.equal(pickName(d, 'codex', '/x', 'alice-2'), 'alice-2');
 });

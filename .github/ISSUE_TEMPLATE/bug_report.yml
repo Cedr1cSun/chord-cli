@@ -1,0 +1,51 @@
+name: Bug report
+description: Something chord did wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what chord did, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. chord claude --name api
+        2. ask it to ...
+        3. chord ls shows ...
+  - type: input
+    id: version
+    attributes:
+      label: chord version
+      description: Output of `git rev-parse --short HEAD` in your checkout, or the npm version.
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and version
+      placeholder: claude 2.1.302, codex 0.52.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: ls
+    attributes:
+      label: chord ls output
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Log excerpt
+      description: The relevant lines of `~/.chord/projects/<project>/chord.db.log`.
+      render: text

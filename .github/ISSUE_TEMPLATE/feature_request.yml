@@ -1,0 +1,19 @@
+name: Feature request
+description: Something chord should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The situation, in terms of agents, files and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What chord could do about it
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today instead

@@ -40,6 +40,8 @@ export function claimPath(ctx: Ctx, file: string): string {
 
 /** How long a latecomer waits for replies before it may write anyway. */
 export const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
+/** How long before its claim a latecomer's message to an occupant still counts as asking about that file. */
+export const ASK_WINDOW_MS = 2 * 60 * 1000;
 
 const str = (desc: string) => ({ type: 'string', description: desc });
 
@@ -84,9 +86,12 @@ export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
   const notAsked: string[] = [];
   const waiting: { agent: string; left: number }[] = [];
   for (const o of others) {
-    // only what both current sessions have said to each other counts: a relaunched peer starts afresh
+    // Only what both current sessions have said to each other counts: a relaunched peer starts afresh. And the
+    // question must belong to this claim: a message sent long before it, about something else, is not notice of
+    // the change; two minutes before the claim allows for saying hello first. The reply may be older (a peer who
+    // explained its scope in advance has answered already).
     const since = Math.max(myStart, db.getAgent(ctx.db, o.agent)?.started_at ?? 0);
-    const askedAt = db.firstMessageAt(ctx.db, ctx.agent, o.agent, since);
+    const askedAt = db.firstMessageAt(ctx.db, ctx.agent, o.agent, Math.max(since, mine.created_at - ASK_WINDOW_MS));
     if (askedAt === null) notAsked.push(o.agent);
     else if (!db.repliedSince(ctx.db, o.agent, ctx.agent, since) && now - askedAt < REPLY_TIMEOUT_MS) waiting.push({ agent: o.agent, left: REPLY_TIMEOUT_MS - (now - askedAt) });
   }

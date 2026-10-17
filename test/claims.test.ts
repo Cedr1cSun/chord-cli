@@ -154,3 +154,22 @@ test('a relaunched occupant must be told again: only both current sessions count
   db.addClaim(d, { agent: 'a', file: 'f.ts', intent: 'x', kind: 'modify' }); d.prepare("update claims set created_at = 0 where agent = 'a'").run();
   assert.match((canWrite(ctx('b'), 'f.ts', Date.now() + 6000) as any).reason, /also claimed by a/);
 });
+
+test('an old, unrelated message to the occupant is not notice of the claim; one just before it is', () => {
+  const { d, ctx, call } = setup();
+  const now = Date.now();
+  d.prepare('update agents set started_at = ?').run(now - 20 * 60 * 1000); // both sessions have been running a while
+  call('a', 'claim', { file: 'f.ts', intent: 'x', kind: 'modify' });
+  d.prepare('update claims set created_at = created_at - 1000').run();
+  call('b', 'send', { to: 'a', message: 'hi, I am working on the docs today' }); // fifteen minutes before b claims f.ts
+  d.prepare("update messages set created_at = ? where sender = 'b'").run(now - 15 * 60 * 1000);
+  call('b', 'claim', { file: 'f.ts', intent: 'y', kind: 'modify' });
+  const c = canWrite(ctx('b'), 'f.ts', now);
+  assert.equal(c.ok, false); assert.match((c as any).reason, /send each of them a message/);
+  // a message sent a minute before the claim is about it
+  call('b', 'send', { to: 'a', message: 'I am about to change f.ts too' });
+  d.prepare("update messages set created_at = ? where sender = 'b' and body like 'I am about%'").run(now - 60 * 1000);
+  assert.match((canWrite(ctx('b'), 'f.ts', now) as any).reason, /waiting for a reply from a/);
+  call('a', 'send', { to: 'b', message: 'fine' });
+  assert.equal(canWrite(ctx('b'), 'f.ts').ok, true);
+});

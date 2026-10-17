@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../src/db.ts';
-import { events, listArgs, ls, messages, stop, when } from '../src/cli.ts';
+import { ago, events, listArgs, ls, messages, stop, when } from '../src/cli.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -54,7 +54,6 @@ test('stop flags an online agent and refuses offline or unknown ones', () => {
   assert.throws(() => stop(d, 'zz'), /no such agent: zz/);
 });
 
-
 test('ls lists agents and claims, sweeping dead ones', () => {
   const d = db.openDb(':memory:');
   assert.equal(ls(d), 'no agents\n\nno claims\n');
@@ -62,9 +61,12 @@ test('ls lists agents and claims, sweeping dead ones', () => {
   db.setTask(d, 'a', 'build api', 'src/api');
   db.addAgent(d, { name: 'dead', tool: 'codex', pid: 999_999_999, cwd: '/' });
   db.addClaim(d, { agent: 'a', file: 'src/api/x.ts', intent: 'add route', kind: 'add' });
+  db.send(d, 'dead', ['a'], 'unread one');
   const out = ls(d);
-  assert.match(out, /^a\s+claude\s+busy\s+build api \[src\/api\]/m);
-  assert.match(out, /^dead\s+codex\s+offline/m);
+  assert.match(out, /^agent\s+tool\s+status\s+unread\s+active\s+branch\s+task$/m);
+  assert.match(out, /^a\s+claude\s+busy\s+1\s+\d+s\s+\?\s+build api \[src\/api\]$/m); // no repo given: branch unknown
+  assert.match(out, /^dead\s+codex\s+offline\s+0\s+\d+s\s+\?\s+-$/m);
+  assert.equal(ago(12_000), '12s'); assert.equal(ago(180_000), '3m'); assert.equal(ago(7_200_000), '2h'); assert.equal(ago(3 * 86_400_000), '3d');
   assert.match(out, /^src\/api\/x.ts\s+a\s+add\s+add route/m);
 });
 

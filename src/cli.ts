@@ -5,6 +5,7 @@
 // chord events [agent] [-n N]                             claim, release, merge and conflict history
 // chord stop <agent>                                      quit an agent once it is idle
 // chord clean [--force] [agent...]                        remove offline agents' workspaces, worktrees and branches
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -19,21 +20,14 @@ import type { Tool } from './hooks.ts';
 
 const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord messages [agent] [-n N]\n       chord events [agent] [-n N]\n       chord stop <agent>\n       chord clean [--force] [agent...]\n';
 
-export function ls(d: ReturnType<typeof db.openDb>): string {
-  db.sweep(d);
-  const agents = db.listAgents(d);
-  const claims = db.allClaims(d);
-  const out = agents.length ? agents.map(a => `${a.name.padEnd(28)} ${a.tool.padEnd(7)} ${a.status.padEnd(8)} ${a.task ?? '-'}${a.scope ? ` [${a.scope}]` : ''}`) : ['no agents'];
-  out.push('', ...(claims.length ? claims.map(c => `${c.file.padEnd(40)} ${c.agent.padEnd(28)} ${c.kind.padEnd(7)} ${c.intent}`) : ['no claims']));
-  return out.join('\n') + '\n';
-}
+const gitOut = (cwd: string, ...args: string[]): string | undefined => {
+  try { return execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return undefined; }
+};
 
-export function lsAll(): string {
-  const projects = knownProjects();
-  if (!projects.length) return 'no chord projects on this machine yet\n';
-  return projects.map(p => {
-    try { return `== ${p.dir ?? p.stateDir}\n${ls(db.openDb(p.dbFile))}`; } catch (e) { return `== ${p.dir ?? p.stateDir}\n(unreadable: ${(e as Error).message})\n`; }
-  }).join('\n');
+/** "12s", "3m", "2h", "5d": how long ago. */
+export function ago(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
 }
 
 /** Local time of day, with the date in front when it is not today. */
@@ -41,6 +35,30 @@ export function when(t: number, now = Date.now()): string {
   const d = new Date(t), pad = (n: number) => String(n).padStart(2, '0');
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   return d.toDateString() === new Date(now).toDateString() ? time : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
+}
+
+/** Agents (with unread messages, time since the last sign of life, commits on their branch not yet on main) and
+ *  claims. `repo` is the main checkout; without it the branch column shows "?". */
+export function ls(d: ReturnType<typeof db.openDb>, repo?: string, now = Date.now()): string {
+  db.sweep(d);
+  const agents = db.listAgents(d);
+  const claims = db.allClaims(d);
+  const main = repo ? gitOut(repo, 'rev-parse', '--abbrev-ref', 'HEAD') : undefined;
+  const ahead = (name: string) => { if (!repo || !main) return '?'; const n = gitOut(repo, 'rev-list', '--count', `${main}..chord/${name}`); return n === undefined ? '-' : `+${n}`; };
+  const unread = (name: string) => (d.prepare('select count(*) c from messages where recipient = ? and read_at is null').get(name) as { c: number }).c;
+  const row = (a: db.Agent) => [a.name.padEnd(28), a.tool.padEnd(7), a.status.padEnd(8), String(unread(a.name)).padEnd(6), ago(now - (a.heartbeat_at ?? a.updated_at)).padEnd(7), ahead(a.name).padEnd(6), `${a.task ?? '-'}${a.scope ? ` [${a.scope}]` : ''}`].join(' ');
+  const header = ['agent'.padEnd(28), 'tool'.padEnd(7), 'status'.padEnd(8), 'unread', 'active'.padEnd(7), 'branch', 'task'].join(' ');
+  const out = agents.length ? [header, ...agents.map(row)] : ['no agents'];
+  out.push('', ...(claims.length ? claims.map(c => `${c.file.padEnd(40)} ${c.agent.padEnd(28)} ${c.kind.padEnd(7)} ${c.intent}`) : ['no claims']));
+  return out.join('\n') + '\n';
+}
+export function lsAll(): string {
+  const projects = knownProjects();
+  if (!projects.length) return 'no chord projects on this machine yet\n';
+  const repoOf = (dir?: string) => { try { return dir ? resolveProject(dir).repo : undefined; } catch { return undefined; } };
+  return projects.map(p => {
+    try { return `== ${p.dir ?? p.stateDir}\n${ls(db.openDb(p.dbFile), repoOf(p.dir ?? undefined))}`; } catch (e) { return `== ${p.dir ?? p.stateDir}\n(unreadable: ${(e as Error).message})\n`; }
+  }).join('\n');
 }
 
 /** chord messages [agent] [-n N]: the latest messages, oldest first, one line each. */
@@ -127,7 +145,7 @@ async function main(argv: string[]): Promise<number> {
     }
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
-    process.stdout.write(ls(db.openDb(file)));
+    process.stdout.write(ls(db.openDb(file), project.repo));
     return 0;
   }
   if (cmd === 'messages' || cmd === 'events' || cmd === 'stop') {

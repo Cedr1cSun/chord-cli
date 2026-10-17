@@ -60,7 +60,7 @@ const EVENTS: { event: Event; claude: string; codex: string; matcher?: { claude:
   { event: 'session-start', claude: 'SessionStart', codex: 'SessionStart' },
   { event: 'user-prompt-submit', claude: 'UserPromptSubmit', codex: 'UserPromptSubmit' },
   { event: 'pre-tool-use', claude: 'PreToolUse', codex: 'PreToolUse', matcher: { claude: 'Edit|Write|MultiEdit|NotebookEdit', codex: '^apply_patch$' } },
-  { event: 'post-tool-use', claude: 'PostToolUse', codex: 'PostToolUse', matcher: { claude: 'Bash', codex: 'Bash' } },
+  { event: 'post-tool-use', claude: 'PostToolUse', codex: 'PostToolUse', matcher: { claude: 'Bash|PowerShell', codex: 'Bash' } },
   { event: 'stop', claude: 'Stop', codex: 'Stop' },
   { event: 'session-end', claude: 'SessionEnd', codex: 'SessionEnd', timeout: 10 },
 ];

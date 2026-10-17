@@ -24,7 +24,7 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
   return [];
 }
 
-const isShell = (name: unknown) => /^(bash|shell|exec|exec_command|local_shell)$/i.test(String(name ?? ''));
+const isShell = (name: unknown) => /^(bash|powershell|shell|exec|exec_command|local_shell)$/i.test(String(name ?? ''));
 
 export function formatMessages(ms: db.Message[]): string {
   return ms.map(m => `[chord] message from ${m.sender} at ${new Date(m.created_at).toISOString().slice(11, 16)}:\n${m.body}`).join('\n\n');

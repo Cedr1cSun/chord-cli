@@ -158,7 +158,11 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo local' }] }] } }));
   fs.writeFileSync(path.join(wt, '.mcp.json'), '{"mcpServers":{}}');
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: wt };
-  const args = claudeArgs(env);
+  // without the user's trust in the repository nothing of its own rides along
+  const bare = claudeArgs(env);
+  assert.equal(JSON.parse(bare[1]).model, undefined);
+  assert.ok(!bare.some(a => a.endsWith('.mcp.json')));
+  const args = claudeArgs(env, true);
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
   assert.deepEqual(settings.permissions, { allow: ['Bash(npm test)'] });
   assert.equal(settings.model, 'opus');
@@ -173,7 +177,7 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   assert.deepEqual(mergeProjectSettings({ hooks: { X: [1] } }), { hooks: { X: [1] } });
   // without a .mcp.json nothing extra is passed
   fs.rmSync(path.join(wt, '.mcp.json'));
-  assert.ok(!claudeArgs(env).some(a => a.endsWith('.mcp.json')));
+  assert.ok(!claudeArgs(env, true).some(a => a.endsWith('.mcp.json')));
   assert.ok(!codexArgs(env).some(a => a.includes('Notification')));
 });
 

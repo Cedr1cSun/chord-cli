@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { disabledCodexHooks, pretrustClaude } from '../src/trust.ts';
+import { claudeTrusts, disabledCodexHooks, pretrustClaude } from '../src/trust.ts';
 
 test('pretrustClaude adds a trusted project entry and leaves the rest of the file alone', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-trust-')), 'claude.json');
@@ -54,4 +54,14 @@ test('disabledCodexHooks names the chord hooks switched off in Codex\'s config',
   ].join('\n'));
   assert.deepEqual(disabledCodexHooks(file), ['post_tool_use', 'session_start']);
   assert.deepEqual(disabledCodexHooks(path.join(path.dirname(file), 'missing.toml')), []);
+});
+
+test('claudeTrusts reads the trust answer for a folder in either path form', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-trust2-')), 'claude.json');
+  fs.writeFileSync(file, JSON.stringify({ projects: { 'D:/p/repo': { hasTrustDialogAccepted: true }, 'D:/p/other': { hasTrustDialogAccepted: false } } }));
+  assert.equal(claudeTrusts('D:\\p\\repo', file), true);
+  assert.equal(claudeTrusts('d:/P/REPO', file), true);
+  assert.equal(claudeTrusts('D:/p/other', file), false);
+  assert.equal(claudeTrusts('D:/p/unknown', file), false);
+  assert.equal(claudeTrusts('D:/p/repo', path.join(path.dirname(file), 'missing.json')), false);
 });

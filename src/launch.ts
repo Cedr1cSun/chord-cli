@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import * as db from './db.ts';
 import { ensureStateDir, resolveProject, type Project } from './project.ts';
+import { claudeTrusts } from './trust.ts';
 import type { Event, Tool } from './hooks.ts';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -70,7 +71,10 @@ const EVENTS: { event: Event; claude: string; codex?: string; matcher?: { claude
 export const hookCommand = (event: Event) => `node "${HOOKS_TS}" ${event}`;
 
 /** CLI arguments that inject chord's hooks and MCP server into Claude Code. */
-export function claudeArgs(env: Record<string, string>): string[] {
+/** `projectConfig`: also load the repository's own .claude settings and .mcp.json. Only when the user has trusted the
+ *  repository in Claude Code, because Claude's trust dialogue is what normally stands between a cloned repository's
+ *  hooks and MCP servers and running them. */
+export function claudeArgs(env: Record<string, string>, projectConfig = false): string[] {
   const hooks: Record<string, unknown[]> = {};
   for (const e of EVENTS) {
     hooks[e.claude] = [{
@@ -83,9 +87,13 @@ export function claudeArgs(env: Record<string, string>): string[] {
   // own CLAUDE.md, .claude/settings*.json or .mcp.json. --add-dir covers CLAUDE.md; the others are passed along.
   const wt = env.CHORD_WORKTREE;
   const addDir = wt ? ['--add-dir', wt] : [];
-  const mcpFiles = wt ? [path.join(wt, '.mcp.json')].filter(f => fs.existsSync(f)) : [];
-  return ['--settings', JSON.stringify(mergeProjectSettings({ hooks }, wt)), '--mcp-config', JSON.stringify(mcp), ...mcpFiles, ...addDir];
+  const mcpFiles = projectConfig && wt ? [path.join(wt, '.mcp.json')].filter(f => fs.existsSync(f)) : [];
+  const settings = projectConfig ? mergeProjectSettings({ hooks }, wt) : { hooks };
+  return ['--settings', JSON.stringify(settings), '--mcp-config', JSON.stringify(mcp), ...mcpFiles, ...addDir];
 }
+
+const PROJECT_CONFIG_FILES = ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json'];
+export const hasProjectConfig = (worktree: string) => PROJECT_CONFIG_FILES.some(f => fs.existsSync(path.join(worktree, f)));
 
 /** chord's settings plus the repository's .claude/settings.json and settings.local.json (later files win,
  *  hook lists are concatenated so both chord's and the project's hooks run). */
@@ -148,7 +156,12 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
   const worktree = ensureWorktree(project.repo, path.join(ws, project.repoName), name);
   const env = { CHORD_AGENT_ID: name, CHORD_DB: fwd(dbFile), CHORD_TOOL: tool, CHORD_PROJECT: fwd(project.dir), CHORD_WORKSPACE: fwd(ws), CHORD_WORKTREE: fwd(worktree) };
   if (fresh && config.setup) runSetup(project, name, worktree, config.setup, env);
-  return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env) : codexArgs(env) };
+  let projectConfig = false;
+  if (tool === 'claude' && hasProjectConfig(worktree)) {
+    projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir);
+    if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
+  }
+  return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env) };
 }
 
 /** <project>/chord/config.json. `setup` is a shell command run in every new worktree before the agent starts,

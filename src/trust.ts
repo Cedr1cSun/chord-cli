@@ -6,6 +6,17 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const claudeConfigPath = () => path.join(os.homedir(), '.claude.json');
+// Claude Code keys projects by the cwd with forward slashes, even on Windows
+const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+
+/** Whether the user has answered yes to Claude Code's "do you trust this folder?" dialogue for `dir`. */
+export function claudeTrusts(dir: string, file = claudeConfigPath()): boolean {
+  try {
+    const projects = JSON.parse(fs.readFileSync(file, 'utf8')).projects ?? {};
+    const key = Object.keys(projects).find(k => norm(k) === norm(dir));
+    return key !== undefined && projects[key]?.hasTrustDialogAccepted === true;
+  } catch { return false; }
+}
 
 /** Mark `workspace` as trusted for Claude Code. Returns false when Claude Code has no config yet (nothing to do)
  *  or the entry was already there. Writes atomically; other fields of the file are left untouched. */
@@ -16,8 +27,6 @@ export function pretrustClaude(workspace: string, file = claudeConfigPath()): bo
   try { cfg = JSON.parse(raw); } catch { return false; } // not ours to repair
   if (typeof cfg !== 'object' || cfg === null) return false;
   const projects = (cfg.projects ??= {});
-  // Claude Code keys projects by the cwd with forward slashes, even on Windows
-  const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
   const key = Object.keys(projects).find(k => norm(k) === norm(workspace)) ?? workspace.replace(/\\/g, '/');
   if (projects[key]?.hasTrustDialogAccepted === true) return false;
   projects[key] = projects[key]

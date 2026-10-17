@@ -55,17 +55,21 @@ export function briefing(ctx: Ctx): string {
   return lines.join('\n');
 }
 
+/** Context for the model. Plain stdout also works for Claude Code and `codex exec`, but the Codex TUI
+ *  only takes the JSON form, so both events use it. */
+const context = (hookEventName: string, additionalContext: string) => ({ hookSpecificOutput: { hookEventName, additionalContext } });
+
 export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<string, any>): HookOut {
   db.sweep(ctx.db);
   switch (event) {
     case 'session-start':
       db.setStatus(ctx.db, ctx.agent, 'busy');
-      return briefing(ctx);
+      return context('SessionStart', briefing(ctx));
 
     case 'user-prompt-submit': {
       db.setStatus(ctx.db, ctx.agent, 'busy');
       const ms = db.takeUnread(ctx.db, ctx.agent);
-      return ms.length ? formatMessages(ms) : undefined;
+      return ms.length ? context('UserPromptSubmit', formatMessages(ms)) : undefined;
     }
 
     case 'pre-tool-use': {
@@ -118,6 +122,7 @@ async function main(): Promise<void> {
   try { payload = JSON.parse(raw); } catch { /* no payload */ }
   const ctx: Ctx = { db: db.openDb(file), agent, cwd: typeof payload.cwd === 'string' ? payload.cwd : process.cwd() };
   const out = handleHook(ctx, tool, event, payload);
+  db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `${typeof out === 'string' ? 'text' : 'json'} ${JSON.stringify(out).length} chars`}`);
   if (out !== undefined) process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out));
 }
 

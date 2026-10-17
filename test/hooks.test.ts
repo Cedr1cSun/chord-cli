@@ -25,7 +25,7 @@ test('session-start sets busy and briefs with peers and claims', () => {
   db.setTask(d, 'b', 'write tests', 'test/');
   db.addClaim(d, { agent: 'b', file: 'test/x.test.ts', intent: 'cover parser', kind: 'add' });
   db.setStatus(d, 'a', 'idle');
-  const out = handleHook(ctx('a'), 'claude', 'session-start', {}) as string;
+  const out = (handleHook(ctx('a'), 'claude', 'session-start', {}) as any).hookSpecificOutput.additionalContext as string;
   assert.equal(db.getAgent(d, 'a')!.status, 'busy');
   assert.match(out, /You are agent "a"/);
   assert.match(out, /- b \(codex, busy\): write tests \[test\/\]/);
@@ -35,7 +35,7 @@ test('session-start sets busy and briefs with peers and claims', () => {
 test('user-prompt-submit delivers unread messages once', () => {
   const { d, ctx } = setup();
   db.send(d, 'b', ['a'], 'hello a');
-  const out = handleHook(ctx('a'), 'claude', 'user-prompt-submit', {}) as string;
+  const out = (handleHook(ctx('a'), 'claude', 'user-prompt-submit', {}) as any).hookSpecificOutput.additionalContext as string;
   assert.match(out, /message from b/); assert.match(out, /hello a/);
   assert.equal(handleHook(ctx('a'), 'claude', 'user-prompt-submit', {}), undefined);
 });

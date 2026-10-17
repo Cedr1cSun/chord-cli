@@ -1,4 +1,4 @@
-// Entry point for the per-agent MCP server. Spawned by the coding agent over stdio.
+// Entry point for the per-agent MCP server. Spawned by the coding agent over stdio, in the agent's workspace.
 import { openDb } from './db.ts';
 import { serve } from './mcp.ts';
 import { tools } from './tools.ts';
@@ -9,4 +9,5 @@ if (!agent || !file) {
   process.stderr.write('chord: CHORD_AGENT_ID and CHORD_DB must be set\n');
   process.exit(2);
 }
-serve(tools({ db: openDb(file), agent, cwd: process.cwd() }));
+const cwd = process.cwd();
+serve(tools({ db: openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd }));

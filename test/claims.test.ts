@@ -6,7 +6,7 @@ import { tools, canWrite, normFile, REPLY_TIMEOUT_MS, type Ctx } from '../src/to
 
 function setup() {
   const d = db.openDb(':memory:');
-  const ctx = (agent: string): Ctx => ({ db: d, agent, cwd: `/wt/${agent}` });
+  const ctx = (agent: string): Ctx => ({ db: d, agent, cwd: `/wt/${agent}`, worktree: `/wt/${agent}` });
   db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/wt/a' });
   db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/wt/b' });
   const call = (agent: string, name: string, args: Record<string, unknown> = {}) => {
@@ -17,7 +17,7 @@ function setup() {
 }
 
 test('normFile makes paths worktree-relative with forward slashes', () => {
-  const ctx: Ctx = { db: db.openDb(':memory:'), agent: 'a', cwd: '/wt/a' };
+  const ctx: Ctx = { db: db.openDb(':memory:'), agent: 'a', cwd: '/wt/a', worktree: '/wt/a' };
   assert.equal(normFile(ctx, 'src/x.ts'), 'src/x.ts');
   assert.equal(normFile(ctx, '/wt/a/src/x.ts'), 'src/x.ts');
   assert.equal(normFile(ctx, './src/../src/x.ts'), 'src/x.ts');
@@ -73,4 +73,16 @@ test('release drops the claim', () => {
   call('a', 'claim', { file: 'f.ts', intent: 'x', kind: 'modify' });
   assert.deepEqual(call('a', 'release', { file: './f.ts' }), { released: 'f.ts' });
   assert.equal(canWrite(ctx('a'), 'f.ts').ok, false);
+});
+
+test('a peer who explained their scope before the latecomer claimed counts as having replied', () => {
+  const { d, ctx, call } = setup();
+  call('a', 'claim', { file: 'f.ts', intent: 'header', kind: 'modify' });
+  d.prepare('update claims set created_at = created_at - 1000').run();
+  call('a', 'send', { to: 'b', message: 'FYI I only touch the header of f.ts' }); // before b claims
+  call('b', 'claim', { file: 'f.ts', intent: 'footer', kind: 'modify' });
+  let c = canWrite(ctx('b'), 'f.ts');
+  assert.equal(c.ok, false); assert.match((c as any).reason, /send each of them a message/); // b still has to say what it does
+  call('b', 'send', { to: 'a', message: 'I only touch the footer' });
+  assert.equal(canWrite(ctx('b'), 'f.ts').ok, true); // a's earlier note is the reply
 });

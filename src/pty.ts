@@ -83,10 +83,10 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   const env: Record<string, string> = { ...process.env as Record<string, string>, ...launch.env };
   for (const k of Object.keys(env)) if (/^CLAUDECODE/.test(k)) delete env[k]; // allow launching from inside a Claude session
   const term = pty.spawn(file, [...args, ...launch.args, ...extraArgs], {
-    name: 'xterm-256color', cols: process.stdout.columns || 120, rows: process.stdout.rows || 40, cwd: launch.worktree, env,
+    name: 'xterm-256color', cols: process.stdout.columns || 120, rows: process.stdout.rows || 40, cwd: launch.cwd, env,
   });
   const d = db.openDb(launch.dbFile);
-  db.addAgent(d, { name: launch.name, tool, pid: term.pid, cwd: launch.worktree });
+  db.addAgent(d, { name: launch.name, tool, pid: term.pid, cwd: launch.cwd, worktree: launch.worktree });
 
   term.onData(x => process.stdout.write(x));
   const gate = new InputGate();

@@ -16,7 +16,7 @@ function repo() {
   git('add', 'notes.txt'); git('commit', '-q', '-m', 'init');
   const d = db.openDb(':memory:');
   db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: root });
-  const ctx: Ctx = { db: d, agent: 'a', cwd: root };
+  const ctx: Ctx = { db: d, agent: 'a', cwd: root, worktree: root };
   return { root, d, ctx };
 }
 
@@ -36,4 +36,19 @@ test('post-tool-use warns about shell edits to unclaimed files, for Bash and Pow
   assert.equal(handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'PowerShell' }), undefined);
   // non-shell tools and clean trees are silent
   assert.equal(handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Read' }), undefined);
+});
+
+test('post-tool-use reports paths relative to the workspace when the repo is a subdirectory', () => {
+  const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-ws-')));
+  const wt = path.join(ws, 'repo'); fs.mkdirSync(wt);
+  const git = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: wt, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main'); fs.writeFileSync(path.join(wt, 'a.txt'), '1\n'); git('add', 'a.txt'); git('commit', '-q', '-m', 'i');
+  const d = db.openDb(':memory:');
+  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd: ws, worktree: wt });
+  const ctx: Ctx = { db: d, agent: 'a', cwd: ws, worktree: wt };
+  fs.appendFileSync(path.join(wt, 'a.txt'), '2\n');
+  const out = handleHook(ctx, 'codex', 'post-tool-use', { tool_name: 'Bash' }) as any;
+  assert.match(out.hookSpecificOutput.additionalContext, /not claimed: repo\/a.txt/);
+  db.addClaim(d, { agent: 'a', file: 'repo/a.txt', intent: 'x', kind: 'modify' });
+  assert.equal(handleHook(ctx, 'codex', 'post-tool-use', { tool_name: 'Bash' }), undefined);
 });

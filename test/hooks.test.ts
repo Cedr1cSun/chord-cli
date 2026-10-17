@@ -8,7 +8,7 @@ function setup() {
   const d = db.openDb(':memory:');
   db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/wt/a' });
   db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/wt/b' });
-  const ctx = (agent: string): Ctx => ({ db: d, agent, cwd: `/wt/${agent}` });
+  const ctx = (agent: string): Ctx => ({ db: d, agent, cwd: `/wt/${agent}`, worktree: `/wt/${agent}` });
   return { d, ctx };
 }
 

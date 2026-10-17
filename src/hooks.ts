@@ -1,6 +1,7 @@
 // Hook entry point for both Claude Code and Codex: `node hooks.ts <event>`, payload on stdin.
 // Event names are chord's own; launch.ts maps each tool's hook config onto them.
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import * as db from './db.ts';
 import { patchFiles } from './patch.ts';
 import { canWrite, normFile, type Ctx } from './tools.ts';
@@ -34,8 +35,9 @@ export function briefing(ctx: Ctx): string {
   const me = db.getAgent(ctx.db, ctx.agent);
   const peers = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent);
   const claims = db.allClaims(ctx.db);
+  const repoDir = path.relative(ctx.cwd, ctx.worktree) || '.';
   const lines = [
-    `You are agent "${ctx.agent}" (${me?.tool ?? 'unknown'}) in a repository shared with other coding agents, each in its own git worktree. Coordination goes through the "chord" MCP tools.`,
+    `You are agent "${ctx.agent}" (${me?.tool ?? 'unknown'}), one of several coding agents working on the same project. Your working directory is your own workspace; the repository is the directory "${repoDir}" inside it, a git worktree on your own branch. Run git commands inside "${repoDir}". Other agents have their own worktrees of the same repository. Coordination goes through the "chord" MCP tools.`,
     '',
     'Rules:',
     '1. First thing: call register(task, scope) to say what you are doing.',
@@ -86,11 +88,11 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     case 'post-tool-use': {
       if (!isShell(payload.tool_name)) return undefined;
       let status = '';
-      try { status = execFileSync('git', ['status', '--porcelain'], { cwd: ctx.cwd, encoding: 'utf8' }); } catch { return undefined; }
-      const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file));
+      try { status = execFileSync('git', ['status', '--porcelain'], { cwd: ctx.worktree, encoding: 'utf8' }); } catch { return undefined; }
+      const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
       const unclaimed = status.split('\n').filter(Boolean)
-        .map(l => l.slice(3).trim().replace(/^.* -> /, ''))
-        .filter(f => !mine.has(normFile(ctx, f)));
+        .map(l => normFile(ctx, path.join(ctx.worktree, l.slice(3).trim().replace(/^.* -> /, '').replace(/^"|"$/g, ''))))
+        .filter(f => !mine.has(f.toLowerCase()));
       if (!unclaimed.length) return undefined;
       const text = `[chord] The shell command changed files you have not claimed: ${unclaimed.join(', ')}. Claim them now with claim(), or revert the change.`;
       return { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } };
@@ -121,7 +123,8 @@ async function main(): Promise<void> {
   for await (const chunk of process.stdin) raw += chunk;
   let payload: Record<string, any> = {};
   try { payload = JSON.parse(raw); } catch { /* no payload */ }
-  const ctx: Ctx = { db: db.openDb(file), agent, cwd: typeof payload.cwd === 'string' ? payload.cwd : process.cwd() };
+  const cwd = typeof payload.cwd === 'string' ? payload.cwd : process.cwd();
+  const ctx: Ctx = { db: db.openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd };
   const out = handleHook(ctx, tool, event, payload);
   db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `${typeof out === 'string' ? 'text' : 'json'} ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
   if (out !== undefined) process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out));

@@ -5,7 +5,8 @@ import path from 'node:path';
 import * as db from './db.ts';
 import type { Tool } from './mcp.ts';
 
-export interface Ctx { db: DatabaseSync; agent: string; cwd: string }
+/** cwd is the agent's workspace (claims are relative to it); worktree is the repository checkout inside it. */
+export interface Ctx { db: DatabaseSync; agent: string; cwd: string; worktree: string }
 
 /** How long a latecomer waits for replies before it may write anyway. */
 export const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -38,8 +39,10 @@ function earlierOccupants(ctx: Ctx, mine: db.Claim): db.Claim[] {
 export type WriteCheck = { ok: true } | { ok: false; reason: string };
 
 /**
- * May `ctx.agent` write `file` now? It must hold a claim, and if others claimed the
- * file first it must have messaged each of them and heard back, or waited out the timeout.
+ * May `ctx.agent` write `file` now? It must hold a claim, and if others claimed the file first it
+ * must have told each of them and heard back, or waited out the timeout. Any exchange since this
+ * agent's session started counts, so a peer who explained their scope before we even claimed is
+ * not asked again.
  */
 export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
   const rel = normFile(ctx, file);
@@ -47,15 +50,16 @@ export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
   if (!mine) return { ok: false, reason: `${rel} is not claimed by you. Call claim(file, intent, kind) first.` };
   const others = earlierOccupants(ctx, mine);
   if (!others.length) return { ok: true };
-  const since = mine.asked_at ?? mine.created_at;
-  if (now - since >= REPLY_TIMEOUT_MS) return { ok: true };
+  const asked = mine.asked_at ?? mine.created_at;
+  if (now - asked >= REPLY_TIMEOUT_MS) return { ok: true };
+  const since = db.getAgent(ctx.db, ctx.agent)?.started_at ?? mine.created_at;
   const notAsked = others.filter(o => !db.repliedSince(ctx.db, ctx.agent, o.agent, since)).map(o => o.agent);
   if (notAsked.length) {
     return { ok: false, reason: `${rel} is also claimed by ${notAsked.join(', ')}. Read their claim (claim tool output) and send each of them a message explaining what you intend to change before writing.` };
   }
   const waiting = others.filter(o => !db.repliedSince(ctx.db, o.agent, ctx.agent, since)).map(o => o.agent);
   if (waiting.length) {
-    const left = Math.ceil((REPLY_TIMEOUT_MS - (now - since)) / 60000);
+    const left = Math.ceil((REPLY_TIMEOUT_MS - (now - asked)) / 60000);
     return { ok: false, reason: `waiting for a reply from ${waiting.join(', ')} about ${rel} (you may write without one in ${left} min). Work on something else meanwhile.` };
   }
   return { ok: true };
@@ -84,24 +88,25 @@ export function withLock<T>(file: string, fn: () => T, waitMs = 120_000, staleMs
  *  Finishes are serialised with a lock file: git cannot run two merges in one checkout concurrently. */
 export function finish(ctx: Ctx) {
   const t0 = Date.now();
-  return withLock(db.finishLockPath(ctx.cwd), () => { db.log(`finish: lock acquired after ${Date.now() - t0}ms`); return finishLocked(ctx); });
+  return withLock(db.finishLockPath(), () => { db.log(`finish: lock acquired after ${Date.now() - t0}ms`); return finishLocked(ctx); });
 }
 
 function finishLocked(ctx: Ctx) {
+  const wt = ctx.worktree;
   // a finish killed mid-rebase leaves the worktree in rebase state; clear it before anything else
   for (const dir of ['rebase-merge', 'rebase-apply']) {
-    if (fs.existsSync(path.resolve(ctx.cwd, git(ctx.cwd, 'rev-parse', '--git-path', dir)))) { git(ctx.cwd, 'rebase', '--abort'); break; }
+    if (fs.existsSync(path.resolve(wt, git(wt, 'rev-parse', '--git-path', dir)))) { git(wt, 'rebase', '--abort'); break; }
   }
-  if (git(ctx.cwd, 'status', '--porcelain')) throw new Error('your worktree has uncommitted changes; commit them first');
-  const root = db.mainRoot(ctx.cwd);
+  if (git(wt, 'status', '--porcelain')) throw new Error('your worktree has uncommitted changes; commit them first');
+  const root = db.mainRoot(wt);
   if (git(root, 'status', '--porcelain', '--untracked-files=no')) throw new Error('the main checkout has uncommitted changes; ask the user to commit or stash them');
-  const branch = git(ctx.cwd, 'rev-parse', '--abbrev-ref', 'HEAD');
+  const branch = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD');
   const main = git(root, 'rev-parse', '--abbrev-ref', 'HEAD');
   if (main === 'HEAD') throw new Error('the main checkout is not on a branch (detached HEAD); ask the user to check out a branch there');
   try {
-    git(ctx.cwd, 'rebase', main);
+    git(wt, 'rebase', main);
   } catch (e) {
-    try { git(ctx.cwd, 'rebase', '--abort'); } catch { /* nothing to abort */ }
+    try { git(wt, 'rebase', '--abort'); } catch { /* nothing to abort */ }
     db.log(`finish: rebase of ${branch} onto ${main} conflicted; aborted`);
     throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${stderrOf(e)}`);
   }

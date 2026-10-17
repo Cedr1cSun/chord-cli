@@ -5,33 +5,59 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { mainRoot, ensureExcluded, ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand } from '../src/launch.ts';
+import { ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand } from '../src/launch.ts';
+import { NeedsRestructure, resolveProject, restructure, encodeProjectPath, knownProjects } from '../src/project.ts';
 
-function tempRepo(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-'));
-  const git = (...a: string[]) => execFileSync('git', a, { cwd: root, stdio: 'ignore' });
-  git('init', '-q', '-b', 'main');
-  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init');
-  return fs.realpathSync(root);
-}
+const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, stdio: 'ignore' });
+const tmp = (p: string) => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), p)));
+function initRepo(dir: string) { fs.mkdirSync(dir, { recursive: true }); git(dir, 'init', '-q', '-b', 'main'); git(dir, 'commit', '-q', '--allow-empty', '-m', 'init'); }
+/** A project folder with one child repository. */
+function tempProject() { const proj = tmp('chord-proj-'); initRepo(path.join(proj, 'repo')); return proj; }
+process.env.CHORD_HOME = tmp('chord-home-'); // keep test state out of ~/.chord
 
-test('mainRoot from the root and from inside a worktree', () => {
-  const root = tempRepo();
-  assert.equal(mainRoot(root), root);
-  const wt = ensureWorktree(root, 'x');
-  assert.equal(mainRoot(wt), root);
-  assert.equal(ensureWorktree(root, 'x'), wt); // idempotent
+test('resolveProject: one child repo is the project', () => {
+  const proj = tempProject();
+  const p = resolveProject(proj);
+  assert.equal(p.dir, proj); assert.equal(p.repo, path.join(proj, 'repo')); assert.equal(p.repoName, 'repo');
+  assert.equal(p.stateDir, path.join(process.env.CHORD_HOME!, 'projects', encodeProjectPath(proj)));
+});
+
+test('resolveProject: repo root asks for restructure, inside-repo and odd folders are refused', () => {
+  const root = tmp('chord-root-'); initRepo(root);
+  assert.throws(() => resolveProject(root), NeedsRestructure);
+  fs.mkdirSync(path.join(root, 'src'));
+  assert.throws(() => resolveProject(path.join(root, 'src')), /is inside the repository/);
+  const empty = tmp('chord-empty-');
+  assert.throws(() => resolveProject(empty), /contains no git repository/);
+  const two = tmp('chord-two-'); initRepo(path.join(two, 'a')); initRepo(path.join(two, 'b'));
+  assert.throws(() => resolveProject(two), /several repositories \(a, b\)/);
+});
+
+test('restructure moves a repository root into a child directory', () => {
+  const root = tmp('chord-move-'); initRepo(root);
+  fs.writeFileSync(path.join(root, 'notes.txt'), 'n'); fs.mkdirSync(path.join(root, 'chord')); // chord/ stays put
+  const target = restructure(root, 'app');
+  assert.equal(target, path.join(root, 'app'));
+  assert.ok(fs.existsSync(path.join(target, '.git')) && fs.existsSync(path.join(target, 'notes.txt')));
+  assert.ok(fs.existsSync(path.join(root, 'chord')) && !fs.existsSync(path.join(target, 'chord')));
+  assert.equal(resolveProject(root).repoName, 'app');
+  assert.throws(() => restructure(root, 'app'), /already exists/);
+});
+
+test('encodeProjectPath matches the Claude Code style', () => {
+  assert.equal(encodeProjectPath('D:\\chord-agents\\x'), 'D--chord-agents-x');
+  assert.equal(encodeProjectPath('/home/u/p'), '-home-u-p');
+});
+
+test('ensureWorktree creates the branch and is idempotent', () => {
+  const proj = tempProject(); const repo = path.join(proj, 'repo');
+  const wt = ensureWorktree(repo, path.join(proj, 'chord', 'agents', 'x', 'repo'), 'x');
+  assert.equal(ensureWorktree(repo, wt, 'x'), wt);
   assert.equal(execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: wt, encoding: 'utf8' }).trim(), 'chord/x');
+  assert.equal(db.mainRoot(wt), repo);
 });
 
-test('ensureExcluded appends once', () => {
-  const root = tempRepo();
-  ensureExcluded(root); ensureExcluded(root);
-  const lines = fs.readFileSync(path.join(root, '.git', 'info', 'exclude'), 'utf8').split('\n').filter(l => l === '.chord/');
-  assert.equal(lines.length, 1);
-});
-
-test('pickName derives from tool and repo, refuses an online duplicate', () => {
+test('pickName derives from tool and project, refuses an online duplicate', () => {
   const d = db.openDb(':memory:');
   assert.match(pickName(d, 'claude', '/x/My Repo'), /^claude-my-repo-[0-9a-f]{4}$/);
   db.addAgent(d, { name: 'busy', tool: 'codex', pid: process.pid, cwd: '/' });
@@ -41,7 +67,7 @@ test('pickName derives from tool and repo, refuses an online duplicate', () => {
 });
 
 test('claudeArgs carries hooks in --settings and the server in --mcp-config', () => {
-  const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude' };
+  const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: '/w/repo' };
   const args = claudeArgs(env);
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
   assert.deepEqual(Object.keys(settings.hooks).sort(), ['PostToolUse', 'PreToolUse', 'SessionEnd', 'SessionStart', 'Stop', 'UserPromptSubmit']);
@@ -66,20 +92,17 @@ test('codexArgs is a list of -c TOML overrides', () => {
   assert.ok(odd.find(a => a.startsWith('mcp_servers.chord='))!.includes(`CHORD_DB="C:/repo o'brien/仓库/.git/chord.db"`));
 });
 
-test('prepare creates the worktree and db and names the agent', () => {
-  const root = tempRepo();
-  const l = prepare('codex', root);
+test('prepare builds the workspace, the worktree inside it and the state dir', () => {
+  const proj = tempProject();
+  const l = prepare('codex', proj);
+  assert.equal(l.cwd, path.join(proj, 'chord', 'agents', l.name));
+  assert.equal(l.worktree, path.join(l.cwd, 'repo'));
   assert.ok(fs.existsSync(path.join(l.worktree, '.git')));
-  assert.ok(fs.existsSync(l.dbFile));
+  assert.ok(fs.existsSync(l.dbFile) && l.dbFile.startsWith(process.env.CHORD_HOME!));
   assert.equal(l.env.CHORD_AGENT_ID, l.name);
-  assert.equal(path.dirname(l.worktree), path.join(root, '.chord', 'wt'));
-  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(), ''); // .chord/ ignored
-});
-
-test('prepare explains a non-git directory and an empty repository', () => {
-  const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-plain-'));
-  assert.throws(() => prepare('claude', plain), /not inside a git repository/);
-  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-empty-'));
-  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: empty });
+  assert.equal(l.env.CHORD_WORKTREE, l.worktree.split(path.sep).join('/'));
+  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: l.project.repo, encoding: 'utf8' }).trim(), ''); // repo untouched
+  assert.ok(knownProjects().some(p => p.dir === proj));
+  const empty = tmp('chord-nocommit-'); fs.mkdirSync(path.join(empty, 'r')); git(path.join(empty, 'r'), 'init', '-q', '-b', 'main');
   assert.throws(() => prepare('claude', empty), /no commits yet/);
 });

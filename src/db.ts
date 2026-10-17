@@ -9,7 +9,8 @@ export interface Agent {
   name: string;
   tool: string;
   pid: number;
-  cwd: string;
+  cwd: string;      // the agent's working directory (its workspace W)
+  worktree: string; // the repository worktree inside W, used by finish
   task: string | null;
   scope: string | null;
   status: Status;
@@ -41,11 +42,11 @@ const commonDir = (cwd: string) => path.resolve(cwd, execFileSync('git', ['rev-p
 /** Root of the main checkout, even when run from inside a linked worktree. */
 export const mainRoot = (cwd: string) => path.dirname(commonDir(cwd));
 
-/** chord.db lives in the common git dir, so every worktree of the repo shares it. */
-export const dbPath = (cwd: string) => path.join(commonDir(cwd), 'chord.db');
+/** chord.db lives in the project's state directory under ~/.chord; CHORD_DB carries its path to hooks and servers. */
+export const dbPath = (stateDir: string) => path.join(stateDir, 'chord.db');
 
 /** Lock file that serialises finish() across agents: git cannot run two merges in one checkout at once. */
-export const finishLockPath = (cwd: string) => path.join(commonDir(cwd), 'chord.finish.lock');
+export const finishLockPath = (dbFile = process.env.CHORD_DB ?? '') => path.join(path.dirname(dbFile), 'finish.lock');
 
 /** Windows and macOS file systems are case-insensitive: Src/a.ts and src/a.ts are one file, so one claim key. */
 const FILE_COLLATION = process.platform === 'linux' ? '' : 'collate nocase';
@@ -61,6 +62,7 @@ export function openDb(file: string): DatabaseSync {
       tool       text not null,
       pid        integer not null,
       cwd        text not null,
+      worktree   text not null,
       task       text,
       scope      text,
       status     text not null default 'busy',
@@ -91,14 +93,14 @@ export function openDb(file: string): DatabaseSync {
 
 // agents
 
-export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid: number; cwd: string }): void {
+export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid: number; cwd: string; worktree?: string }): void {
   const now = Date.now();
   db.prepare(
-    `insert into agents (name, tool, pid, cwd, status, started_at, updated_at)
-     values (?, ?, ?, ?, 'busy', ?, ?)
-     on conflict(name) do update set tool = excluded.tool, pid = excluded.pid, cwd = excluded.cwd,
+    `insert into agents (name, tool, pid, cwd, worktree, status, started_at, updated_at)
+     values (?, ?, ?, ?, ?, 'busy', ?, ?)
+     on conflict(name) do update set tool = excluded.tool, pid = excluded.pid, cwd = excluded.cwd, worktree = excluded.worktree,
        status = 'busy', task = null, scope = null, started_at = excluded.started_at, updated_at = excluded.updated_at`,
-  ).run(a.name, a.tool, a.pid, a.cwd, now, now);
+  ).run(a.name, a.tool, a.pid, a.cwd, a.worktree ?? a.cwd, now, now);
   // a relaunch under the same name must not inherit messages meant for the previous session
   db.prepare('delete from messages where recipient = ? and read_at is null').run(a.name);
 }

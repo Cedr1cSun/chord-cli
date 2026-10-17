@@ -10,19 +10,23 @@ import { finish, type Ctx } from '../src/tools.ts';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
 
+/** Project layout: <proj>/repo is the main checkout, <proj>/chord/agents/w/repo the agent's worktree. */
 function setup() {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-fin-')));
-  git(root, 'init', '-q', '-b', 'main');
-  fs.writeFileSync(path.join(root, 'a.txt'), 'one\n');
-  git(root, 'add', 'a.txt'); git(root, 'commit', '-q', '-m', 'init');
-  const wt = ensureWorktree(root, 'w');
+  const proj = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-fin-')));
+  const repo = path.join(proj, 'repo'); fs.mkdirSync(repo);
+  git(repo, 'init', '-q', '-b', 'main');
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+  git(repo, 'add', 'a.txt'); git(repo, 'commit', '-q', '-m', 'init');
+  const ws = path.join(proj, 'chord', 'agents', 'w');
+  const wt = ensureWorktree(repo, path.join(ws, 'repo'), 'w');
+  process.env.CHORD_DB = path.join(proj, 'state', 'chord.db'); fs.mkdirSync(path.join(proj, 'state'));
   const d = db.openDb(':memory:');
-  db.addAgent(d, { name: 'w', tool: 'claude', pid: process.pid, cwd: wt });
+  db.addAgent(d, { name: 'w', tool: 'claude', pid: process.pid, cwd: ws, worktree: wt });
   db.addAgent(d, { name: 'peer', tool: 'codex', pid: process.pid, cwd: '/p' });
   db.addAgent(d, { name: 'gone', tool: 'codex', pid: process.pid, cwd: '/g' }); db.setStatus(d, 'gone', 'offline');
-  db.addClaim(d, { agent: 'w', file: 'b.txt', intent: 'x', kind: 'add' });
-  const ctx: Ctx = { db: d, agent: 'w', cwd: wt };
-  return { root, wt, d, ctx };
+  db.addClaim(d, { agent: 'w', file: 'repo/b.txt', intent: 'x', kind: 'add' });
+  const ctx: Ctx = { db: d, agent: 'w', cwd: ws, worktree: wt };
+  return { root: repo, wt, d, ctx };
 }
 
 test('finish rebases, fast-forwards main, releases claims and notifies online peers', () => {
@@ -67,12 +71,13 @@ test('finish recovers from a worktree left mid-rebase by an earlier crash', () =
   fs.writeFileSync(path.join(wt, 'a.txt'), 'from worktree\n'); git(wt, 'commit', '-q', '-am', 'wt change');
   fs.writeFileSync(path.join(root, 'a.txt'), 'from main\n'); git(root, 'commit', '-q', '-am', 'main change');
   try { git(wt, 'rebase', 'main'); } catch { /* conflict: worktree now sits mid-rebase */ }
-  assert.ok(fs.existsSync(path.join(root, '.git', 'worktrees', 'w', 'rebase-merge')));
+  const rebaseDir = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'rebase-merge'));
+  assert.ok(fs.existsSync(rebaseDir));
   // main backs out of its change, so a fresh rebase would succeed
   git(root, 'reset', '-q', '--hard', 'HEAD~1');
   const r = finish(ctx);
   assert.deepEqual(r.merged, ['wt change']);
-  assert.ok(!fs.existsSync(path.join(root, '.git', 'worktrees', 'w', 'rebase-merge')));
+  assert.ok(!fs.existsSync(rebaseDir));
   assert.equal(git(root, 'log', '--format=%s', '-1'), 'wt change');
 });
 

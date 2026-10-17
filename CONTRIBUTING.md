@@ -24,17 +24,10 @@ Node runs the TypeScript in `src/` directly, so there is no build step.
 
 ## Commits
 
-Commit messages follow Conventional Commits with a scope: `type(scope): subject`.
-
-- types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `ci`
-- scope: the module or area, such as `hooks`, `tools`, `pty`, `launch`, `db`, `cli`, `readme`
-- subject: imperative, lower case, no full stop, at most 50 characters
-- body: why the change is needed, wrapped at 72 characters
-
-One change per commit.
+Commit messages look like `fix(hooks): refuse a write on an unclaimed file`: a type (`feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `ci`), the module or area in brackets, and a short summary. If the why is not obvious, say it in the body. Keep unrelated changes in separate commits.
 
 ## Pull requests
 
-One change per pull request, with the tests it needs. `npm test` and `npm run typecheck` run on every push. A change in what the user sees goes into the README in the same pull request.
+Keep a pull request to one topic. Add or adjust a test when behaviour changes, and update the README if the user would notice. `npm test` and `npm run typecheck` run in CI on every push.
 
-The end-to-end scenarios with real agents live outside this repository. Say in the pull request what you tried with a real agent, if anything.
+The end-to-end scenarios with real agents live outside this repository. If you tried the change with a real agent, say so in the pull request.

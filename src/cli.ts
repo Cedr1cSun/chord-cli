@@ -120,6 +120,10 @@ export function refuseHookKillers(tool: Tool, rest: string[]): void {
     for (let i = 0; i < rest.length; i++) {
       const v = rest[i] === '-c' || rest[i] === '--config' ? rest[i + 1] ?? '' : rest[i].startsWith('--config=') ? rest[i].slice(9) : '';
       if (/^(hooks\b|mcp_servers\.chord\b)/.test(v)) throw new Error(`"-c ${v}" would replace chord's own hooks or MCP server; chord sets these itself`);
+      // Codex's Windows sandbox runs commands as a restricted user that cannot start chord's hooks (nor reach the
+      // state under the user's profile), so claims would go unchecked; refused rather than run half-working
+      const sandbox = rest[i] === '-s' || rest[i] === '--sandbox' ? rest[i + 1] ?? '' : rest[i].startsWith('--sandbox=') ? rest[i].slice(10) : /^sandbox_mode\s*=\s*"?([\w-]+)/.exec(v)?.[1] ?? '';
+      if (process.platform === 'win32' && sandbox && sandbox !== 'danger-full-access') throw new Error(`Codex's "${sandbox}" sandbox cannot run chord's hooks on Windows (the sandboxed user cannot start them), so file claims would not be checked; run without -s, or with -s danger-full-access`);
     }
   }
 }

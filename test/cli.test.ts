@@ -113,4 +113,10 @@ test('takeSettings lifts the user --settings out of the tool arguments; hook-kil
   assert.throws(() => refuseHookKillers('codex', ['-c', 'hooks.PreToolUse=[]']), /replace chord's own hooks/);
   assert.throws(() => refuseHookKillers('codex', ['--config=mcp_servers.chord.command="x"']), /replace chord's own hooks/);
   refuseHookKillers('claude', ['--model', 'opus']); refuseHookKillers('codex', ['-c', 'model="gpt-5"']); // fine
+  if (process.platform === 'win32') {
+    assert.throws(() => refuseHookKillers('codex', ['-s', 'workspace-write']), /sandbox cannot run chord's hooks on Windows/);
+    assert.throws(() => refuseHookKillers('codex', ['--sandbox=read-only']), /sandbox/);
+    assert.throws(() => refuseHookKillers('codex', ['-c', 'sandbox_mode="workspace-write"']), /sandbox/);
+    refuseHookKillers('codex', ['-s', 'danger-full-access']); // fine
+  }
 });

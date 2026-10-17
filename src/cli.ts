@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // chord <claude|codex> [--name <agent>] [tool args...]   launch an agent in its own workspace
 // chord ls [--all]                                        agents and file claims, this project or all
+import fs from 'node:fs';
+import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import * as db from './db.ts';
 import { prepare } from './launch.ts';
-import { NeedsRestructure, knownProjects, resolveProject, restructure } from './project.ts';
+import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
 import { run } from './pty.ts';
 import type { Tool } from './hooks.ts';
 
@@ -25,20 +27,30 @@ export function lsAll(): string {
   return projects.map(p => `== ${p.dir ?? p.stateDir}\n${ls(db.openDb(p.dbFile))}`).join('\n');
 }
 
-/** The folder is a repository root: offer to move it into a child directory so it fits the project layout. */
-async function offerRestructure(e: NeedsRestructure): Promise<boolean> {
-  if (!process.stdin.isTTY) { process.stderr.write(`chord: ${e.message}. Move it into a subfolder (e.g. ${e.dir}\\${e.suggestedName}) and run chord in ${e.dir} again.\n`); return false; }
+/** The folder is a repository root: offer to move it into a child directory so it fits the project layout.
+ *  Throws with guidance when that is impossible or declined. */
+async function offerRestructure(e: NeedsRestructure): Promise<void> {
+  const example = path.join(e.dir, e.suggestedName);
+  const blocker = restructureBlocker(e.dir);
+  if (blocker) throw new Error(`${e.message}; ${blocker}`);
+  if (!process.stdin.isTTY) throw new Error(`${e.message}. Move it into a subfolder (e.g. ${example}) and run chord in ${e.dir} again`);
   const rl = createInterface({ input: process.stdin, output: process.stderr });
-  process.stderr.write(`chord: ${e.dir} is itself a git repository.\n` +
-    `A chord project is a folder that contains the repository as a subfolder, next to chord's own working directory.\n` +
-    `Move everything in ${e.dir} into ${e.dir}\\${e.suggestedName}\\ ? Open editors, other terminals' current directory and absolute paths in IDE settings will need updating.\n`);
-  const answer = (await rl.question(`[Y/n/other name] (${e.suggestedName}): `)).trim();
-  rl.close();
-  if (/^n(o)?$/i.test(answer)) return false;
-  const name = answer === '' || /^y(es)?$/i.test(answer) ? e.suggestedName : answer;
-  const target = restructure(e.dir, name);
-  process.stderr.write(`chord: moved the repository to ${target}\n`);
-  return true;
+  try {
+    process.stderr.write(`chord: ${e.dir} is itself a git repository.\n` +
+      `A chord project is a folder that contains the repository as a subfolder, next to chord's own working directory.\n` +
+      `Move everything in ${e.dir} into ${example}${path.sep} ? Open editors, other terminals' current directory and absolute paths in IDE settings will need updating.\n`);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const answer = (await rl.question(`[Y/n/other name] (${e.suggestedName}): `)).trim();
+      if (/^n(o)?$/i.test(answer)) throw new Error('not moved; move the repository into a subfolder yourself and run chord in the parent folder');
+      const name = answer === '' || /^y(es)?$/i.test(answer) ? e.suggestedName : answer;
+      const invalid = validateRepoName(name) ?? (fs.existsSync(path.join(e.dir, name)) ? `${name} already exists` : null);
+      if (invalid) { process.stderr.write(`chord: ${invalid}; try another name\n`); continue; }
+      const target = restructure(e.dir, name);
+      process.stderr.write(`chord: moved the repository to ${target}\n`);
+      return;
+    }
+    throw new Error('no usable name given; nothing was moved');
+  } finally { rl.close(); }
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -57,7 +69,8 @@ async function main(argv: string[]): Promise<number> {
   try {
     launch = prepare(cmd as Tool, process.cwd(), name);
   } catch (e) {
-    if (!(e instanceof NeedsRestructure) || !(await offerRestructure(e))) throw e;
+    if (!(e instanceof NeedsRestructure)) throw e;
+    await offerRestructure(e);
     launch = prepare(cmd as Tool, process.cwd(), name);
   }
   process.stderr.write(`chord: agent ${launch.name} in ${launch.cwd}\n`);

@@ -44,9 +44,10 @@ test('restructure moves a repository root into a child directory', () => {
   assert.throws(() => restructure(root, 'app'), /already exists/);
 });
 
-test('encodeProjectPath matches the Claude Code style', () => {
-  assert.equal(encodeProjectPath('D:\\chord-agents\\x'), 'D--chord-agents-x');
-  assert.equal(encodeProjectPath('/home/u/p'), '-home-u-p');
+test('encodeProjectPath is readable and collision-free', () => {
+  assert.match(encodeProjectPath('D:\\chord-agents\\x'), /^D--chord-agents-x-[0-9a-f]{6}$/);
+  assert.match(encodeProjectPath('/home/u/p'), /^-home-u-p-[0-9a-f]{6}$/);
+  assert.notEqual(encodeProjectPath('D:\\a-b'), encodeProjectPath('D:\\a\\b')); // same dashes, different folders
 });
 
 test('ensureWorktree creates the branch and is idempotent', () => {

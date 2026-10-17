@@ -37,7 +37,14 @@ export interface Message {
   read_at: number | null;
 }
 
-const commonDir = (cwd: string) => path.resolve(cwd, execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd, encoding: 'utf8' }).trim());
+/** process.env without the GIT_* variables that would make git look at some other repository. */
+export function gitEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(process.env)) if (!/^GIT_(DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY|NAMESPACE|CEILING_DIRECTORIES|ALTERNATE_OBJECT_DIRECTORIES)$/.test(k)) env[k] = v;
+  return env;
+}
+
+const commonDir = (cwd: string) => path.resolve(cwd, execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd, encoding: 'utf8', env: gitEnv() }).trim());
 
 /** Root of the main checkout, even when run from inside a linked worktree. */
 export const mainRoot = (cwd: string) => path.dirname(commonDir(cwd));

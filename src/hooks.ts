@@ -95,7 +95,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     case 'post-tool-use': {
       if (!isShell(payload.tool_name)) return undefined;
       let status = '';
-      try { status = execFileSync('git', ['status', '--porcelain'], { cwd: ctx.worktree, encoding: 'utf8' }); } catch { return undefined; }
+      try { status = execFileSync('git', ['status', '--porcelain'], { cwd: ctx.worktree, encoding: 'utf8', env: db.gitEnv() }); } catch { return undefined; }
       const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
       const unclaimed = status.split('\n').filter(Boolean)
         .map(l => normFile(ctx, path.join(ctx.worktree, l.slice(3).trim().replace(/^.* -> /, '').replace(/^"|"$/g, ''))))

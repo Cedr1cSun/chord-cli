@@ -12,7 +12,7 @@ import * as db from './db.ts';
 import { ensureStateDir, resolveProject, type Project } from './project.ts';
 import type { Event, Tool } from './hooks.ts';
 
-const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
 const here = (f: string) => fileURLToPath(new URL(f, import.meta.url)).split(path.sep).join('/');
 export const HOOKS_TS = here('./hooks.ts');

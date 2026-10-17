@@ -1,9 +1,11 @@
 // A chord project is the folder `chord` is run in. It contains the git repository as a child
 // directory and a `chord/` directory for agent workspaces; chord's own state lives under ~/.chord.
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gitEnv } from './db.ts';
 
 export interface Project {
   dir: string;      // the project folder, absolute
@@ -23,54 +25,101 @@ export class NeedsRestructure extends Error {
   }
 }
 
-const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: gitEnv(), stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+
+const same = (a: string, b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
 
 function repoRootOf(dir: string): string | null {
   try { return fs.realpathSync.native(git(dir, 'rev-parse', '--show-toplevel')); } catch { return null; }
 }
 
-/** Same encoding Claude Code uses for its projects directory: path separators and colons become dashes. */
-export const encodeProjectPath = (dir: string) => dir.replace(/[\\/:]/g, '-');
+/** Only a .git *directory* marks a project repository; a .git file is a linked worktree or a submodule. */
+const isRepoDir = (dir: string) => { try { return fs.statSync(path.join(dir, '.git')).isDirectory(); } catch { return false; } };
+
+/** Readable like Claude Code's projects directory (separators and colons become dashes), plus a short hash so
+ *  that D:\a-b and D:\a\b do not share one state directory. */
+export function encodeProjectPath(dir: string): string {
+  const key = process.platform === 'win32' ? dir.toLowerCase() : dir;
+  return `${dir.replace(/[\\/:]/g, '-')}-${createHash('sha1').update(key).digest('hex').slice(0, 6)}`;
+}
 
 export const stateDirFor = (dir: string) => path.join(process.env.CHORD_HOME ?? path.join(os.homedir(), '.chord'), 'projects', encodeProjectPath(dir));
+
+/** A repository directory name chord can work with: a single path segment that is not chord's own directory. */
+export function validateRepoName(name: string): string | null {
+  if (!name.trim()) return 'the name is empty';
+  if (/[\\/]/.test(name) || name === '.' || name === '..') return 'the name must be a single directory name';
+  if (name.toLowerCase() === 'chord') return '"chord" is reserved for chord\'s own directory';
+  return null;
+}
 
 /** Default name for the repository directory: the origin remote's name, else the folder's own name. */
 export function suggestedRepoName(repo: string): string {
   try {
     const url = git(repo, 'remote', 'get-url', 'origin');
-    const m = /([^/:]+?)(?:\.git)?\/?$/.exec(url);
-    if (m) return m[1];
+    const last = url.split(/[\\/:]/).filter(Boolean).pop() ?? '';
+    const name = last.replace(/\.git$/i, '');
+    if (name && !validateRepoName(name)) return name;
   } catch { /* no origin */ }
-  return path.basename(repo);
+  const own = path.basename(repo);
+  return validateRepoName(own) ? 'repo' : own;
+}
+
+/** The nearest ancestor that already is a chord project, if any. */
+function enclosingProject(dir: string): string | null {
+  for (let a = path.dirname(dir); a !== path.dirname(a); a = path.dirname(a)) {
+    if (fs.existsSync(stateDirFor(a)) || fs.existsSync(path.join(a, 'chord', 'agents'))) return a;
+  }
+  return null;
 }
 
 export function resolveProject(cwd: string): Project {
   const dir = fs.realpathSync.native(cwd);
+  // inside an existing project (its main checkout, a workspace or a worktree): that project is meant
+  const parent = enclosingProject(dir);
+  if (parent) return resolveProject(parent);
   const enclosing = repoRootOf(dir);
-  if (enclosing && enclosing.toLowerCase() === dir.toLowerCase()) throw new NeedsRestructure(dir, suggestedRepoName(dir));
-  if (enclosing) throw new Error(`${dir} is inside the repository ${enclosing}; run chord in ${enclosing} and it will set the project layout up`);
-  const children = fs.readdirSync(dir, { withFileTypes: true })
-    .filter(e => e.isDirectory() && e.name !== 'chord' && fs.existsSync(path.join(dir, e.name, '.git')))
-    .map(e => e.name);
+  if (enclosing) {
+    if (same(enclosing, dir)) throw new NeedsRestructure(dir, suggestedRepoName(dir));
+    throw new Error(`${dir} is inside the repository ${enclosing}; a chord project is the folder that contains the repository, not a folder inside it`);
+  }
+  const children = fs.readdirSync(dir, { withFileTypes: true }).filter(e => e.isDirectory() && isRepoDir(path.join(dir, e.name))).map(e => e.name);
+  if (children.some(c => c.toLowerCase() === 'chord')) throw new Error(`${dir}/chord is a git repository, but chord/ is reserved for chord's own directory; rename it`);
   if (children.length === 0) throw new Error(`${dir} contains no git repository; a chord project is a folder with the repository in a child directory`);
   if (children.length > 1) throw new Error(`${dir} contains several repositories (${children.join(', ')}); chord supports one per project for now`);
   const repo = path.join(dir, children[0]);
   return { dir, repo, repoName: children[0], stateDir: stateDirFor(dir) };
 }
 
+/** Why `dir` (a repository root) must not be moved into a child directory, or null when it is safe. */
+export function restructureBlocker(dir: string): string | null {
+  if (same(fs.realpathSync.native(dir), fs.realpathSync.native(os.homedir()))) return 'refusing to move your home directory';
+  let worktrees = 1;
+  try { worktrees = git(dir, 'worktree', 'list', '--porcelain').split('\n').filter(l => l.startsWith('worktree ')).length; } catch { /* not a repo */ }
+  if (worktrees > 1) return `${dir} has linked worktrees (git worktree list); remove them first, moving the repository would break them`;
+  try { if (git(dir, 'ls-files', '--', 'chord')) return 'the repository tracks a top-level chord/ directory, which chord needs for itself; rename it first'; } catch { /* ignore */ }
+  return null;
+}
+
 /** Move everything in `dir` (except chord/) into `dir/name`, so the repository becomes a child. Rolls back on failure. */
-export function restructure(dir: string, name: string): string {
+export function restructure(dir: string, name: string, rename: (from: string, to: string) => void = fs.renameSync): string {
+  const invalid = validateRepoName(name);
+  if (invalid) throw new Error(invalid);
+  const blocker = restructureBlocker(dir);
+  if (blocker) throw new Error(blocker);
   const target = path.join(dir, name);
   if (fs.existsSync(target)) throw new Error(`${target} already exists`);
   const entries = fs.readdirSync(dir).filter(e => e !== 'chord');
   fs.mkdirSync(target);
   const moved: string[] = [];
   try {
-    for (const e of entries) { fs.renameSync(path.join(dir, e), path.join(target, e)); moved.push(e); }
+    for (const e of entries) { rename(path.join(dir, e), path.join(target, e)); moved.push(e); }
   } catch (e) {
-    for (const m of moved) fs.renameSync(path.join(target, m), path.join(dir, m));
-    fs.rmdirSync(target);
-    throw new Error(`could not move ${dir} into ${target}: ${(e as Error).message}. Close programs that have files open there and try again.`);
+    const stuck: string[] = [];
+    for (const m of moved) { try { rename(path.join(target, m), path.join(dir, m)); } catch { stuck.push(m); } }
+    if (!stuck.length) { try { fs.rmdirSync(target); } catch { /* leave it */ } }
+    const note = stuck.length ? ` Rolling back failed too: ${stuck.join(', ')} are still under ${target}.` : ' Everything was moved back.';
+    throw new Error(`could not move ${dir} into ${target}: ${(e as Error).message}.${note} Close programs that have files open there and try again.`);
   }
   return target;
 }

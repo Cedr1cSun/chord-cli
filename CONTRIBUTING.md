@@ -31,7 +31,7 @@ Commit messages follow Conventional Commits with a scope: `type(scope): subject`
 - subject: imperative, lower case, no full stop, at most 50 characters
 - body: why the change is needed, wrapped at 72 characters
 
-One change per commit, written in British English.
+One change per commit.
 
 ## Pull requests
 

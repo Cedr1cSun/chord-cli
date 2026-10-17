@@ -94,7 +94,12 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     case 'user-prompt-submit': {
       db.setStatus(ctx.db, ctx.agent, 'busy');
       const ms = db.takeUnread(ctx.db, ctx.agent);
-      return ms.length ? context('UserPromptSubmit', `${formatMessages(ms)}\n\n[chord] ${ms.length} message(s) above arrived from other agents. Act on them in this turn as well as on the user's request: reply with the chord send tool where a reply is asked for.`) : undefined;
+      // One line of identity on every prompt: a conversation that started without the briefing (Codex /new fires no
+      // session hooks; a resumed conversation may predate chord) still learns what it is and what the rules are.
+      const reminder = `[chord] You are agent "${ctx.agent}" in a chord project: claim a file with the chord claim tool before editing it, talk to the other agents with chord send, merge with chord finish.`;
+      return context('UserPromptSubmit', ms.length
+        ? `${formatMessages(ms)}\n\n[chord] ${ms.length} message(s) above arrived from other agents. Act on them in this turn as well as on the user's request: reply with the chord send tool where a reply is asked for.\n${reminder}`
+        : reminder);
     }
 
     case 'pre-tool-use': {

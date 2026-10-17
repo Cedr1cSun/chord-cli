@@ -34,12 +34,17 @@ test('session-start sets busy and briefs with peers and claims', () => {
   assert.match(out, /- test\/x.test.ts <- b: add, cover parser/);
 });
 
-test('user-prompt-submit delivers unread messages once', () => {
+test('user-prompt-submit delivers unread messages once and always restates who the agent is', () => {
   const { d, ctx } = setup();
   db.send(d, 'b', ['a'], 'hello a');
   const out = (handleHook(ctx('a'), 'claude', 'user-prompt-submit', {}) as any).hookSpecificOutput.additionalContext as string;
   assert.match(out, /message from b/); assert.match(out, /hello a/);
-  assert.equal(handleHook(ctx('a'), 'claude', 'user-prompt-submit', {}), undefined);
+  assert.match(out, /You are agent "a" in a chord project/);
+  // no messages left: only the one-line reminder, so a conversation that never saw the briefing (Codex /new) still knows the rules
+  const again = (handleHook(ctx('a'), 'claude', 'user-prompt-submit', {}) as any).hookSpecificOutput.additionalContext as string;
+  assert.doesNotMatch(again, /hello a/);
+  assert.match(again, /^\[chord\] You are agent "a" in a chord project: claim a file with the chord claim tool before editing it/);
+  assert.ok(again.length < 250);
 });
 
 test('pre-tool-use denies unclaimed writes and allows claimed ones', () => {

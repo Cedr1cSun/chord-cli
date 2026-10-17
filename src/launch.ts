@@ -80,15 +80,18 @@ export function claudeArgs(env: Record<string, string>): string[] {
   return ['--settings', JSON.stringify({ hooks }), '--mcp-config', JSON.stringify(mcp)];
 }
 
+/** A JSON string literal is also a valid TOML basic string, quotes, backslashes and non-ASCII included. */
+const toml = (s: string) => JSON.stringify(s);
+
 /** CLI arguments that inject chord's hooks and MCP server into Codex. Values are TOML. */
 export function codexArgs(env: Record<string, string>): string[] {
   const args: string[] = [];
   for (const e of EVENTS) {
-    const matcher = e.matcher ? `matcher='${e.matcher.codex}',` : '';
-    args.push('-c', `hooks.${e.codex}=[{${matcher}hooks=[{type="command",command='${hookCommand(e.event)}'}]}]`);
+    const matcher = e.matcher ? `matcher=${toml(e.matcher.codex)},` : '';
+    args.push('-c', `hooks.${e.codex}=[{${matcher}hooks=[{type="command",command=${toml(hookCommand(e.event))}}]}]`);
   }
-  const envToml = Object.entries(env).map(([k, v]) => `${k}='${v}'`).join(',');
-  args.push('-c', `mcp_servers.chord={command="node",args=['${SERVE_TS}'],env={${envToml}}}`);
+  const envToml = Object.entries(env).map(([k, v]) => `${k}=${toml(v)}`).join(',');
+  args.push('-c', `mcp_servers.chord={command="node",args=[${toml(SERVE_TS)}],env={${envToml}}}`);
   return args;
 }
 

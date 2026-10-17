@@ -58,9 +58,12 @@ test('codexArgs is a list of -c TOML overrides', () => {
   const args = codexArgs({ CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'codex' });
   assert.equal(args.filter(a => a === '-c').length, 7);
   const pre = args.find(a => a.startsWith('hooks.PreToolUse='))!;
-  assert.match(pre, /matcher='\^apply_patch\$'/);
-  assert.ok(pre.includes(`command='${hookCommand('pre-tool-use')}'`));
-  assert.match(args.find(a => a.startsWith('mcp_servers.chord='))!, /env=\{CHORD_AGENT_ID='a',CHORD_DB='\/db',CHORD_TOOL='codex'\}/);
+  assert.ok(pre.includes('matcher="^apply_patch$"'));
+  assert.ok(pre.includes(`command=${JSON.stringify(hookCommand('pre-tool-use'))}`));
+  assert.ok(args.find(a => a.startsWith('mcp_servers.chord='))!.includes('env={CHORD_AGENT_ID="a",CHORD_DB="/db",CHORD_TOOL="codex"}'));
+  // paths with quotes, spaces and non-ASCII survive as TOML basic strings
+  const odd = codexArgs({ CHORD_AGENT_ID: 'a', CHORD_DB: "C:/repo o'brien/仓库/.git/chord.db", CHORD_TOOL: 'codex' });
+  assert.ok(odd.find(a => a.startsWith('mcp_servers.chord='))!.includes(`CHORD_DB="C:/repo o'brien/仓库/.git/chord.db"`));
 });
 
 test('prepare creates the worktree and db and names the agent', () => {

@@ -155,3 +155,15 @@ test('claims, releases and sweeps leave events behind', () => {
   assert.deepEqual(db.sweep(d, () => false), ['a']);
   assert.deepEqual(db.listEvents(d, 'a', 1).map(e => [e.kind, e.file, e.detail]), [['release', 'g.ts', 'swept']]);
 });
+
+test('listMessages returns the latest messages oldest first, for one agent or all', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: 1, cwd: '/' });
+  db.addAgent(d, { name: 'c', tool: 'codex', pid: 1, cwd: '/' });
+  db.send(d, 'a', ['b'], 'one'); db.send(d, 'b', ['a'], 'two'); db.send(d, 'c', ['b'], 'three');
+  assert.deepEqual(db.listMessages(d).map(m => m.body), ['one', 'two', 'three']);
+  assert.deepEqual(db.listMessages(d, 'a').map(m => m.body), ['one', 'two']);
+  assert.deepEqual(db.listMessages(d, 'b', 2).map(m => m.body), ['two', 'three']);
+  assert.deepEqual(db.listMessages(d, 'zz'), []);
+});

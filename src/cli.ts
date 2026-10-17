@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // chord <claude|codex> [--name <agent>] [tool args...]   launch an agent in its own workspace
 // chord ls [--all]                                        agents and file claims, this project or all
+// chord messages [agent] [-n N]                           message history
 // chord events [agent] [-n N]                             claim, release, merge and conflict history
 // chord clean [--force] [agent...]                        remove offline agents' workspaces, worktrees and branches
 import fs from 'node:fs';
@@ -15,7 +16,7 @@ import { resolveCommand, run } from './pty.ts';
 import { disabledCodexHooks, pretrustClaude } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
-const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord events [agent] [-n N]\n       chord clean [--force] [agent...]\n';
+const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord messages [agent] [-n N]\n       chord events [agent] [-n N]\n       chord clean [--force] [agent...]\n';
 
 export function ls(d: ReturnType<typeof db.openDb>): string {
   db.sweep(d);
@@ -39,6 +40,14 @@ export function when(t: number, now = Date.now()): string {
   const d = new Date(t), pad = (n: number) => String(n).padStart(2, '0');
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   return d.toDateString() === new Date(now).toDateString() ? time : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
+}
+
+/** chord messages [agent] [-n N]: the latest messages, oldest first, one line each. */
+export function messages(d: ReturnType<typeof db.openDb>, agent?: string, limit = 50, now = Date.now()): string {
+  const ms = db.listMessages(d, agent, limit);
+  if (!ms.length) return agent ? `no messages to or from ${agent}\n` : 'no messages\n';
+  const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+  return ms.map(m => `${when(m.created_at, now)} ${m.sender} -> ${m.recipient}${m.kind !== 'message' ? ` [${m.kind}]` : ''}${m.read_at ? '' : ' (unread)'}: ${oneLine(m.body)}`).join('\n') + '\n';
 }
 
 /** chord events [agent] [-n N]: claims, releases, merges and conflicts, oldest first. */
@@ -114,12 +123,12 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(ls(db.openDb(file)));
     return 0;
   }
-  if (cmd === 'events') {
+  if (cmd === 'messages' || cmd === 'events') {
     const project = resolveProject(process.cwd());
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
     const { agent, limit } = listArgs(rest);
-    process.stdout.write(events(db.openDb(file), agent, limit));
+    process.stdout.write(cmd === 'messages' ? messages(db.openDb(file), agent, limit) : events(db.openDb(file), agent, limit));
     return 0;
   }
   if (cmd === 'clean') {

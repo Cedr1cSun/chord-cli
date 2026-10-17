@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../src/db.ts';
-import { events, listArgs, ls, when } from '../src/cli.ts';
+import { events, listArgs, ls, messages, when } from '../src/cli.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -24,6 +24,23 @@ test('events lists claims, releases and merges oldest first, one line each', () 
   assert.throws(() => listArgs(['a', 'b']), /at most one agent/);
   assert.match(when(now, now), /^\d\d:\d\d:\d\d$/);
   assert.match(when(now - 3 * 86_400_000, now), /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/);
+});
+
+test('messages lists message history oldest first, marking notices and unread ones', () => {
+  const d = db.openDb(':memory:');
+  assert.equal(messages(d), 'no messages\n');
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/' });
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/' });
+  db.send(d, 'a', ['b'], 'first\nline two');
+  db.send(d, 'b', ['a'], 'reply', 'notice');
+  db.takeUnread(d, 'b');
+  const now = Date.now();
+  const ms = messages(d, undefined, 50, now).split('\n').filter(Boolean);
+  assert.equal(ms.length, 2);
+  assert.match(ms[0], /^\d\d:\d\d:\d\d a -> b: first line two$/);
+  assert.match(ms[1], /^\d\d:\d\d:\d\d b -> a \[notice\] \(unread\): reply$/);
+  assert.equal(messages(d, 'b', 1, now).split('\n').filter(Boolean).length, 1); // -n keeps the latest
+  assert.equal(messages(d, 'c'), 'no messages to or from c\n');
 });
 
 

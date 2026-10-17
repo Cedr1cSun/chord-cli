@@ -136,6 +136,8 @@ test('openDb upgrades a database from before heartbeat_at and keeps its rows', (
   const d = db.openDb(file);
   assert.equal(d.prepare('pragma user_version').get()!.user_version, 2);
   assert.deepEqual(db.getAgent(d, 'old')!.heartbeat_at, null);
+  assert.equal(db.getAgent(d, 'old')!.stop_requested_at, null);
+  assert.equal(db.requestStop(d, 'old'), false); // offline
   assert.deepEqual(db.listEvents(d), []); // the events table exists
   assert.equal(db.getAgent(d, 'old')!.status, 'offline');
   db.heartbeat(d, 'old'); // the new column works
@@ -166,4 +168,18 @@ test('listMessages returns the latest messages oldest first, for one agent or al
   assert.deepEqual(db.listMessages(d, 'a').map(m => m.body), ['one', 'two']);
   assert.deepEqual(db.listMessages(d, 'b', 2).map(m => m.body), ['two', 'three']);
   assert.deepEqual(db.listMessages(d, 'zz'), []);
+});
+
+test('a stop request only sticks to an online agent and a relaunch clears it', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });
+  assert.equal(db.getAgent(d, 'a')!.stop_requested_at, null);
+  db.setStatus(d, 'a', 'offline');
+  assert.equal(db.requestStop(d, 'a'), false); // offline
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' }); // relaunch
+  assert.equal(db.requestStop(d, 'a'), true);
+  assert.ok(db.getAgent(d, 'a')!.stop_requested_at! > 0);
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 2, cwd: '/' });
+  assert.equal(db.getAgent(d, 'a')!.stop_requested_at, null); // a relaunch starts without a pending stop
+  assert.equal(db.requestStop(d, 'nobody'), false);
 });

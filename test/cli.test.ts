@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../src/db.ts';
-import { events, listArgs, ls, messages, when } from '../src/cli.ts';
+import { events, listArgs, ls, messages, stop, when } from '../src/cli.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -41,6 +41,17 @@ test('messages lists message history oldest first, marking notices and unread on
   assert.match(ms[1], /^\d\d:\d\d:\d\d b -> a \[notice\] \(unread\): reply$/);
   assert.equal(messages(d, 'b', 1, now).split('\n').filter(Boolean).length, 1); // -n keeps the latest
   assert.equal(messages(d, 'c'), 'no messages to or from c\n');
+});
+
+test('stop flags an online agent and refuses offline or unknown ones', () => {
+  const d = db.openDb(':memory:');
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/' });
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/' });
+  assert.match(stop(d, 'a'), /^stop requested: a will quit/);
+  assert.ok(db.getAgent(d, 'a')!.stop_requested_at! > 0);
+  db.setStatus(d, 'b', 'offline');
+  assert.throws(() => stop(d, 'b'), /b is already offline/);
+  assert.throws(() => stop(d, 'zz'), /no such agent: zz/);
 });
 
 

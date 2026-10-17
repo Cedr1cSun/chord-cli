@@ -3,6 +3,7 @@
 // chord ls [--all]                                        agents and file claims, this project or all
 // chord messages [agent] [-n N]                           message history
 // chord events [agent] [-n N]                             claim, release, merge and conflict history
+// chord stop <agent>                                      quit an agent once it is idle
 // chord clean [--force] [agent...]                        remove offline agents' workspaces, worktrees and branches
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +17,7 @@ import { resolveCommand, run } from './pty.ts';
 import { disabledCodexHooks, pretrustClaude } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
-const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord messages [agent] [-n N]\n       chord events [agent] [-n N]\n       chord clean [--force] [agent...]\n';
+const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord messages [agent] [-n N]\n       chord events [agent] [-n N]\n       chord stop <agent>\n       chord clean [--force] [agent...]\n';
 
 export function ls(d: ReturnType<typeof db.openDb>): string {
   db.sweep(d);
@@ -55,6 +56,12 @@ export function events(d: ReturnType<typeof db.openDb>, agent?: string, limit = 
   const es = db.listEvents(d, agent, limit);
   if (!es.length) return agent ? `no events for ${agent}\n` : 'no events\n';
   return es.map(e => `${when(e.at, now)} ${e.agent.padEnd(28)} ${e.kind.padEnd(8)} ${[e.file, e.detail].filter(Boolean).join(' ')}`).join('\n') + '\n';
+}
+
+/** chord stop <agent>: the wrapper quits the tool once the agent is idle and nothing is typed. */
+export function stop(d: ReturnType<typeof db.openDb>, name: string): string {
+  if (db.requestStop(d, name)) return `stop requested: ${name} will quit when its current turn ends and its input box is empty\n`;
+  throw new Error(db.getAgent(d, name) ? `${name} is already offline` : `no such agent: ${name}`);
 }
 
 /** [agent] and -n N for the history commands. */
@@ -123,12 +130,14 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(ls(db.openDb(file)));
     return 0;
   }
-  if (cmd === 'messages' || cmd === 'events') {
+  if (cmd === 'messages' || cmd === 'events' || cmd === 'stop') {
     const project = resolveProject(process.cwd());
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
+    const d = db.openDb(file);
+    if (cmd === 'stop') { if (rest.length !== 1) { process.stderr.write(USAGE); return 2; } process.stdout.write(stop(d, rest[0])); return 0; }
     const { agent, limit } = listArgs(rest);
-    process.stdout.write(cmd === 'messages' ? messages(db.openDb(file), agent, limit) : events(db.openDb(file), agent, limit));
+    process.stdout.write(cmd === 'messages' ? messages(d, agent, limit) : events(d, agent, limit));
     return 0;
   }
   if (cmd === 'clean') {

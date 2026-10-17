@@ -98,23 +98,31 @@ export function stripAnsi(s: string): string {
     .replace(/\x1b./g, '');
 }
 
-/** Did the TUI echo the nudge text into its input box? A dialog, picker or any other mode that swallows keystrokes
+/** What `chord stop` types to quit the tool, once the agent is idle and the input box is empty. */
+export const EXIT_COMMAND: Record<Tool, string> = { claude: '/exit', codex: '/quit' };
+
+/** Did the TUI echo the typed text into its input box? A dialog, picker or any other mode that swallows keystrokes
  *  does not echo them, so this is the test before Enter is pressed: Enter in a dialog picks the default answer. Only
- *  the opening words are checked, with whitespace ignored, so wrapping and re-rendering do not matter. */
-export function nudgeEchoed(output: string): boolean {
+ *  the opening characters are checked, with whitespace ignored, so wrapping and re-rendering do not matter. */
+export function typedEchoed(output: string, text: string): boolean {
   const squash = (s: string) => stripAnsi(s).replace(/\s+/g, '');
-  return squash(output).includes(squash(NUDGE).slice(0, 25));
+  return squash(output).includes(squash(text).slice(0, 25));
 }
 
-export type Action = 'nudge' | 'enter' | null;
+export type Typed = 'nudge' | 'stop';
+export type Action = Typed | 'enter' | null;
 
-/** What the idle-wake loop should do this tick. Messages stay in the inbox until the UserPromptSubmit hook
- *  takes them, so a lost keystroke is retried, never dropped. `nudgedAt` is when the nudge text was typed;
- *  `echoed` whether the TUI showed it; `enters` how many times Enter was pressed for this nudge and `enteredAt`
- *  when last. Enter is pressed at most twice per nudge, and never when the text was not echoed. */
-export function nextAction(s: { status: string | undefined; unread: boolean; gateClear: boolean; nudgedAt: number; echoed: boolean; enters: number; enteredAt: number }, now: number): Action {
-  if (s.status !== 'idle' || !s.unread || !s.gateClear) return null;
-  if (!s.nudgedAt || now - s.nudgedAt > 30_000) return 'nudge'; // first try, or the typed text was lost or swallowed
+/** What the idle-wake loop should do this tick: type the nudge (unread messages), type the exit command (`chord
+ *  stop`), press Enter once more, or nothing. Messages stay in the inbox until a hook takes them, so a lost
+ *  keystroke is retried, never dropped. `typed`/`typedAt` say what was last typed and when; `echoed` whether the TUI
+ *  showed it; `enters` how many times Enter was pressed for it and `enteredAt` when last. Enter is pressed at most
+ *  twice per typed text, never when the text was not echoed, and nothing new is typed while the last text is fresh. */
+export function nextAction(s: { status: string | undefined; unread: boolean; stop: boolean; gateClear: boolean; typed: Typed | null; typedAt: number; echoed: boolean; enters: number; enteredAt: number }, now: number): Action {
+  if (s.status !== 'idle' || !s.gateClear) return null;
+  const want: Typed | null = s.stop ? 'stop' : s.unread ? 'nudge' : null;
+  if (!want) return null;
+  if (!s.typedAt || now - s.typedAt > 30_000) return want; // first try, or the typed text was lost or swallowed
+  if (s.typed !== want) return null; // something else is still in the input box; wait for it to go through or expire
   if (!s.echoed || s.enters !== 1) return null; // swallowed: hands off; never pressed: the user got there first; pressed twice: enough
   if (now - s.enteredAt > 5_000) return 'enter'; // typed and echoed but not submitted: press Enter once more
   return null;
@@ -158,30 +166,31 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   process.stdout.on('resize', onResize);
 
   Object.assign(process.env, launch.env); // so the wrapper writes to the same chord.db.log as the hooks
-  let nudgedAt = 0, enteredAt = 0, enters = 0, echoed = false, lastState = '';
+  let typed: Typed | null = null, typedAt = 0, enteredAt = 0, enters = 0, echoed = false, lastState = '';
   const timer = setInterval(() => {
     db.heartbeat(d, launch.name);
-    const status = db.getAgent(d, launch.name)?.status;
-    if (status !== 'idle') { nudgedAt = enteredAt = enters = 0; echoed = false; }
-    const s = { status, unread: db.hasUnread(d, launch.name), gateClear: gate.clear(), nudgedAt, echoed, enters, enteredAt };
+    const me = db.getAgent(d, launch.name);
+    const status = me?.status;
+    if (status !== 'idle') { typed = null; typedAt = enteredAt = enters = 0; echoed = false; }
+    const s = { status, unread: db.hasUnread(d, launch.name), stop: !!me?.stop_requested_at, gateClear: gate.clear(), typed, typedAt, echoed, enters, enteredAt };
     const action = nextAction(s, Date.now());
-    const state = `${status}/${s.unread}/${s.gateClear}/${action}`;
-    if (state !== lastState) { db.log(`wake loop: status=${status} unread=${s.unread} gateClear=${s.gateClear} action=${action}`); lastState = state; }
+    const state = `${status}/${s.unread}/${s.stop}/${s.gateClear}/${action}`;
+    if (state !== lastState) { db.log(`wake loop: status=${status} unread=${s.unread} stop=${s.stop} gateClear=${s.gateClear} action=${action}`); lastState = state; }
     if (!action) return;
-    if (action === 'nudge') {
-      nudgedAt = Date.now(); enteredAt = enters = 0; echoed = false;
-      echoBuf = ''; awaitingEcho = true;
-      term.write(NUDGE);
-      // Enter must arrive separately or the TUI treats it as pasted text. It is only pressed once the TUI has echoed
-      // the text (so a dialog or picker, which swallows keystrokes, never gets an Enter) and the user has not typed.
-      setTimeout(() => {
-        awaitingEcho = false;
-        echoed = nudgeEchoed(echoBuf);
-        if (!echoed) { db.log('wake loop: nudge text was not echoed, something other than the prompt has the keyboard; not pressing Enter'); return; }
-        if (!gate.clear()) { db.log('wake loop: the user typed meanwhile; not pressing Enter'); return; }
-        term.write('\r'); enteredAt = Date.now(); enters = 1;
-      }, 1500);
-    } else { enteredAt = Date.now(); enters++; term.write('\r'); }
+    if (action === 'enter') { enteredAt = Date.now(); enters++; term.write('\r'); return; }
+    const text = action === 'stop' ? EXIT_COMMAND[tool] : NUDGE;
+    typed = action; typedAt = Date.now(); enteredAt = enters = 0; echoed = false;
+    echoBuf = ''; awaitingEcho = true;
+    term.write(text);
+    // Enter must arrive separately or the TUI treats it as pasted text. It is only pressed once the TUI has echoed
+    // the text (so a dialog or picker, which swallows keystrokes, never gets an Enter) and the user has not typed.
+    setTimeout(() => {
+      awaitingEcho = false;
+      echoed = typedEchoed(echoBuf, text);
+      if (!echoed) { db.log(`wake loop: ${action} text was not echoed, something other than the prompt has the keyboard; not pressing Enter`); return; }
+      if (!gate.clear()) { db.log('wake loop: the user typed meanwhile; not pressing Enter'); return; }
+      term.write('\r'); enteredAt = Date.now(); enters = 1;
+    }, 1500);
   }, 1000);
 
   return new Promise(resolve => {

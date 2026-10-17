@@ -17,6 +17,7 @@ export interface Agent {
   started_at: number;
   updated_at: number;
   heartbeat_at: number | null; // refreshed by the wrapper; null for agents without one (tests)
+  stop_requested_at: number | null; // set by `chord stop`; the wrapper quits the tool once the agent is idle
 }
 
 export interface Claim {
@@ -80,7 +81,8 @@ export function openDb(file: string): DatabaseSync {
       status     text not null default 'busy',
       started_at integer not null,
       updated_at integer not null,
-      heartbeat_at integer
+      heartbeat_at integer,
+      stop_requested_at integer
     );
     create table if not exists claims (
       agent    text not null references agents(name),
@@ -123,7 +125,7 @@ function migrate(db: DatabaseSync): void {
   if (v >= SCHEMA_VERSION) return;
   const agentCols = () => (db.prepare('pragma table_info(agents)').all() as { name: string }[]).map(c => c.name);
   if (v < 1 && !agentCols().includes('heartbeat_at')) db.exec('alter table agents add column heartbeat_at integer'); // 2026-10-17
-  // v2 (2026-10-17): the events table, created by the schema block above
+  if (v < 2 && !agentCols().includes('stop_requested_at')) db.exec('alter table agents add column stop_requested_at integer'); // 2026-10-17; the events table is created above
   db.exec(`pragma user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -135,7 +137,8 @@ export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid:
     `insert into agents (name, tool, pid, cwd, worktree, status, started_at, updated_at, heartbeat_at)
      values (?, ?, ?, ?, ?, 'busy', ?, ?, ?)
      on conflict(name) do update set tool = excluded.tool, pid = excluded.pid, cwd = excluded.cwd, worktree = excluded.worktree,
-       status = 'busy', task = null, scope = null, started_at = excluded.started_at, updated_at = excluded.updated_at, heartbeat_at = excluded.heartbeat_at`,
+       status = 'busy', task = null, scope = null, started_at = excluded.started_at, updated_at = excluded.updated_at, heartbeat_at = excluded.heartbeat_at,
+       stop_requested_at = null`,
   ).run(a.name, a.tool, a.pid, a.cwd, a.worktree ?? a.cwd, now, now, a.heartbeat ? now : null);
   // a relaunch under the same name must not inherit messages meant for the previous session
   db.prepare('delete from messages where recipient = ? and read_at is null').run(a.name);
@@ -261,6 +264,10 @@ export function listMessages(db: DatabaseSync, agent?: string, limit = 50): Mess
   return (rows as unknown as Message[]).reverse();
 }
 
+/** `chord stop`: ask the wrapper to quit the tool once the agent is idle. Returns false for an unknown or offline agent. */
+export function requestStop(db: DatabaseSync, name: string): boolean {
+  return db.prepare(`update agents set stop_requested_at = ? where name = ? and status != 'offline'`).run(Date.now(), name).changes > 0;
+}
 
 export function claimsFor(db: DatabaseSync, file: string): Claim[] {
   return db.prepare('select rowid as rid, * from claims where file = ?').all(file) as unknown as Claim[];

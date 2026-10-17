@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { InputGate, decodeKeys, nextAction, nudgeEchoed, oscState, resolveCommand, stripAnsi, whereIs } from '../src/pty.ts';
+import { EXIT_COMMAND, InputGate, NUDGE, decodeKeys, nextAction, oscState, resolveCommand, stripAnsi, typedEchoed, whereIs } from '../src/pty.ts';
 
 const key = (uc: number, down = 1, ctrl = 0) => `\x1b[${uc};0;${uc};${down};${ctrl};1_`;
 
@@ -68,9 +68,9 @@ test('decodeKeys drops OSC, DCS, SS3 and mouse sequences and holds any unfinishe
 });
 
 test('nextAction nudges once, presses Enter once more only when the text was echoed, retypes 30s after the nudge', () => {
-  const base = { status: 'idle', unread: true, gateClear: true, nudgedAt: 0, echoed: false, enters: 0, enteredAt: 0 };
+  const base = { status: 'idle', unread: true, stop: false, gateClear: true, typed: null, typedAt: 0, echoed: false, enters: 0, enteredAt: 0 };
   assert.equal(nextAction(base, 100_000), 'nudge');
-  const typed = { ...base, nudgedAt: 100_000 };
+  const typed = { ...base, typed: 'nudge' as const, typedAt: 100_000 };
   assert.equal(nextAction(typed, 103_000), null); // echo check pending
   assert.equal(nextAction(typed, 110_000), null); // not echoed: a dialog ate it, hands off
   const entered = { ...typed, echoed: true, enters: 1, enteredAt: 101_500 };
@@ -84,11 +84,29 @@ test('nextAction nudges once, presses Enter once more only when the text was ech
   assert.equal(nextAction({ ...base, gateClear: false }, 100_000), null);
 });
 
-test('nudgeEchoed sees the nudge through re-rendering, wrapping and escape sequences, and not when a dialog ate it', () => {
-  assert.equal(nudgeEchoed('\x1b[?25l\x1b[2K\r> [chord] You have new\r\n  messages from other agents;\x1b[?25h'), true);
-  assert.equal(nudgeEchoed('\x1b[1;1H› [ch\x1b[Kord] You ha\x1b[Kve new messag\x1b[Kes from'), true);
-  assert.equal(nudgeEchoed('Hooks need review\n› 1. Review hooks\n  2. Trust all and continue'), false);
-  assert.equal(nudgeEchoed(''), false);
+test('nextAction: a stop request wins over unread messages and follows the same typing protocol', () => {
+  const base = { status: 'idle', unread: true, stop: true, gateClear: true, typed: null, typedAt: 0, echoed: false, enters: 0, enteredAt: 0 };
+  assert.equal(nextAction(base, 100_000), 'stop');
+  assert.equal(nextAction({ ...base, unread: false }, 100_000), 'stop');
+  assert.equal(nextAction({ ...base, status: 'busy' }, 100_000), null); // waits for the turn to end
+  assert.equal(nextAction({ ...base, gateClear: false }, 100_000), null); // and for the user's draft to go
+  // a nudge was typed 5s ago and is still in the box: do not type /exit on top of it; wait for it to clear or expire
+  const nudging = { ...base, typed: 'nudge' as const, typedAt: 95_000, echoed: true, enters: 1, enteredAt: 96_500 };
+  assert.equal(nextAction(nudging, 100_000), null);
+  assert.equal(nextAction(nudging, 126_000), 'stop'); // expired: type the exit command
+  const stopping = { ...base, typed: 'stop' as const, typedAt: 100_000, echoed: true, enters: 1, enteredAt: 101_500 };
+  assert.equal(nextAction(stopping, 107_000), 'enter');
+  assert.equal(nextAction({ ...stopping, echoed: false }, 107_000), null);
+  assert.deepEqual(EXIT_COMMAND, { claude: '/exit', codex: '/quit' });
+});
+
+test('typedEchoed sees the text through re-rendering, wrapping and escape sequences, and not when a dialog ate it', () => {
+  assert.equal(typedEchoed('\x1b[?25l\x1b[2K\r> [chord] You have new\r\n  messages from other agents;\x1b[?25h', NUDGE), true);
+  assert.equal(typedEchoed('\x1b[1;1H› [ch\x1b[Kord] You ha\x1b[Kve new messag\x1b[Kes from', NUDGE), true);
+  assert.equal(typedEchoed('Hooks need review\n› 1. Review hooks\n  2. Trust all and continue', NUDGE), false);
+  assert.equal(typedEchoed('', NUDGE), false);
+  assert.equal(typedEchoed('\x1b[2K> /exit\x1b[K', '/exit'), true);
+  assert.equal(typedEchoed('> /ex', '/exit'), false);
   assert.equal(stripAnsi('a\x1b]7501;state=idle:app=codex\x1b\\b\x1b[31mc\x1b[0m\x1bPq..\x1b\\d\x1b(Be'), 'abcde');
 });
 

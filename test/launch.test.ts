@@ -154,8 +154,8 @@ test('post-tool-use runs for every tool and codex hooks that attach context get 
 test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets no Notification hook', () => {
   const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-wt-'));
   fs.mkdirSync(path.join(wt, '.claude'));
-  fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'] }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo theirs' }] }], PreCompact: [{ hooks: [{ type: 'command', command: 'echo pc' }] }] } }));
-  fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo local' }] }] } }));
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'] }, env: { A: 'json', B: 'json' }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo theirs' }] }], PreCompact: [{ hooks: [{ type: 'command', command: 'echo pc' }] }] } }));
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', env: { A: 'local' }, disableAllHooks: true, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo local' }] }] } }));
   fs.writeFileSync(path.join(wt, '.mcp.json'), '{"mcpServers":{}}');
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: wt };
   // without the user's trust in the repository nothing of its own rides along
@@ -166,6 +166,8 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
   assert.deepEqual(settings.permissions, { allow: ['Bash(npm test)'] });
   assert.equal(settings.model, 'opus');
+  assert.deepEqual(settings.env, { A: 'local' }); // settings.local.json wins over settings.json, as in Claude Code (whole key, not a deep merge)
+  assert.equal(settings.disableAllHooks, undefined); // would switch chord off
   assert.deepEqual(settings.hooks.Stop.map((h: any) => h.hooks[0].command), [hookCommand('stop'), 'echo theirs', 'echo local']);
   assert.equal(settings.hooks.PreCompact[0].hooks[0].command, 'echo pc');
   assert.equal(settings.hooks.Notification[0].matcher, 'idle_prompt');

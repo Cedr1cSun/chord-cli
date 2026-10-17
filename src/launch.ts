@@ -97,18 +97,31 @@ export const hasProjectConfig = (worktree: string) => PROJECT_CONFIG_FILES.some(
 
 /** chord's settings plus the repository's .claude/settings.json and settings.local.json (later files win,
  *  hook lists are concatenated so both chord's and the project's hooks run). */
+/** Hook lists of `b` appended to those of `a`, so both sets run. */
+function concatHooks(a: Record<string, any>, b: Record<string, any>): Record<string, unknown[]> {
+  const hooks: Record<string, unknown[]> = { ...(a.hooks ?? {}) };
+  for (const [event, list] of Object.entries(b.hooks ?? {})) hooks[event] = [...(hooks[event] ?? []), ...(Array.isArray(list) ? list : [])];
+  return hooks;
+}
+
+/** Somebody else's settings underneath chord's: their keys fill in, chord's keys win, hook lists are concatenated,
+ *  and disableAllHooks is dropped because it would switch chord itself off. */
+export function mergeSettings(ours: Record<string, any>, theirs: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = { ...theirs, ...ours, hooks: concatHooks(ours, theirs) };
+  delete out.disableAllHooks;
+  return out;
+}
+
 export function mergeProjectSettings(ours: Record<string, any>, worktree?: string): Record<string, any> {
   if (!worktree) return ours;
-  let out: Record<string, any> = ours;
-  for (const name of ['settings.json', 'settings.local.json']) {
-    let theirs: Record<string, any>;
-    try { theirs = JSON.parse(fs.readFileSync(path.join(worktree, '.claude', name), 'utf8')); } catch { continue; }
-    if (typeof theirs !== 'object' || theirs === null) continue;
-    const hooks: Record<string, unknown[]> = { ...out.hooks };
-    for (const [event, list] of Object.entries(theirs.hooks ?? {})) hooks[event] = [...(hooks[event] ?? []), ...(Array.isArray(list) ? list : [])];
-    out = { ...theirs, ...out, hooks };
+  let theirs: Record<string, any> = {};
+  for (const name of ['settings.json', 'settings.local.json']) { // settings.local.json wins, as in Claude Code itself
+    let one: Record<string, any>;
+    try { one = JSON.parse(fs.readFileSync(path.join(worktree, '.claude', name), 'utf8')); } catch { continue; }
+    if (typeof one !== 'object' || one === null) continue;
+    theirs = { ...theirs, ...one, hooks: concatHooks(theirs, one) };
   }
-  return out;
+  return mergeSettings(ours, theirs);
 }
 
 /** A JSON string literal is also a valid TOML basic string, quotes, backslashes and non-ASCII included. */

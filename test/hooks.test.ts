@@ -74,12 +74,13 @@ test('stop feeds unread messages back, otherwise marks idle', () => {
   assert.equal(db.getAgent(d, 'a')!.status, 'idle');
 });
 
-test('session-end goes offline and releases claims', () => {
+test('session-end leaves going offline to the wrapper: the agent is idle and keeps its claims', () => {
   const { d, ctx } = setup();
   db.addClaim(d, { agent: 'a', file: 'f', intent: 'x', kind: 'add' });
+  db.setStatus(d, 'a', 'busy');
   handleHook(ctx('a'), 'codex', 'session-end', {});
-  assert.equal(db.getAgent(d, 'a')!.status, 'offline');
-  assert.equal(db.claimsBy(d, 'a').length, 0);
+  assert.equal(db.getAgent(d, 'a')!.status, 'idle');
+  assert.equal(db.claimsBy(d, 'a').length, 1);
 });
 
 test('pre-tool-use polices only the worktree and forbids other checkouts in the project', () => {
@@ -116,9 +117,9 @@ test('session-end after /clear keeps the agent online with its claims', () => {
   handleHook(ctx('a'), 'claude', 'session-end', { reason: 'clear' });
   assert.equal(db.getAgent(d, 'a')!.status, 'idle');
   assert.equal(db.claimsBy(d, 'a').length, 1);
-  handleHook(ctx('a'), 'claude', 'session-end', { reason: 'prompt_input_exit' });
-  assert.equal(db.getAgent(d, 'a')!.status, 'offline');
-  assert.equal(db.claimsBy(d, 'a').length, 0);
+  handleHook(ctx('a'), 'claude', 'session-end', { reason: 'prompt_input_exit' }); // whatever the reason: the process exit, not the hook, takes the agent offline
+  assert.equal(db.getAgent(d, 'a')!.status, 'idle');
+  assert.equal(db.claimsBy(d, 'a').length, 1);
 });
 
 test('changedPaths reads NUL-separated status including renames and odd names', async () => {

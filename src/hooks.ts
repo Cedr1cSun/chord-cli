@@ -156,10 +156,10 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       return undefined;
 
     case 'session-end':
-      // Claude Code's /clear and /resume end the session but keep the process; the agent is still here
-      if (payload.reason === 'clear' || payload.reason === 'resume') { db.setStatus(ctx.db, ctx.agent, 'idle'); return undefined; }
-      db.setStatus(ctx.db, ctx.agent, 'offline');
-      db.releaseAll(ctx.db, ctx.agent, 'offline');
+      // A session ending is not the agent leaving: /clear, /resume and /compact end one and start another in the same
+      // process, and the reason strings differ between tools and versions. Going offline and releasing claims is the
+      // wrapper's job when the process exits (and the sweep's if it crashes); here the agent only becomes idle.
+      db.setStatus(ctx.db, ctx.agent, 'idle');
       return undefined;
   }
 }

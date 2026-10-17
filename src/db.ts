@@ -117,6 +117,13 @@ export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid:
   db.prepare('delete from messages where recipient = ? and read_at is null').run(a.name);
 }
 
+/** Forget an agent entirely: its claims and every message it sent or received. */
+export function removeAgent(db: DatabaseSync, name: string): void {
+  db.prepare('delete from claims where agent = ?').run(name);
+  db.prepare('delete from messages where sender = ? or recipient = ?').run(name, name);
+  db.prepare('delete from agents where name = ?').run(name);
+}
+
 export function setTask(db: DatabaseSync, name: string, task: string, scope: string | null): void {
   db.prepare('update agents set task = ?, scope = ?, updated_at = ? where name = ?').run(task, scope, Date.now(), name);
 }

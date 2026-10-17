@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 // chord <claude|codex> [--name <agent>] [tool args...]   launch an agent in its own workspace
 // chord ls [--all]                                        agents and file claims, this project or all
+// chord clean [--force] [agent...]                        remove offline agents' workspaces, worktrees and branches
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
+import { clean } from './clean.ts';
 import * as db from './db.ts';
 import { prepare } from './launch.ts';
 import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
 import { resolveCommand, run } from './pty.ts';
 import type { Tool } from './hooks.ts';
 
-const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n';
+const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord clean [--force] [agent...]\n';
 
 export function ls(d: ReturnType<typeof db.openDb>): string {
   db.sweep(d);
@@ -82,6 +84,17 @@ async function main(argv: string[]): Promise<number> {
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
     process.stdout.write(ls(db.openDb(file)));
+    return 0;
+  }
+  if (cmd === 'clean') {
+    const project = resolveProject(process.cwd());
+    const file = db.dbPath(project.stateDir);
+    if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
+    const force = rest.includes('--force');
+    const r = clean(project, db.openDb(file), rest.filter(a => a !== '--force'), force);
+    for (const n of r.removed) process.stdout.write(`removed ${n}\n`);
+    for (const k of r.kept) process.stdout.write(`kept ${k.name}: ${k.why}\n`);
+    if (!r.removed.length && !r.kept.length) process.stdout.write('nothing to clean\n');
     return 0;
   }
   if (cmd !== 'claude' && cmd !== 'codex') { process.stderr.write(USAGE); return 2; }

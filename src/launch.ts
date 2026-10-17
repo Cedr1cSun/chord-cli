@@ -71,7 +71,10 @@ const EVENTS: { event: Event; claude: string; codex?: string; matcher?: { claude
   { event: 'session-end', claude: 'SessionEnd', codex: 'SessionEnd', timeout: 10 },
 ];
 
-export const hookCommand = (event: Event) => `node "${HOOKS_TS}" ${event}`;
+/** The node that runs chord, by absolute path: the agent's PATH may hold an older node (nvm, a project .nvmrc) that
+ *  cannot run .ts files, and a hook that fails to start lets a write through. */
+export const NODE = fs.realpathSync.native(process.execPath).split(path.sep).join('/');
+export const hookCommand = (event: Event) => `"${NODE}" "${HOOKS_TS}" ${event}`;
 
 /** CLI arguments that inject chord's hooks and MCP server into Claude Code. */
 /** `projectConfig`: also load the repository's own .claude settings and .mcp.json. Only when the user has trusted the
@@ -85,7 +88,7 @@ export function claudeArgs(env: Record<string, string>, projectConfig = false): 
       hooks: [{ type: 'command', command: hookCommand(e.event), ...(e.timeout ? { timeout: e.timeout } : {}) }],
     }];
   }
-  const mcp = { mcpServers: { chord: { command: 'node', args: [SERVE_TS], env } } };
+  const mcp = { mcpServers: { chord: { command: NODE, args: [SERVE_TS], env } } };
   // The agent's cwd is its workspace, not the repository, so Claude Code would not pick up the repository's
   // own CLAUDE.md, .claude/settings*.json or .mcp.json. --add-dir covers CLAUDE.md; the others are passed along.
   const wt = env.CHORD_WORKTREE;
@@ -153,7 +156,7 @@ export function codexArgs(env: Record<string, string>): string[] {
   }
   const envToml = Object.entries(env).map(([k, v]) => `${k}=${toml(v)}`).join(',');
   // finish may wait minutes for the merge lock; Codex's default tool timeout is 60s
-  args.push('-c', `mcp_servers.chord={command="node",args=[${toml(SERVE_TS)}],env={${envToml}},tool_timeout_sec=600}`);
+  args.push('-c', `mcp_servers.chord={command=${toml(NODE)},args=[${toml(SERVE_TS)}],env={${envToml}},tool_timeout_sec=600}`);
   return args;
 }
 

@@ -65,7 +65,9 @@ export const finishLockPath = (dbFile = process.env.CHORD_DB ?? '') => path.join
 const FILE_COLLATION = process.platform === 'linux' ? '' : 'collate nocase';
 
 export function openDb(file: string): DatabaseSync {
-  const db = new DatabaseSync(file);
+  // the busy timeout must be in force before the first statement: switching to WAL below does not wait otherwise,
+  // and several agents starting at once on a new database all hit it together
+  const db = new DatabaseSync(file, { timeout: 5000 });
   db.exec(`
     pragma journal_mode = wal;
     pragma busy_timeout = 5000;

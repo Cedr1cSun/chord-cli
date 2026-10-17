@@ -168,3 +168,15 @@ test('an idle_prompt notification marks the agent idle; other notifications do n
   handleHook(ctx('a'), 'claude', 'notification', { notification_type: 'idle_prompt' });
   assert.equal(db.getAgent(d, 'a')!.status, 'idle');
 });
+
+test('a hook that cannot open the database still refuses the write', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const os = await import('node:os');
+  const env = { ...process.env, CHORD_AGENT_ID: 'a', CHORD_DB: path.join(os.tmpdir(), 'chord-no-such-dir-' + Date.now(), 'chord.db'), CHORD_TOOL: 'claude', CHORD_WORKSPACE: 'C:/w', CHORD_WORKTREE: 'C:/w/repo' };
+  const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: 'C:/w/repo/x.txt' } });
+  const out = execFileSync(process.execPath, [path.join(import.meta.dirname, '..', 'src', 'hooks.ts'), 'pre-tool-use'], { input: payload, env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+  assert.equal(JSON.parse(out).hookSpecificOutput.permissionDecision, 'deny');
+  // other events fail quietly
+  const quiet = execFileSync(process.execPath, [path.join(import.meta.dirname, '..', 'src', 'hooks.ts'), 'stop'], { input: '{}', env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+  assert.equal(quiet, '');
+});

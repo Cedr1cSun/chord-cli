@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeProjectSettings, mergeUserSettings } from '../src/launch.ts';
+import { NODE, ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeProjectSettings, mergeUserSettings } from '../src/launch.ts';
 import { NeedsRestructure, resolveProject, restructure, encodeProjectPath, knownProjects } from '../src/project.ts';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, stdio: 'ignore' });
@@ -76,7 +76,10 @@ test('claudeArgs carries hooks in --settings and the server in --mcp-config', ()
   assert.equal(settings.hooks.PreToolUse[0].hooks[0].command, hookCommand('pre-tool-use'));
   assert.equal(settings.hooks.SessionEnd[0].hooks[0].timeout, 10);
   const mcp = JSON.parse(args[args.indexOf('--mcp-config') + 1]);
-  assert.equal(mcp.mcpServers.chord.command, 'node');
+  assert.equal(mcp.mcpServers.chord.command, NODE); // the node running chord, by absolute path, never whatever PATH finds
+  assert.ok(NODE.endsWith('/node.exe') || NODE.endsWith('/node'));
+  assert.ok(hookCommand('stop').startsWith(`"${NODE}" "`));
+  assert.ok(codexArgs(env).find(a => a.startsWith('mcp_servers.chord='))!.includes(`command=${JSON.stringify(NODE)}`));
   assert.deepEqual(mcp.mcpServers.chord.env, env);
   assert.ok(!args.includes('--strict-mcp-config'));
 });

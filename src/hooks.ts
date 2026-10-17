@@ -233,7 +233,18 @@ async function main(): Promise<void> {
   try { payload = JSON.parse(raw); } catch { /* no payload */ }
   // the workspace is fixed per agent; the tool's own cwd moves when the agent runs `cd`, so it is not used as the base
   const cwd = process.env.CHORD_WORKSPACE ?? (typeof payload.cwd === 'string' ? payload.cwd : process.cwd());
-  const ctx: Ctx = { db: db.openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd, project: process.env.CHORD_PROJECT };
+  let ctx: Ctx;
+  try {
+    ctx = { db: db.openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd, project: process.env.CHORD_PROJECT };
+  } catch (e) {
+    // the database would not open: a write must still not go through unchecked
+    const msg = (e as Error).message;
+    process.stderr.write(`chord hook: cannot open ${file}: ${msg}\n`);
+    if (event === 'pre-tool-use' && filesTouched(tool, payload).length) {
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `chord could not check this write (${msg}); try again or report it to the user` } }));
+    }
+    return;
+  }
   const out = safeHandle(ctx, tool, event, payload);
   db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `${typeof out === 'string' ? 'text' : 'json'} ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
   if (out !== undefined) process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out));

@@ -183,3 +183,14 @@ test('a stop request only sticks to an online agent and a relaunch clears it', (
   assert.equal(db.getAgent(d, 'a')!.stop_requested_at, null); // a relaunch starts without a pending stop
   assert.equal(db.requestStop(d, 'nobody'), false);
 });
+
+test('a notice waits for the next hook; only a message wakes an idle agent', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });
+  db.send(d, 'peer', ['a'], 'x merged into main', 'notice');
+  assert.equal(db.hasUnread(d, 'a'), false);
+  db.send(d, 'peer', ['a'], 'are you there?');
+  assert.equal(db.hasUnread(d, 'a'), true);
+  assert.equal(db.takeUnread(d, 'a').length, 2); // both are delivered together
+  assert.equal(db.hasUnread(d, 'a'), false);
+});

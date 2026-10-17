@@ -305,8 +305,9 @@ export function takeUnread(db: DatabaseSync, recipient: string, budget = DELIVER
   return out;
 }
 
+/** Whether a message (not a notice) is waiting: only messages wake an idle agent; notices ride along with the next hook. */
 export function hasUnread(db: DatabaseSync, recipient: string): boolean {
-  return !!db.prepare('select 1 from messages where recipient = ? and read_at is null limit 1').get(recipient);
+  return !!db.prepare(`select 1 from messages where recipient = ? and read_at is null and kind = 'message' limit 1`).get(recipient);
 }
 
 /** Has `sender` sent `recipient` a real message (not a notice) at or after `since`? */

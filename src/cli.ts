@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // chord <claude|codex> [--name <agent>] [tool args...]   launch an agent in its own workspace
 // chord ls [--all]                                        agents and file claims, this project or all
+// chord events [agent] [-n N]                             claim, release, merge and conflict history
 // chord clean [--force] [agent...]                        remove offline agents' workspaces, worktrees and branches
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +15,7 @@ import { resolveCommand, run } from './pty.ts';
 import { disabledCodexHooks, pretrustClaude } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
-const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord clean [--force] [agent...]\n';
+const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord events [agent] [-n N]\n       chord clean [--force] [agent...]\n';
 
 export function ls(d: ReturnType<typeof db.openDb>): string {
   db.sweep(d);
@@ -31,6 +32,32 @@ export function lsAll(): string {
   return projects.map(p => {
     try { return `== ${p.dir ?? p.stateDir}\n${ls(db.openDb(p.dbFile))}`; } catch (e) { return `== ${p.dir ?? p.stateDir}\n(unreadable: ${(e as Error).message})\n`; }
   }).join('\n');
+}
+
+/** Local time of day, with the date in front when it is not today. */
+export function when(t: number, now = Date.now()): string {
+  const d = new Date(t), pad = (n: number) => String(n).padStart(2, '0');
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return d.toDateString() === new Date(now).toDateString() ? time : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
+}
+
+/** chord events [agent] [-n N]: claims, releases, merges and conflicts, oldest first. */
+export function events(d: ReturnType<typeof db.openDb>, agent?: string, limit = 50, now = Date.now()): string {
+  const es = db.listEvents(d, agent, limit);
+  if (!es.length) return agent ? `no events for ${agent}\n` : 'no events\n';
+  return es.map(e => `${when(e.at, now)} ${e.agent.padEnd(28)} ${e.kind.padEnd(8)} ${[e.file, e.detail].filter(Boolean).join(' ')}`).join('\n') + '\n';
+}
+
+/** [agent] and -n N for the history commands. */
+export function listArgs(rest: string[]): { agent?: string; limit: number } {
+  let agent: string | undefined, limit = 50;
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '-n') { limit = Number(rest[++i]); if (!Number.isInteger(limit) || limit <= 0) throw new Error('-n needs a positive number'); }
+    else if (rest[i].startsWith('-')) throw new Error(`unknown option ${rest[i]}`);
+    else if (agent) throw new Error('give at most one agent name');
+    else agent = rest[i];
+  }
+  return { agent, limit };
 }
 
 /** `--name <x>` or `--name=<x>` anywhere before the tool's own arguments. */
@@ -85,6 +112,14 @@ async function main(argv: string[]): Promise<number> {
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
     process.stdout.write(ls(db.openDb(file)));
+    return 0;
+  }
+  if (cmd === 'events') {
+    const project = resolveProject(process.cwd());
+    const file = db.dbPath(project.stateDir);
+    if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
+    const { agent, limit } = listArgs(rest);
+    process.stdout.write(events(db.openDb(file), agent, limit));
     return 0;
   }
   if (cmd === 'clean') {

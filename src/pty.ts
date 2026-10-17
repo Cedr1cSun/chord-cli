@@ -192,7 +192,7 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
       if (process.stdin.isTTY) process.stdin.setRawMode(false);
       process.stdin.pause();
       db.setStatus(d, launch.name, 'offline');
-      db.releaseAll(d, launch.name);
+      db.releaseAll(d, launch.name, 'exit');
       resolve(exitCode);
     });
   });

@@ -137,17 +137,19 @@ function finishLocked(ctx: Ctx) {
   } catch (e) {
     try { git(wt, 'rebase', '--abort'); } catch { /* nothing to abort */ }
     db.log(`finish: rebase of ${branch} onto ${main} conflicted; aborted`);
+    db.addEvent(ctx.db, ctx.agent, 'conflict', null, `rebase of ${branch} onto ${main} conflicted; aborted, nothing merged`);
     throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${stderrOf(e)}`);
   }
   const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
   if (!subjects.length) {
     db.log(`finish: ${branch} has nothing beyond ${main}; claims released, nothing merged`);
-    db.releaseAll(ctx.db, ctx.agent);
+    db.releaseAll(ctx.db, ctx.agent, 'finish');
     return { merged: [] as string[], into: main, notified: [] as string[], note: 'your branch has no commits beyond main; nothing to merge' };
   }
   git(root, 'merge', '--ff-only', branch);
   db.log(`finish: merged ${branch} into ${main} (${subjects.length} commit(s))`);
-  db.releaseAll(ctx.db, ctx.agent);
+  db.addEvent(ctx.db, ctx.agent, 'merge', null, `${subjects.length} commit(s) into ${main}: ${subjects.join('; ')}`);
+  db.releaseAll(ctx.db, ctx.agent, 'finish');
   const online = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent && a.status !== 'offline').map(a => a.name);
   if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\nRebase your branch when convenient. This is a notification; do not reply.`, 'notice');
   return { merged: subjects, into: main, notified: online };

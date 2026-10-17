@@ -1,7 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../src/db.ts';
-import { ls } from '../src/cli.ts';
+import { events, listArgs, ls, when } from '../src/cli.ts';
+
+test('events lists claims, releases and merges oldest first, one line each', () => {
+  const d = db.openDb(':memory:');
+  assert.equal(events(d, 'a'), 'no events for a\n');
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/' });
+  const now = Date.now();
+  db.addClaim(d, { agent: 'a', file: 'src/x.ts', intent: 'add route', kind: 'add' });
+  db.removeClaim(d, 'a', 'src/x.ts');
+  db.addEvent(d, 'a', 'merge', null, '2 commit(s) into main: x; y');
+  const es = events(d, undefined, 50, now).split('\n').filter(Boolean);
+  assert.match(es[0], /^\d\d:\d\d:\d\d a\s+claim\s+src\/x.ts add: add route$/);
+  assert.match(es[1], /^\d\d:\d\d:\d\d a\s+release\s+src\/x.ts released$/);
+  assert.match(es[2], /^\d\d:\d\d:\d\d a\s+merge\s+2 commit\(s\) into main: x; y$/);
+  assert.equal(events(d, undefined, 1, now).split('\n').filter(Boolean).length, 1); // -n keeps the latest
+  assert.equal(events(d, 'b'), 'no events for b\n');
+  assert.deepEqual(listArgs([]), { agent: undefined, limit: 50 });
+  assert.deepEqual(listArgs(['a', '-n', '5']), { agent: 'a', limit: 5 });
+  assert.throws(() => listArgs(['-n', 'x']), /positive number/);
+  assert.throws(() => listArgs(['--full']), /unknown option/);
+  assert.throws(() => listArgs(['a', 'b']), /at most one agent/);
+  assert.match(when(now, now), /^\d\d:\d\d:\d\d$/);
+  assert.match(when(now - 3 * 86_400_000, now), /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/);
+});
+
 
 test('ls lists agents and claims, sweeping dead ones', () => {
   const d = db.openDb(':memory:');

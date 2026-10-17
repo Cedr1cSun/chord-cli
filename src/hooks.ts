@@ -155,7 +155,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       // Claude Code's /clear and /resume end the session but keep the process; the agent is still here
       if (payload.reason === 'clear' || payload.reason === 'resume') { db.setStatus(ctx.db, ctx.agent, 'idle'); return undefined; }
       db.setStatus(ctx.db, ctx.agent, 'offline');
-      db.releaseAll(ctx.db, ctx.agent);
+      db.releaseAll(ctx.db, ctx.agent, 'offline');
       return undefined;
   }
 }

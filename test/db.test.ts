@@ -134,11 +134,24 @@ test('openDb upgrades a database from before heartbeat_at and keeps its rows', (
     insert into agents (name, tool, pid, cwd, worktree, status, started_at, updated_at) values ('old', 'claude', 1, '/', '/', 'offline', 1, 1);`);
   old.close();
   const d = db.openDb(file);
-  assert.equal(d.prepare('pragma user_version').get()!.user_version, 1);
+  assert.equal(d.prepare('pragma user_version').get()!.user_version, 2);
   assert.deepEqual(db.getAgent(d, 'old')!.heartbeat_at, null);
+  assert.deepEqual(db.listEvents(d), []); // the events table exists
   assert.equal(db.getAgent(d, 'old')!.status, 'offline');
   db.heartbeat(d, 'old'); // the new column works
   assert.ok(db.getAgent(d, 'old')!.heartbeat_at! > 0);
   d.close();
-  assert.equal(db.openDb(file).prepare('pragma user_version').get()!.user_version, 1); // idempotent
+  assert.equal(db.openDb(file).prepare('pragma user_version').get()!.user_version, 2); // idempotent
+});
+
+test('claims, releases and sweeps leave events behind', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });
+  db.addClaim(d, { agent: 'a', file: 'f.ts', intent: 'x', kind: 'modify' });
+  db.addClaim(d, { agent: 'a', file: 'g.ts', intent: 'y', kind: 'add' });
+  db.removeClaim(d, 'a', 'f.ts');
+  db.removeClaim(d, 'a', 'f.ts'); // already gone: no event
+  assert.deepEqual(db.listEvents(d).map(e => [e.kind, e.file, e.detail]), [['claim', 'f.ts', 'modify: x'], ['claim', 'g.ts', 'add: y'], ['release', 'f.ts', 'released']]);
+  assert.deepEqual(db.sweep(d, () => false), ['a']);
+  assert.deepEqual(db.listEvents(d, 'a', 1).map(e => [e.kind, e.file, e.detail]), [['release', 'g.ts', 'swept']]);
 });

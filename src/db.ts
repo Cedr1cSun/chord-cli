@@ -101,6 +101,14 @@ export function openDb(file: string): DatabaseSync {
       created_at integer not null,
       read_at    integer
     );
+    create table if not exists events (
+      id     integer primary key autoincrement,
+      at     integer not null,
+      agent  text not null,
+      kind   text not null,
+      file   text,
+      detail text
+    );
   `);
   migrate(db);
   return db;
@@ -108,15 +116,14 @@ export function openDb(file: string): DatabaseSync {
 
 /** Bump when the schema changes and add a step below; `pragma user_version` records what a database has. A database
  *  from before versioning reads as 0 and gets every step, each of which checks what is actually there. */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 function migrate(db: DatabaseSync): void {
   const v = (db.prepare('pragma user_version').get() as { user_version: number }).user_version;
   if (v >= SCHEMA_VERSION) return;
-  if (v < 1) { // 2026-10-17: heartbeat_at added to agents
-    const cols = (db.prepare('pragma table_info(agents)').all() as { name: string }[]).map(c => c.name);
-    if (!cols.includes('heartbeat_at')) db.exec('alter table agents add column heartbeat_at integer');
-  }
+  const agentCols = () => (db.prepare('pragma table_info(agents)').all() as { name: string }[]).map(c => c.name);
+  if (v < 1 && !agentCols().includes('heartbeat_at')) db.exec('alter table agents add column heartbeat_at integer'); // 2026-10-17
+  // v2 (2026-10-17): the events table, created by the schema block above
   db.exec(`pragma user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -199,7 +206,7 @@ export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAli
   for (const name of dead) {
     log(`sweep: ${name} marked offline, claims released`);
     setStatus(db, name, 'offline');
-    releaseAll(db, name);
+    releaseAll(db, name, 'swept');
   }
   return dead;
 }
@@ -211,6 +218,7 @@ export function addClaim(db: DatabaseSync, c: { agent: string; file: string; int
     `insert into claims (agent, file, intent, kind, symbols, created_at) values (?, ?, ?, ?, ?, ?)
      on conflict(agent, file) do update set intent = excluded.intent, kind = excluded.kind, symbols = excluded.symbols`,
   ).run(c.agent, c.file, c.intent, c.kind, c.symbols ?? null, Date.now());
+  addEvent(db, c.agent, 'claim', c.file, `${c.kind}: ${c.intent}`);
 }
 
 export function setAskedAt(db: DatabaseSync, agent: string, file: string, at: number): void {
@@ -218,12 +226,33 @@ export function setAskedAt(db: DatabaseSync, agent: string, file: string, at: nu
 }
 
 export function removeClaim(db: DatabaseSync, agent: string, file: string): void {
-  db.prepare('delete from claims where agent = ? and file = ?').run(agent, file);
+  const gone = db.prepare('delete from claims where agent = ? and file = ?').run(agent, file).changes;
+  if (gone) addEvent(db, agent, 'release', file, 'released');
 }
 
-export function releaseAll(db: DatabaseSync, agent: string): void {
+/** `why` is what the events log shows: released (by the agent), finish, swept, offline, exit. */
+export function releaseAll(db: DatabaseSync, agent: string, why = 'released'): void {
+  const files = (db.prepare('select file from claims where agent = ? order by file').all(agent) as { file: string }[]).map(r => r.file);
   db.prepare('delete from claims where agent = ?').run(agent);
+  for (const f of files) addEvent(db, agent, 'release', f, why);
 }
+
+export type EventKind = 'claim' | 'release' | 'merge' | 'conflict';
+export interface Event { id: number; at: number; agent: string; kind: EventKind; file: string | null; detail: string | null }
+
+/** Append-only history of claims, releases and merges, for `chord events`. */
+export function addEvent(db: DatabaseSync, agent: string, kind: EventKind, file: string | null, detail: string | null): void {
+  db.prepare('insert into events (at, agent, kind, file, detail) values (?, ?, ?, ?, ?)').run(Date.now(), agent, kind, file, detail);
+}
+
+/** The latest `limit` events (oldest first), for one agent or all. */
+export function listEvents(db: DatabaseSync, agent?: string, limit = 50): Event[] {
+  const rows = agent
+    ? db.prepare('select * from events where agent = ? order by id desc limit ?').all(agent, limit)
+    : db.prepare('select * from events order by id desc limit ?').all(limit);
+  return (rows as unknown as Event[]).reverse();
+}
+
 
 export function claimsFor(db: DatabaseSync, file: string): Claim[] {
   return db.prepare('select rowid as rid, * from claims where file = ?').all(file) as unknown as Claim[];

@@ -101,10 +101,12 @@ function finishLocked(ctx: Ctx) {
     git(ctx.cwd, 'rebase', main);
   } catch (e) {
     try { git(ctx.cwd, 'rebase', '--abort'); } catch { /* nothing to abort */ }
+    db.log(`finish: rebase of ${branch} onto ${main} conflicted; aborted`);
     throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${stderrOf(e)}`);
   }
   const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
   git(root, 'merge', '--ff-only', branch);
+  db.log(`finish: merged ${branch} into ${main} (${subjects.length} commit(s))`);
   db.releaseAll(ctx.db, ctx.agent);
   const online = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent && a.status !== 'offline').map(a => a.name);
   if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\nRebase your branch when convenient. This is a notification; do not reply.`);

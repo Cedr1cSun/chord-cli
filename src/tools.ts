@@ -73,10 +73,12 @@ export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
   if (!mine) return { ok: false, reason: `${rel} is not claimed by you. Call claim(file, intent, kind) first.` };
   const others = earlierOccupants(ctx, mine);
   if (!others.length) return { ok: true };
-  const since = db.getAgent(ctx.db, ctx.agent)?.started_at ?? mine.created_at;
+  const myStart = db.getAgent(ctx.db, ctx.agent)?.started_at ?? mine.created_at;
   const notAsked: string[] = [];
   const waiting: { agent: string; left: number }[] = [];
   for (const o of others) {
+    // only what both current sessions have said to each other counts: a relaunched peer starts afresh
+    const since = Math.max(myStart, db.getAgent(ctx.db, o.agent)?.started_at ?? 0);
     const askedAt = db.firstMessageAt(ctx.db, ctx.agent, o.agent, since);
     if (askedAt === null) notAsked.push(o.agent);
     else if (!db.repliedSince(ctx.db, o.agent, ctx.agent, since) && now - askedAt < REPLY_TIMEOUT_MS) waiting.push({ agent: o.agent, left: REPLY_TIMEOUT_MS - (now - askedAt) });

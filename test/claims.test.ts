@@ -125,3 +125,17 @@ test('claimPath accepts workspace-relative and repository-relative forms and ref
   const flat: Ctx = { db: ctx.db, agent: 'a', cwd: '/wt', worktree: '/wt' };
   assert.equal(claimPath(flat, 'src/x.ts'), 'src/x.ts');
 });
+
+test('a relaunched occupant must be told again: only both current sessions count', () => {
+  const { d, ctx, call } = setup();
+  call('a', 'claim', { file: 'f.ts', intent: 'x', kind: 'modify' });
+  d.prepare('update claims set created_at = created_at - 1000').run();
+  call('b', 'claim', { file: 'f.ts', intent: 'y', kind: 'modify' });
+  call('b', 'send', { to: 'a', message: 'changing the footer' });
+  call('a', 'send', { to: 'b', message: 'fine' });
+  assert.equal(canWrite(ctx('b'), 'f.ts').ok, true);
+  // a crashes and comes back under the same name a little later; its old reply no longer counts
+  d.prepare("update agents set started_at = ? where name = 'a'").run(Date.now() + 5000);
+  db.addClaim(d, { agent: 'a', file: 'f.ts', intent: 'x', kind: 'modify' }); d.prepare("update claims set created_at = 0 where agent = 'a'").run();
+  assert.match((canWrite(ctx('b'), 'f.ts', Date.now() + 6000) as any).reason, /also claimed by a/);
+});

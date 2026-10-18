@@ -63,10 +63,24 @@ export function peers(ctx: Ctx) {
   }));
 }
 
-/** Online agents who claimed `file` before `mine` did. */
-function earlierOccupants(ctx: Ctx, mine: db.Claim): db.Claim[] {
+// words that describe code rather than name it: "the parse function" and "parse tests" share only "parse"
+const NOT_SYMBOLS = new Set(['a', 'an', 'and', 'or', 'the', 'of', 'in', 'to', 'for', 'with', 'new', 'its', 'all', 'function', 'functions', 'method', 'methods', 'class', 'classes', 'test', 'tests', 'block', 'blocks', 'section', 'line', 'lines', 'file', 'helper', 'helpers', 'code', 'logic', 'docs', 'docstring']);
+const symbolSet = (s: string | null) => new Set((s ?? '').toLowerCase().match(/[a-z_$][\w$.]*/g)?.filter(w => !NOT_SYMBOLS.has(w)) ?? []);
+
+/** Two modify claims on one file that each name the functions or blocks they touch, with none in common, do not
+ *  need to talk first. Anything less certain (no symbols on either side, or an add, delete or rename) does. */
+export function disjointEdits(a: db.Claim, b: db.Claim): boolean {
+  if (a.kind !== 'modify' || b.kind !== 'modify') return false;
+  const x = symbolSet(a.symbols), y = symbolSet(b.symbols);
+  return x.size > 0 && y.size > 0 && ![...x].some(w => y.has(w));
+}
+
+/** Online agents who claimed `file` before `mine` did, split into those `mine` overlaps and must talk to and those
+ *  editing other parts of it. */
+function earlierOccupants(ctx: Ctx, mine: db.Claim): { overlap: db.Claim[]; elsewhere: db.Claim[] } {
   const before = (c: db.Claim) => c.created_at < mine.created_at || (c.created_at === mine.created_at && c.rid < mine.rid);
-  return db.claimsFor(ctx.db, mine.file).filter(c => c.agent !== ctx.agent && before(c) && db.getAgent(ctx.db, c.agent)?.status !== 'offline');
+  const all = db.claimsFor(ctx.db, mine.file).filter(c => c.agent !== ctx.agent && before(c) && db.getAgent(ctx.db, c.agent)?.status !== 'offline');
+  return { overlap: all.filter(c => !disjointEdits(c, mine)), elsewhere: all.filter(c => disjointEdits(c, mine)) };
 }
 
 export type WriteCheck = { ok: true } | { ok: false; reason: string };
@@ -81,7 +95,7 @@ export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
   const rel = normFile(ctx, file);
   const mine = db.claimsFor(ctx.db, rel).find(c => c.agent === ctx.agent);
   if (!mine) return { ok: false, reason: `${rel} is not claimed by you. Call claim(file, intent, kind) first.` };
-  const others = earlierOccupants(ctx, mine);
+  const others = earlierOccupants(ctx, mine).overlap;
   if (!others.length) return { ok: true };
   const myStart = db.getAgent(ctx.db, ctx.agent)?.started_at ?? mine.created_at;
   const notAsked: string[] = [];
@@ -281,7 +295,7 @@ export function tools(ctx: Ctx): Tool[] {
           file: str('The file, as a path from your working directory (e.g. <repo>/src/x.ts) or relative to the repository root (src/x.ts)'),
           intent: str('One sentence: what you will change and why'),
           kind: { type: 'string', enum: ['add', 'modify', 'delete', 'rename'] },
-          symbols: str('Optional: functions or blocks you will touch'),
+          symbols: str('Optional: the functions or blocks you will touch, comma-separated. When you and an earlier holder of the file both name them and none are shared, you need not talk first.'),
         },
         required: ['file', 'intent', 'kind'],
       },
@@ -291,11 +305,13 @@ export function tools(ctx: Ctx): Tool[] {
         if (!['add', 'modify', 'delete', 'rename'].includes(kind)) throw new Error('kind must be add, modify, delete or rename');
         db.addClaim(ctx.db, { agent: ctx.agent, file, intent: req(a, 'intent'), kind, symbols: typeof a.symbols === 'string' ? a.symbols : null });
         const mine = db.claimsFor(ctx.db, file).find(c => c.agent === ctx.agent)!;
-        const others = earlierOccupants(ctx, mine);
-        db.log(`claim ${file} by ${ctx.agent} (cwd ${ctx.cwd}): rows=${JSON.stringify(db.claimsFor(ctx.db, file).map(c => [c.agent, c.created_at]))} agents=${JSON.stringify(db.listAgents(ctx.db).map(a => [a.name, a.status, a.pid]))} others=${others.map(o => o.agent)}`);
+        const { overlap: others, elsewhere } = earlierOccupants(ctx, mine);
+        db.log(`claim ${file} by ${ctx.agent} (cwd ${ctx.cwd}): rows=${JSON.stringify(db.claimsFor(ctx.db, file).map(c => [c.agent, c.created_at]))} agents=${JSON.stringify(db.listAgents(ctx.db).map(a => [a.name, a.status, a.pid]))} others=${others.map(o => o.agent)} elsewhere=${elsewhere.map(o => o.agent)}`);
+        const brief = (o: db.Claim) => ({ agent: o.agent, intent: o.intent, kind: o.kind, symbols: o.symbols });
         return {
           claimed: file,
-          must_talk_to: others.map(o => ({ agent: o.agent, intent: o.intent, kind: o.kind, symbols: o.symbols })),
+          must_talk_to: others.map(brief),
+          ...(elsewhere.length ? { also_editing: elsewhere.map(brief) } : {}),
           ...(others.length ? { next: 'Send each agent above a message describing your change. You may write once each has replied, or after 10 minutes.' } : {}),
         };
       },

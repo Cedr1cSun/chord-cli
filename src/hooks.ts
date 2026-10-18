@@ -70,7 +70,7 @@ export function briefing(ctx: Ctx): string {
     '',
     'Rules:',
     '1. First thing: call register(task, scope) to say what you are doing.',
-    '2. Before creating or changing any file, call claim(file, intent, kind). Writes to unclaimed files are refused.',
+    '2. Before creating or changing any file, call claim(file, intent, kind), naming in symbols the functions or blocks you will touch. Writes to unclaimed files are refused.',
     '3. If claim() lists agents under must_talk_to, read their intent and send() each of them a message saying what you will change. You may write once each has replied, or after 10 minutes. Do other work meanwhile; never wait idle.',
     '4. Do not modify files through shell commands (sed, echo >, etc.). Use the editor tools so claims are checked.',
     '5. To talk to other agents use only chord send()/inbox(); do not use any other agent-messaging feature. Messages are asynchronous.',

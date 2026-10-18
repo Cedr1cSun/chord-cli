@@ -173,3 +173,22 @@ test('an old, unrelated message to the occupant is not notice of the claim; one 
   call('a', 'send', { to: 'b', message: 'fine' });
   assert.equal(canWrite(ctx('b'), 'f.ts').ok, true);
 });
+
+test('two modify claims naming disjoint symbols go ahead without talking; any shared symbol, or none named, means talking first', () => {
+  const { d, ctx, call } = setup();
+  db.addAgent(d, { name: 'c', tool: 'codex', pid: process.pid, cwd: '/wt/c' });
+  db.addAgent(d, { name: 'e', tool: 'codex', pid: process.pid, cwd: '/wt/e' });
+  call('a', 'claim', { file: 'f.ts', intent: 'validate nesting', kind: 'modify', symbols: 'Context.__init__, close' });
+  d.prepare('update claims set created_at = created_at - 3000').run();
+  const b = call('b', 'claim', { file: 'f.ts', intent: 'close contexts', kind: 'modify', symbols: 'the _resolve_context function' });
+  assert.deepEqual(b.must_talk_to, []);
+  assert.deepEqual(b.also_editing.map((o: any) => o.agent), ['a']);
+  assert.equal(canWrite(ctx('b'), 'f.ts').ok, true);
+  d.prepare('update claims set created_at = created_at - 2000 where agent != ?').run('c');
+  const c = call('c', 'claim', { file: 'f.ts', intent: 'tidy close', kind: 'modify', symbols: 'close method' });
+  assert.deepEqual(c.must_talk_to.map((o: any) => o.agent), ['a'], 'shares "close" with a, nothing with b');
+  assert.equal(canWrite(ctx('c'), 'f.ts').ok, false);
+  d.prepare('update claims set created_at = created_at - 1000 where agent != ?').run('e');
+  const e = call('e', 'claim', { file: 'f.ts', intent: 'rework it', kind: 'modify' });
+  assert.deepEqual(e.must_talk_to.map((o: any) => o.agent).sort(), ['a', 'b', 'c'], 'no symbols named: everyone earlier');
+});

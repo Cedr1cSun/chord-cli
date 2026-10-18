@@ -128,7 +128,7 @@ A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) 
 ## 🔌 How chord works with your tools
 
 - **Waking an agent** means typing a short note into its terminal. chord does this only when the input box is empty, the keyboard has been quiet for a few seconds, and the terminal has echoed the note; a dialogue never receives the Enter.
-- **Trust** for each agent workspace is recorded in `~/.claude.json`, so Claude asks about a folder once rather than for every agent. Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off.
+- **Trust**: chord records the project's agents folder as trusted in `~/.claude.json` once, so Claude does not ask about each agent's workspace. Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off.
 - **Branches and worktrees.** Each agent adds a `chord/<name>` branch and a worktree; `chord clean` removes them when the agent has left and keeps anything not yet on main.
 - **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex runs with full access. On Windows chord refuses a sandboxed launch, because that sandbox cannot run the hooks; on Linux the hooks run inside the sandbox, but Codex then asks you to approve each chord tool call.
 - **The terminal title** reads `chord <agent> · <task>`, so each window says which agent it is.

@@ -220,3 +220,22 @@ test('finish refuses a submodule commit that only exists inside the worktree', (
   git(path.join(root, 'sub'), 'fetch', '-q', sub, 'HEAD');
   assert.deepEqual(finish(ctx).merged, ['bump submodule']);
 });
+
+test('finish runs the project\'s test command on the rebased branch and merges only when it passes', () => {
+  const { root, wt, d, ctx } = setup();
+  const proj = path.dirname(root);
+  fs.mkdirSync(path.join(proj, 'chord'), { recursive: true });
+  // the "suite": the worktree must hold both files once rebased, so it only passes with main's change underneath
+  fs.writeFileSync(path.join(proj, 'chord', 'config.json'), JSON.stringify({ test: 'node -e "process.exit(require(\'fs\').existsSync(\'c.txt\') && !require(\'fs\').existsSync(\'broken\') ? 0 : 3)"' }));
+  ctx.project = proj;
+  fs.writeFileSync(path.join(wt, 'b.txt'), 'two\n'); fs.writeFileSync(path.join(wt, 'broken'), '');
+  git(wt, 'add', '.'); git(wt, 'commit', '-q', '-m', 'feat: add b');
+  fs.writeFileSync(path.join(root, 'c.txt'), 'three\n'); git(root, 'add', 'c.txt'); git(root, 'commit', '-q', '-m', 'chore: add c');
+  assert.throws(() => finish(ctx), /test command failed there, so nothing was merged/);
+  assert.equal(git(root, 'log', '--format=%s', '-1'), 'chore: add c', 'main has not moved');
+  assert.equal(git(wt, 'log', '--format=%s', '-2'), 'feat: add b\nchore: add c', 'the branch stays rebased for the agent to fix');
+  assert.equal(db.claimsBy(d, 'w').length, 1);
+  git(wt, 'rm', '-q', 'broken'); git(wt, 'commit', '-q', '-m', 'fix: drop broken');
+  assert.deepEqual(finish(ctx).merged, ['fix: drop broken', 'feat: add b']); // newest first, as git log lists them
+  assert.equal(git(root, 'log', '--format=%s', '-1'), 'fix: drop broken');
+});

@@ -1,8 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as db from './db.ts';
+import { readConfig } from './launch.ts';
 import type { Tool } from './mcp.ts';
 
 /** cwd is the agent's workspace (claims are relative to it); worktree is the repository checkout inside it;
@@ -194,6 +195,19 @@ function finishLocked(ctx: Ctx) {
     db.log(`finish: rebase of ${branch} onto ${main} conflicted; aborted`);
     db.addEvent(ctx.db, ctx.agent, 'conflict', null, `rebase of ${branch} onto ${main} conflicted; aborted, nothing merged`);
     throw new Error(`rebase onto ${main} failed; nothing was merged. Run \`git rebase ${main}\` in your worktree, resolve the conflicts so both changes survive, run the tests, then call finish again; ask the user only if you cannot resolve them.\n${stderrOf(e)}`);
+  }
+  // The project's tests, on the branch as it now sits on top of main: a clean rebase can still break what another
+  // agent merged. ponytail: they run inside the finish lock, so other agents' finish waits for them (withLock gives
+  // up after 240 s); run them before taking the lock and re-check main if test suites get long.
+  const test = ctx.project ? readConfig({ dir: ctx.project }).test : undefined;
+  if (test) {
+    db.log(`finish: running the test command in ${wt}: ${test}`);
+    try { execSync(test, { cwd: wt, stdio: 'pipe', timeout: 600_000, maxBuffer: 64 << 20 }); } catch (e) {
+      const x = e as { stdout?: Buffer; stderr?: Buffer; status?: number | null };
+      const out = `${x.stdout ?? ''}${x.stderr ?? ''}`.trimEnd().split('\n').slice(-40).join('\n');
+      db.log(`finish: the test command failed${x.status != null ? ` with exit code ${x.status}` : ''}; nothing merged`);
+      throw new Error(`your branch is now rebased onto ${main}, but the project's test command failed there, so nothing was merged: ${test}\n${out}\nFix it (another agent's merged work may be what broke), commit, and call finish again.`);
+    }
   }
   const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
   // A submodule commit the branch points at must exist in the main checkout's copy of the submodule, or the

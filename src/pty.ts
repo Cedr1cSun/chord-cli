@@ -174,6 +174,13 @@ export function oscState(chunk: string): 'idle' | 'busy' | null {
   return last;
 }
 
+/** A database call from the wrapper's own callbacks. One that fails (a lock held past busy_timeout while the disk
+ *  stalls) is logged and dropped: thrown from a timer or a PTY callback it would end the wrapper and the agent in
+ *  it, and the next tick or terminal report puts the state right anyway. */
+function tolerant(what: string, f: () => void): void {
+  try { f(); } catch (e) { db.log(`${what}: ${(e as Error).message}; skipped`); }
+}
+
 export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<number> {
   const { file, args } = resolveCommand(tool);
   const env: Record<string, string> = withNodeOnPath({ ...process.env as Record<string, string>, ...launch.env });
@@ -193,7 +200,7 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
     if (awaitingEcho) echoBuf = (echoBuf + x).slice(-16000);
     if (tool === 'codex') { // the hooks set status too; the terminal report catches turns the hooks miss (Esc, untrusted hooks)
       const state = oscState(outTail + x);
-      if (state) db.setStatus(d, launch.name, state);
+      if (state) tolerant('terminal state report', () => db.setStatus(d, launch.name, state));
       outTail = x.slice(-64);
     }
   });
@@ -208,7 +215,7 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
 
   Object.assign(process.env, launch.env); // so the wrapper writes to the same chord.db.log as the hooks
   let typed: Typed | null = null, typedAt = 0, enteredAt = 0, enters = 0, echoed = false, lastState = '';
-  const timer = setInterval(() => {
+  const timer = setInterval(() => tolerant('wake loop', () => {
     db.heartbeat(d, launch.name);
     const me = db.getAgent(d, launch.name);
     const wanted = titleFor(launch.name, me?.task);
@@ -234,7 +241,7 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
       if (!gate.clear() || !gate.settled()) { db.log('wake loop: the user typed meanwhile; not pressing Enter'); return; }
       term.write('\r'); enteredAt = Date.now(); enters = 1;
     }, 1500);
-  }, 1000);
+  }), 1000);
 
   return new Promise(resolve => {
     term.onExit(({ exitCode }) => {
@@ -243,8 +250,8 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
       process.stdout.off('resize', onResize);
       if (process.stdin.isTTY) process.stdin.setRawMode(false);
       process.stdin.pause();
-      db.setStatus(d, launch.name, 'offline');
-      db.releaseAll(d, launch.name, 'exit');
+      tolerant('exit', () => db.setStatus(d, launch.name, 'offline'));
+      tolerant('exit', () => db.releaseAll(d, launch.name, 'exit')); // missed here, the next sweep releases them
       resolve(exitCode);
     });
   });

@@ -57,7 +57,13 @@ A new agent needs three things from its tool: a way to inject hooks and an MCP s
 
 ## 📦 Install
 
-From source, with Node 24 and git:
+With Node 24 and git on the machine:
+
+```
+npm install -g chord-cli
+```
+
+Or from source:
 
 ```
 git clone https://github.com/Cedr1cSun/chord-cli && cd chord-cli
@@ -122,13 +128,13 @@ A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) 
 - **Waking an agent** means typing a short note into its terminal. chord does this only when the input box is empty, the keyboard has been quiet for a few seconds, and the terminal has echoed the note; a dialogue never receives the Enter.
 - **Trust** for each agent workspace is recorded in `~/.claude.json`, so Claude asks about a folder once rather than for every agent. Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off.
 - **Branches and worktrees.** Each agent adds a `chord/<name>` branch and a worktree; `chord clean` removes them when the agent has left and keeps anything not yet on main.
-- **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex runs with full access, the mode in which its hooks run; chord refuses a sandboxed launch so that claims are always checked.
+- **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex runs with full access. On Windows chord refuses a sandboxed launch, because that sandbox cannot run the hooks; on Linux the hooks run inside the sandbox, but Codex then asks you to approve each chord tool call.
 - **The terminal title** reads `chord <agent> · <task>`, so each window says which agent it is.
 - **Hooks gate the editor tools.** Files changed from the shell are reported by name after each command, with the claim to make.
 
 ## 🗺️ Scope
 
-- Runs on Windows 11 today.
+- Runs on Windows 11 and Linux.
 - One repository per project.
 - Project paths up to about 190 characters.
 - A repository with CRLF files and a `* text` attribute that was never renormalised shows phantom changes in every worktree; chord names the files and the command that puts the repository right.

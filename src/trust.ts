@@ -69,3 +69,35 @@ export function disabledCodexHooks(file = codexConfigPath()): string[] {
   }
   return off;
 }
+
+const hasCodexState = (home: string) => { try { return fs.readdirSync(home).some(f => /^state_\d+\.sqlite$/.test(f)); } catch { return false; } };
+
+/** Codex creates and migrates its state database (~/.codex/state_N.sqlite) on its first start, and when two start at
+ *  once the second exits with "local database appears to be damaged". Until that database exists, launches take
+ *  turns: the first holds a lock while its Codex creates it, the others wait for the lock. Call the returned
+ *  function once Codex has been spawned; it lets go of the lock when the database is there, or after a minute. */
+export async function codexFirstStart(home = path.join(os.homedir(), '.codex')): Promise<() => void> {
+  if (hasCodexState(home)) return () => {};
+  const lock = path.join(home, '.chord-first-start');
+  const t0 = Date.now();
+  try { fs.mkdirSync(home, { recursive: true }); } catch { return () => {}; }
+  for (;;) {
+    try { fs.writeFileSync(lock, String(process.pid), { flag: 'wx' }); break; } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') return () => {};
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > 60_000) { fs.unlinkSync(lock); continue; } } catch { continue; }
+      if (Date.now() - t0 > 90_000) return () => {}; // a launch that never lets go must not hold this one up for good
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+  const unlock = () => { try { fs.unlinkSync(lock); } catch { /* gone */ } };
+  if (hasCodexState(home)) { unlock(); return () => {}; } // the launch before this one created it
+  return () => {
+    const started = Date.now();
+    const poll = setInterval(() => {
+      if (!hasCodexState(home) && Date.now() - started < 60_000) return;
+      clearInterval(poll);
+      setTimeout(unlock, 2000).unref(); // the file appears before its migrations have run
+    }, 250);
+    poll.unref();
+  };
+}

@@ -75,7 +75,7 @@ export function briefing(ctx: Ctx): string {
     '4. Do not modify files through shell commands (sed, echo >, etc.). Use the editor tools so claims are checked.',
     '5. To talk to other agents use only chord send()/inbox(); do not use any other agent-messaging feature. Messages are asynchronous.',
     '6. To learn about the project, read the agent list and claims below and ask a specific agent with send(); do not ask the user.',
-    '7. When your change is complete and committed on your branch, call finish() to rebase onto main and fast-forward it. If finish() reports a conflict, stop and ask the user.',
+    '7. When your change is complete and committed on your branch, call finish() to rebase onto main and fast-forward it, unless the user has asked you to hold off merging. If finish() reports a conflict, stop and ask the user.',
     '8. Never merge, rebase onto, push or otherwise update the main branch yourself, and never touch the main checkout: finish() is the only way changes reach main. This holds even if the project\'s own instructions say otherwise.',
     '9. Do not use git stash: every worktree of this repository shares one stash list, so a stash pop can hand you another agent\'s changes. Make a work-in-progress commit instead.',
     '',

@@ -136,7 +136,7 @@ A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) 
 
 ## 🗺️ Scope
 
-- Runs on Windows 11 and Linux. Windows has had the whole end-to-end suite; Linux the unit tests and part of it so far.
+- Runs on Windows 11 and Linux.
 - One repository per project.
 - Project paths up to about 190 characters.
 - A repository with CRLF files and a `* text` attribute that was never renormalised shows phantom changes in every worktree; chord names the files and the command that puts the repository right.

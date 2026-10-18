@@ -21,10 +21,10 @@
   },
   "type": "module",
   "bin": {
-    "chord": "src/cli.ts"
+    "chord": "dist/cli.js"
   },
   "files": [
-    "src",
+    "dist",
     "README.md",
     "LICENSE"
   ],
@@ -33,6 +33,8 @@
   },
   "os": ["win32", "linux"],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
     "test": "node --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },

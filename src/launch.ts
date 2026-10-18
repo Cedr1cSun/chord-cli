@@ -16,9 +16,10 @@ import type { Event, Tool } from './hooks.ts';
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
 // realpath gives one canonical spelling (drive letter and directory case): Codex persists hook trust by hashing the command string
-const here = (f: string) => fs.realpathSync.native(fileURLToPath(new URL(f, import.meta.url))).split(path.sep).join('/');
-export const HOOKS_TS = here('./hooks.ts');
-export const SERVE_TS = here('./serve.ts');
+// sibling modules by absolute path: .ts when run from src, .js from the built dist
+const here = (f: string) => fs.realpathSync.native(fileURLToPath(new URL(f + path.extname(fileURLToPath(import.meta.url)), import.meta.url))).split(path.sep).join('/');
+export const HOOKS_TS = here('./hooks');
+export const SERVE_TS = here('./serve');
 
 const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 

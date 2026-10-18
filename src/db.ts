@@ -68,6 +68,19 @@ export function openDb(file: string): DatabaseSync {
   // the busy timeout must be in force before the first statement: switching to WAL below does not wait otherwise,
   // and several agents starting at once on a new database all hit it together
   const db = new DatabaseSync(file, { timeout: 5000 });
+  // A brand-new database opened by several processes at once: SQLite answers the WAL switch and the schema with an
+  // immediate SQLITE_BUSY instead of waiting (seen on Linux, never on Windows), so the setup is retried briefly.
+  for (let attempt = 0; ; attempt++) {
+    try { setup(db); break; }
+    catch (e) {
+      if (attempt >= 50 || !/database is locked/.test((e as Error).message)) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+    }
+  }
+  return db;
+}
+
+function setup(db: DatabaseSync): void {
   db.exec(`
     pragma journal_mode = wal;
     pragma busy_timeout = 5000;
@@ -115,7 +128,6 @@ export function openDb(file: string): DatabaseSync {
     );
   `);
   migrate(db);
-  return db;
 }
 
 /** Bump when the schema changes and add a step below; `pragma user_version` records what a database has. A database

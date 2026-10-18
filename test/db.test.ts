@@ -194,3 +194,22 @@ test('a notice waits for the next hook; only a message wakes an idle agent', () 
   assert.equal(db.takeUnread(d, 'a').length, 2); // both are delivered together
   assert.equal(db.hasUnread(d, 'a'), false);
 });
+
+test('six processes opening a brand-new database at once all get in', async () => {
+  const { execFile } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-open-'));
+  const script = path.join(dir, 'open.mjs');
+  const dbTs = new URL('../src/db.ts', import.meta.url).href;
+  fs.writeFileSync(script, `import { openDb, addAgent } from ${JSON.stringify(dbTs)};
+while (Date.now() < Number(process.argv[2]));
+const d = openDb(${JSON.stringify(path.join(dir, 'chord.db'))});
+addAgent(d, { name: 'a' + process.pid, tool: 'claude', pid: process.pid, cwd: '/x' });
+console.log('ok');`);
+  // every child opens at the same instant, so the first-open race is real and not spread out by startup time
+  const run = (at: number) => new Promise<string>((resolve, reject) => execFile(process.execPath, [script, String(at)], (e, out, err) => e ? reject(new Error(err || e.message)) : resolve(out.trim())));
+  for (let round = 0; round < 3; round++) {
+    fs.rmSync(path.join(dir, 'chord.db'), { force: true });
+    const at = Date.now() + 1500;
+    assert.deepEqual(await Promise.all(Array.from({ length: 6 }, () => run(at))), Array(6).fill('ok'));
+  }
+});

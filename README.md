@@ -118,10 +118,12 @@ chord clean              # remove the workspaces and branches of agents that hav
 `<project>/chord/config.json`:
 
 ```json
-{ "setup": "npm ci" }
+{ "setup": "npm ci", "test": "npm test" }
 ```
 
 `setup` runs once in every new worktree before the agent starts, with the `CHORD_*` variables in its environment, so a fresh worktree arrives with its dependencies in place. A failed setup abandons the launch and removes the worktree.
+
+`test`, when set, runs in the agent's worktree each time `finish` has rebased the branch onto main, before main moves. If it fails nothing is merged and the agent gets the end of the output: a clean rebase can still break what another agent merged. Other agents' `finish` waits while it runs.
 
 A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) reaches an agent once you have trusted that repository in Claude Code yourself; the MCP servers you approved there are the ones that start.
 

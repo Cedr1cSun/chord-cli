@@ -321,17 +321,22 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
 }
 
 /** <project>/chord/config.json. `setup` is a shell command run in every new worktree before the agent starts,
- *  for example "npm install". */
-export function readConfig(project: Project): { setup?: string } {
+ *  for example "npm install". `test` is a shell command finish runs in the worktree after rebasing onto main and
+ *  before fast-forwarding it, for example "npm test"; when it fails nothing is merged. */
+export function readConfig(project: Pick<Project, 'dir'>): { setup?: string; test?: string } {
   const file = path.join(project.dir, 'chord', 'config.json');
   let raw: string;
   try { raw = fs.readFileSync(file, 'utf8'); } catch { return {}; }
   let cfg: unknown;
   try { cfg = JSON.parse(raw); } catch (e) { throw new Error(`${file} is not valid JSON: ${(e as Error).message}`); }
   if (typeof cfg !== 'object' || cfg === null) throw new Error(`${file} must hold a JSON object`);
-  const setup = (cfg as { setup?: unknown }).setup;
-  if (setup !== undefined && typeof setup !== 'string') throw new Error(`${file}: "setup" must be a string (a shell command)`);
-  return setup ? { setup } : {};
+  const out: { setup?: string; test?: string } = {};
+  for (const key of ['setup', 'test'] as const) {
+    const v = (cfg as Record<string, unknown>)[key];
+    if (v !== undefined && typeof v !== 'string') throw new Error(`${file}: "${key}" must be a string (a shell command)`);
+    if (v) out[key] = v;
+  }
+  return out;
 }
 
 /** Where `chord clean` and a relaunch look to see whether the setup command has run for this agent. */

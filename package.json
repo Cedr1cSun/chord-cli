@@ -1,6 +1,6 @@
 {
   "name": "chord-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Run several coding agents in one git project, each in its own worktree, with shared file claims and messaging",
   "license": "MIT",
   "keywords": [

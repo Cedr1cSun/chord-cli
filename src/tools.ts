@@ -193,7 +193,7 @@ function finishLocked(ctx: Ctx) {
     if (!conflicted) throw new Error(`rebase onto ${main} failed (not a conflict); nothing was merged.\n${stderrOf(e)}`);
     db.log(`finish: rebase of ${branch} onto ${main} conflicted; aborted`);
     db.addEvent(ctx.db, ctx.agent, 'conflict', null, `rebase of ${branch} onto ${main} conflicted; aborted, nothing merged`);
-    throw new Error(`rebase onto ${main} failed; nothing was merged. Ask the user how to resolve it.\n${stderrOf(e)}`);
+    throw new Error(`rebase onto ${main} failed; nothing was merged. Run \`git rebase ${main}\` in your worktree, resolve the conflicts so both changes survive, run the tests, then call finish again; ask the user only if you cannot resolve them.\n${stderrOf(e)}`);
   }
   const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
   // A submodule commit the branch points at must exist in the main checkout's copy of the submodule, or the
@@ -321,7 +321,7 @@ export function tools(ctx: Ctx): Tool[] {
     },
     {
       name: 'finish',
-      description: 'Your work is committed on your branch: rebase it onto main, fast-forward main, release all your claims and tell the other agents. On a rebase conflict nothing is changed; stop and ask the user.',
+      description: 'Your work is committed on your branch: rebase it onto main, fast-forward main, release all your claims and tell the other agents. On a rebase conflict nothing is changed; rebase onto main yourself, resolve it, then call finish again.',
       inputSchema: { type: 'object', properties: {} },
       handler: () => finish(ctx),
     },

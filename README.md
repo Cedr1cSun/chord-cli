@@ -22,7 +22,7 @@ One repository, as many agents as you care to start. Each agent works in its own
 - One repository, N agents, one worktree each: parallel work without stepping on each other
 - A file-level claims board: register before editing, talk to the holder first, and a hook turns away any write that was never claimed
 - Asynchronous messaging between agents: idle ones are woken, busy ones hear at their next tool call
-- `finish` in one step: rebase, fast-forward main, release the claims, tell the others; a conflict stops for a human instead of guessing
+- `finish` in one step: rebase, fast-forward main, release the claims, tell the others; on a conflict nothing changes and the agent is told to rebase, resolve it and finish again, asking you only if it cannot
 - Agents learn the rules from chord itself, at start-up and on every prompt; you give tasks, not instructions about chord
 - Agent-agnostic by design: adding a tool means one launch recipe, not a new coordinator
 - `chord ls` for the whole picture, `messages` and `events` to replay what happened, `stop` and `clean` to wind down

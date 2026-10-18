@@ -7,12 +7,12 @@ You need Node 24 and git. Claude Code or Codex CLI is needed only to try chord w
 ```
 git clone https://github.com/Cedr1cSun/chord-cli && cd chord-cli
 npm install
-npm link            # puts `chord` on your PATH, pointing at this checkout
+npm link            # puts `chord` on your PATH, running this checkout's dist/
 npm test            # unit tests, against real git repositories in temporary folders
 npm run typecheck
 ```
 
-Node runs the TypeScript in `src/` directly, so there is no build step.
+Tests and `node src/cli.ts` run the TypeScript directly. `npm install` builds `dist/` once; run `npm run build` after changing `src/` if you use the linked `chord`.
 
 ## Layout
 

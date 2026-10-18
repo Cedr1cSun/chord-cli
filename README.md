@@ -63,6 +63,8 @@ With Node 24 and git on the machine:
 npm install -g chord-cli
 ```
 
+On Linux add `--allow-scripts=node-pty`, with python3, make and g++ present: node-pty ships no Linux binary and builds one on install.
+
 Or from source:
 
 ```

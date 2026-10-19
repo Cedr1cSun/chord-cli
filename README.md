@@ -27,6 +27,19 @@ One repository, as many agents as you care to start. Each agent works in its own
 - Agent-agnostic by design: adding a tool means one launch recipe, not a new coordinator
 - `chord ls` for the whole picture, `messages` and `events` to replay what happened, `stop` and `clean` to wind down
 
+## 📊 Benchmark
+
+On [CooperBench](https://github.com/cooperbench/CooperBench) two agents each take one feature in the same repository, and a pair passes when the merged result passes the tests of both features. The gpt-6-luna figures cover the pairs where both sides finished.
+
+| chord vs | gpt-6.1-sol | gpt-6-luna |
+|---|---|---|
+| solo (one agent, both features) | 76% vs 74% | 63% vs 51% |
+| coop + git (messages and a shared git remote) | 76% vs 73% | 63% vs 47% |
+| team (a lead hands out the work) | 76% vs 69% | **63% vs 34%** |
+| coop (messages only) | 76% vs 11% | 63% vs 11% |
+
+On the stronger model chord keeps pace with the best baselines. On the weaker one it is the only two-agent setup that does not fall below a single agent, and it beats the team setting by 20 points. chord's agents got only the feature text, while the coop + git and team prompts spell out how to split and merge the work.
+
 ## 🤖 Supported agents
 
 | agent | status |

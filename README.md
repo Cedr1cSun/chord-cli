@@ -113,13 +113,14 @@ chord stop api           # let it finish its turn, then quit
 chord clean              # remove the workspaces and branches of agents that have left
 ```
 
-`--name` fixes an agent's name, workspace and branch, so launching the same name later returns to the same worktree (add `--resume` or `-c` to pick up the conversation too). Run chord in a repository root and it offers to move the repository into a child directory first.
+`--name` fixes an agent's name, workspace and branch, so launching the same name later returns to the same worktree. `chord resume <agent>` does that and also picks up the agent's last conversation, for Claude and Codex alike. Run chord in a repository root and it offers to move the repository into a child directory first.
 
 ## 🧰 Commands
 
 | command | what it does |
 |---|---|
 | `chord <agent> [--name x] [tool args...]` | start an agent: `claude` or `codex` |
+| `chord resume <agent> [tool args...]` | start an agent that has left again, in its own worktree, continuing its last conversation |
 | `chord ls [--all]` | agents and claims of this project, or of every project |
 | `chord messages [agent] [-n N]` | message history |
 | `chord events [agent] [-n N]` | claim, release, merge and conflict history |

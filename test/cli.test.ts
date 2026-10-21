@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ago, events, listArgs, ls, messages, refuseHookKillers, stop, takeSettings, when } from '../src/cli.ts';
+import { ago, events, listArgs, ls, messages, refuseHookKillers, resumeArgv, stop, takeSettings, when } from '../src/cli.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -55,6 +55,15 @@ test('stop flags an online agent and refuses offline or unknown ones', () => {
   db.setStatus(d, 'b', 'offline');
   assert.throws(() => stop(d, 'b'), /b is already offline/);
   assert.throws(() => stop(d, 'zz'), /no such agent: zz/);
+});
+
+test('resume relaunches an agent under its own tool with that tool\'s continue flags', () => {
+  const d = db.openDb(':memory:');
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/' });
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/' });
+  assert.deepEqual(resumeArgv(d, 'a', ['go on']), ['claude', '--name', 'a', '--continue', 'go on']);
+  assert.deepEqual(resumeArgv(d, 'b', []), ['codex', '--name', 'b', 'resume', '--last']);
+  assert.throws(() => resumeArgv(d, 'zz', []), /no such agent: zz/);
 });
 
 test('ls lists agents and claims, sweeping dead ones', () => {

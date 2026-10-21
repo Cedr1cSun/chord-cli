@@ -125,6 +125,17 @@ export function typedEchoed(output: string, text: string): boolean {
   return squash(output).includes(squash(text).slice(0, 25));
 }
 
+/** The Esc key as the tool reads it: in win32-input-mode (ConPTY turns a bare ESC byte into nothing, waiting for a
+ *  sequence) a key-down and key-up record; elsewhere the CSI u form the tools ask for (`ESC [ > 5 u`), which a legacy
+ *  reader ignores harmlessly. Linux form not yet verified against the real tools. */
+export const ESC_INPUT = process.platform === 'win32' ? '\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_' : '\x1b[27u';
+
+/** Did the tool answer the exit command with its "background work is running, exit and stop it or stay?" dialogue?
+ *  Claude Code asks this while a shell the agent started (a monitor it is waiting on, say) still runs. */
+export function exitDeclined(output: string): boolean {
+  return /Backgroundworkisrunning|willstopwhenyouexit/i.test(stripAnsi(output).replace(/\s+/g, ''));
+}
+
 /** The terminal title is chord's: "chord <agent> · <task>", so a window or tab can be matched to a `chord ls` row.
  *  The tools set their own titles (Claude Code its session summary, Codex the folder name), so their title
  *  sequences (OSC 0, 1, 2) are removed from the forwarded output; everything else, including Codex's OSC 7501
@@ -154,14 +165,19 @@ export type Action = Typed | 'enter' | null;
  *  stop`), press Enter once more, or nothing. Messages stay in the inbox until a hook takes them, so a lost
  *  keystroke is retried, never dropped. `typed`/`typedAt` say what was last typed and when; `echoed` whether the TUI
  *  showed it; `enters` how many times Enter was pressed for it and `enteredAt` when last. Enter is pressed at most
- *  twice per typed text, never when the text was not echoed, and nothing new is typed while the last text is fresh. */
-export function nextAction(s: { status: string | undefined; unread: boolean; stop: boolean; gateClear: boolean; typed: Typed | null; typedAt: number; echoed: boolean; enters: number; enteredAt: number }, now: number): Action {
-  if (s.status !== 'idle' || !s.gateClear) return null;
+ *  twice per nudge, never when the text was not echoed, and nothing new is typed while the last text is fresh.
+ *  `quietFor`: milliseconds since the tool last wrote to the terminal. A Stop hook does not mean the turn is over: a
+ *  goal (/goal) or another plugin's Stop hook keeps the tool working after it, with the spinner still redrawing, so
+ *  nothing is typed until the screen has been still for a few seconds.
+ *  The exit command gets no second Enter: the first one quits the tool, and anything that then appears is a dialogue
+ *  (Claude Code asks about background tasks it would stop), where Enter would pick the default for the user. */
+export function nextAction(s: { status: string | undefined; unread: boolean; stop: boolean; gateClear: boolean; quietFor: number; typed: Typed | null; typedAt: number; echoed: boolean; enters: number; enteredAt: number }, now: number): Action {
+  if (s.status !== 'idle' || !s.gateClear || s.quietFor < 3000) return null;
   const want: Typed | null = s.stop ? 'stop' : s.unread ? 'nudge' : null;
   if (!want) return null;
   if (!s.typedAt || now - s.typedAt > 30_000) return want; // first try, or the typed text was lost or swallowed
   if (s.typed !== want) return null; // something else is still in the input box; wait for it to go through or expire
-  if (!s.echoed || s.enters !== 1) return null; // swallowed: hands off; never pressed: the user got there first; pressed twice: enough
+  if (s.typed === 'stop' || !s.echoed || s.enters !== 1) return null; // swallowed: hands off; never pressed: the user got there first; pressed twice: enough
   if (now - s.enteredAt > 5_000) return 'enter'; // typed and echoed but not submitted: press Enter once more
   return null;
 }
@@ -191,11 +207,12 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   const d = db.openDb(launch.dbFile);
   db.addAgent(d, { name: launch.name, tool, pid: term.pid, cwd: launch.cwd, worktree: launch.worktree, heartbeat: true });
 
-  let outTail = '', echoBuf = '', awaitingEcho = false;
+  let outTail = '', echoBuf = '', awaitingEcho = false, lastOutputAt = Date.now();
   const titles = new TitleFilter();
   let title = titleFor(launch.name, null);
   process.stdout.write(titleSequence(title));
   term.onData(x => {
+    lastOutputAt = Date.now();
     process.stdout.write(titles.push(x));
     if (awaitingEcho) echoBuf = (echoBuf + x).slice(-16000);
     if (tool === 'codex') { // the hooks set status too; the terminal report catches turns the hooks miss (Esc, untrusted hooks)
@@ -222,10 +239,10 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
     if (wanted !== title) { title = wanted; process.stdout.write(titleSequence(title)); }
     const status = me?.status;
     if (status !== 'idle') { typed = null; typedAt = enteredAt = enters = 0; echoed = false; }
-    const s = { status, unread: db.hasUnread(d, launch.name), stop: !!me?.stop_requested_at, gateClear: gate.clear() && gate.settled(), typed, typedAt, echoed, enters, enteredAt };
+    const s = { status, unread: db.hasUnread(d, launch.name), stop: !!me?.stop_requested_at, gateClear: gate.clear() && gate.settled(), quietFor: Date.now() - lastOutputAt, typed, typedAt, echoed, enters, enteredAt };
     const action = nextAction(s, Date.now());
-    const state = `${status}/${s.unread}/${s.stop}/${s.gateClear}/${action}`;
-    if (state !== lastState) { db.log(`wake loop: status=${status} unread=${s.unread} stop=${s.stop} gateClear=${s.gateClear} action=${action}`); lastState = state; }
+    const state = `${status}/${s.unread}/${s.stop}/${s.gateClear}/${s.quietFor >= 3000}/${action}`;
+    if (state !== lastState) { db.log(`wake loop: status=${status} unread=${s.unread} stop=${s.stop} gateClear=${s.gateClear} quiet=${s.quietFor >= 3000} action=${action}`); lastState = state; }
     if (!action) return;
     if (action === 'enter') { enteredAt = Date.now(); enters++; term.write('\r'); return; }
     const text = action === 'stop' ? EXIT_COMMAND[tool] : NUDGE;
@@ -240,6 +257,16 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
       if (!echoed) { db.log(`wake loop: ${action} text was not echoed, something other than the prompt has the keyboard; not pressing Enter`); return; }
       if (!gate.clear() || !gate.settled()) { db.log('wake loop: the user typed meanwhile; not pressing Enter'); return; }
       term.write('\r'); enteredAt = Date.now(); enters = 1;
+      if (action !== 'stop') return;
+      // Quitting over the agent's background work would kill it, so chord stays (Esc) and tries again once the exit
+      // command has expired, by which time the work may be done.
+      echoBuf = ''; awaitingEcho = true;
+      setTimeout(() => {
+        awaitingEcho = false;
+        if (!exitDeclined(echoBuf)) return;
+        db.log('wake loop: the tool asked before quitting because the agent has background work running; staying, will try again later');
+        term.write(ESC_INPUT);
+      }, 2000);
     }, 1500);
   }), 1000);
 

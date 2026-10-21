@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EXIT_COMMAND, InputGate, NUDGE, TitleFilter, decodeKeys, nextAction, oscState, resolveCommand, stripAnsi, titleFor, titleSequence, typedEchoed, whereIs } from '../src/pty.ts';
+import { EXIT_COMMAND, InputGate, NUDGE, TitleFilter, decodeKeys, exitDeclined, nextAction, oscState, resolveCommand, stripAnsi, titleFor, titleSequence, typedEchoed, whereIs } from '../src/pty.ts';
 
 const key = (uc: number, down = 1, ctrl = 0) => `\x1b[${uc};0;${uc};${down};${ctrl};1_`;
 
@@ -88,8 +88,9 @@ test('decodeKeys drops OSC, DCS, SS3 and mouse sequences and holds any unfinishe
 });
 
 test('nextAction nudges once, presses Enter once more only when the text was echoed, retypes 30s after the nudge', () => {
-  const base = { status: 'idle', unread: true, stop: false, gateClear: true, typed: null, typedAt: 0, echoed: false, enters: 0, enteredAt: 0 };
+  const base = { status: 'idle', unread: true, stop: false, gateClear: true, quietFor: 10_000, typed: null, typedAt: 0, echoed: false, enters: 0, enteredAt: 0 };
   assert.equal(nextAction(base, 100_000), 'nudge');
+  assert.equal(nextAction({ ...base, quietFor: 2000 }, 100_000), null); // the screen is still moving: a goal or another Stop hook is running on
   const typed = { ...base, typed: 'nudge' as const, typedAt: 100_000 };
   assert.equal(nextAction(typed, 103_000), null); // echo check pending
   assert.equal(nextAction(typed, 110_000), null); // not echoed: a dialog ate it, hands off
@@ -105,19 +106,25 @@ test('nextAction nudges once, presses Enter once more only when the text was ech
 });
 
 test('nextAction: a stop request wins over unread messages and follows the same typing protocol', () => {
-  const base = { status: 'idle', unread: true, stop: true, gateClear: true, typed: null, typedAt: 0, echoed: false, enters: 0, enteredAt: 0 };
+  const base = { status: 'idle', unread: true, stop: true, gateClear: true, quietFor: 10_000, typed: null, typedAt: 0, echoed: false, enters: 0, enteredAt: 0 };
   assert.equal(nextAction(base, 100_000), 'stop');
   assert.equal(nextAction({ ...base, unread: false }, 100_000), 'stop');
   assert.equal(nextAction({ ...base, status: 'busy' }, 100_000), null); // waits for the turn to end
   assert.equal(nextAction({ ...base, gateClear: false }, 100_000), null); // and for the user's draft to go
+  assert.equal(nextAction({ ...base, quietFor: 500 }, 100_000), null); // and for the screen to stop moving
   // a nudge was typed 5s ago and is still in the box: do not type /exit on top of it; wait for it to clear or expire
   const nudging = { ...base, typed: 'nudge' as const, typedAt: 95_000, echoed: true, enters: 1, enteredAt: 96_500 };
   assert.equal(nextAction(nudging, 100_000), null);
   assert.equal(nextAction(nudging, 126_000), 'stop'); // expired: type the exit command
+  // the exit command is never followed by a second Enter: the tool is quitting, or has put up a dialogue
   const stopping = { ...base, typed: 'stop' as const, typedAt: 100_000, echoed: true, enters: 1, enteredAt: 101_500 };
-  assert.equal(nextAction(stopping, 107_000), 'enter');
+  assert.equal(nextAction(stopping, 107_000), null);
   assert.equal(nextAction({ ...stopping, echoed: false }, 107_000), null);
+  assert.equal(nextAction(stopping, 131_000), 'stop'); // retyped only once the first attempt has expired
   assert.deepEqual(EXIT_COMMAND, { claude: '/exit', codex: '/quit' });
+  assert.ok(exitDeclined('\x1b[1m Background work is running\x1b[0m\n The following will stop when you exit: shell\n 1. Exit and stop tasks\n 2. Stay'));
+  assert.ok(exitDeclined('The following\x1b[2C will stop\nwhen you   exit'));
+  assert.ok(!exitDeclined('Resume this session with:\nclaude --resume 398b26ab'));
 });
 
 test('TitleFilter drops the tool\'s title sequences, keeps everything else and holds a split sequence', () => {

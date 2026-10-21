@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // chord <claude|codex> [--name <agent>] [tool args...]   launch an agent in its own workspace
+// chord resume <agent> [tool args...]                     launch it again and continue its last conversation
 // chord ls [--all]                                        agents and file claims, this project or all
 // chord messages [agent] [-n N]                           message history
 // chord events [agent] [-n N]                             claim, release, merge and conflict history
@@ -18,7 +19,7 @@ import { resolveCommand, run } from './pty.ts';
 import { codexFirstStart, disabledCodexHooks, pretrustClaude } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
-const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord ls [--all]\n       chord messages [agent] [-n N]\n       chord events [agent] [-n N]\n       chord stop <agent>\n       chord clean [--force] [agent...]\n';
+const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord resume <agent> [tool args...]\n       chord ls [--all]\n       chord messages [agent] [-n N]\n       chord events [agent] [-n N]\n       chord stop <agent>\n       chord clean [--force] [agent...]\n';
 
 const gitOut = (cwd: string, ...args: string[]): string | undefined => {
   try { return execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return undefined; }
@@ -80,6 +81,14 @@ export function events(d: ReturnType<typeof db.openDb>, agent?: string, limit = 
 export function stop(d: ReturnType<typeof db.openDb>, name: string): string {
   if (db.requestStop(d, name)) return `stop requested: ${name} will quit when its current turn ends and its input box is empty\n`;
   throw new Error(db.getAgent(d, name) ? `${name} is already offline` : `no such agent: ${name}`);
+}
+
+/** chord resume <agent>: the launch of that agent again under its own tool, with the tool's flags for continuing the
+ *  latest conversation. Each agent has a workspace of its own, so the latest conversation there is that agent's. */
+export function resumeArgv(d: ReturnType<typeof db.openDb>, name: string, more: string[]): string[] {
+  const a = db.getAgent(d, name);
+  if (!a) throw new Error(`no such agent: ${name}`);
+  return [a.tool, '--name', a.name, ...(a.tool === 'codex' ? ['resume', '--last'] : ['--continue']), ...more];
 }
 
 /** [agent] and -n N for the history commands. */
@@ -181,12 +190,13 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(ls(db.openDb(file), project.repo));
     return 0;
   }
-  if (cmd === 'messages' || cmd === 'events' || cmd === 'stop') {
+  if (cmd === 'messages' || cmd === 'events' || cmd === 'stop' || cmd === 'resume') {
     const project = resolveProject(process.cwd());
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
     const d = db.openDb(file);
     if (cmd === 'stop') { if (rest.length !== 1) { process.stderr.write(USAGE); return 2; } process.stdout.write(stop(d, rest[0])); return 0; }
+    if (cmd === 'resume') { if (!rest[0] || rest[0].startsWith('-')) { process.stderr.write(USAGE); return 2; } return main(resumeArgv(d, rest[0], rest.slice(1))); }
     const { agent, limit } = listArgs(rest);
     process.stdout.write(cmd === 'messages' ? messages(d, agent, limit) : events(d, agent, limit));
     return 0;

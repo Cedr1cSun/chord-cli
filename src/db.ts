@@ -225,7 +225,7 @@ export const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedA
  *  process or a stale heartbeat both count: Windows reuses pids quickly, so the pid alone can lie.
  *  `watchMs`: when every heartbeat is stale, wait that long and see whose heartbeat moves (a live wrapper writes every
  *  second); the rest are dead. Zero, the default for hooks and tools, judges by pid alone in that case. */
-export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAlive, now = Date.now(), watchMs = 0): string[] {
+export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAlive, now = Date.now(), watchMs = 0, sleep: (ms: number) => void = sleepSync): string[] {
   const online = listAgents(db).filter(a => a.status !== 'offline');
   // Every heartbeat stale at once means the machine was asleep, not that everyone died: judge by pid alone then.
   // ponytail: a lone dead agent whose pid was reused is therefore missed by the hooks until a second agent comes online.
@@ -234,7 +234,7 @@ export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAli
   const slept = beating.length > 0 && beating.every(stale);
   let dead: string[];
   if (slept && watchMs > 0) {
-    sleepSync(watchMs);
+    sleep(watchMs);
     const moved = new Set(listAgents(db).filter(a => beating.some(b => b.name === a.name && b.heartbeat_at !== a.heartbeat_at)).map(a => a.name));
     dead = online.filter(a => !alive(a.pid) || (a.heartbeat_at !== null && !moved.has(a.name))).map(a => a.name);
   } else {

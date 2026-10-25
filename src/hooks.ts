@@ -52,10 +52,11 @@ const repoDirOf = (ctx: Ctx) => path.relative(ctx.project ?? ctx.cwd, ctx.worktr
 
 /** The same file in the agent's own worktree, for a path that hit the main checkout or another agent's worktree:
  *  both are named after the repository, so what follows that directory is the file. */
-function ownCopy(ctx: Ctx, abs: string): string {
-  const parts = path.relative(ctx.project ?? ctx.cwd, abs).split(path.sep);
-  const i = parts.indexOf(path.basename(ctx.worktree));
-  return `${repoDirOf(ctx)}/${i >= 0 ? parts.slice(i + 1).join('/') : ''}`;
+function ownCopy(ctx: Ctx, abs: string, tool: Tool): string {
+  const parts = path.relative(ctx.project ?? ctx.cwd, abs).split(path.sep), repoName = path.basename(ctx.worktree);
+  // P/<repoName>/... is the main checkout; P/chord/agents/<other>/<repoName>/... another agent's worktree
+  const tail = parts[0] === repoName ? parts.slice(1) : parts[0] === 'chord' && parts[1] === 'agents' && parts[3] === repoName ? parts.slice(4) : [];
+  return tool === 'claude' ? path.join(ctx.worktree, ...tail) : `${repoDirOf(ctx)}/${tail.join('/')}`; // Claude's editor wants absolute paths
 }
 
 /** The repository's own agent instructions. The agent's cwd is the project folder, which is not a git repository, so
@@ -138,7 +139,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'chord could not tell which file this call writes, so it is refused; use the editor tool with a plain file path' } };
       }
       // Codex resolves a patch's relative paths against the call's workdir when it gives one, else against its own cwd,
-      // the project folder (the workspace when no project is known: older rows, tests)
+      // the project folder (the workspace when no project is known, as in the tests)
       const base = ctx.project ?? ctx.cwd;
       const workdir = tool === 'codex' && typeof payload.tool_input?.workdir === 'string' ? path.resolve(base, payload.tool_input.workdir) : base;
       for (const f of files) {
@@ -146,7 +147,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
         if (!insideDir(ctx.worktree, abs)) {
           // the main checkout and the other agents' workspaces are off limits; anything else is not ours to police
           if (ctx.project && insideDir(ctx.project, abs) && !insideDir(ctx.cwd, abs)) {
-            return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `${f} is outside your workspace (the main checkout or another agent's worktree); edit your own copy ${ownCopy(ctx, abs)} instead` } };
+            return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `${f} is outside your workspace (the main checkout or another agent's worktree); edit your own copy ${ownCopy(ctx, abs, tool)} instead` } };
           }
           continue;
         }

@@ -219,6 +219,9 @@ export function heartbeat(db: DatabaseSync, name: string): void {
   db.prepare(`update agents set heartbeat_at = ?, status = case when status = 'offline' then 'busy' else status end where name = ?`).run(Date.now(), name);
 }
 
+/** How long after launch an agent may go without a heartbeat before the watch in sweep calls it dead. */
+const STARTUP_GRACE_MS = 10 * 60_000;
+
 export const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 /** Mark agents whose process is gone as offline and drop their claims. Returns the names swept. A missing
@@ -236,7 +239,9 @@ export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAli
   if (slept && watchMs > 0) {
     sleep(watchMs);
     const moved = new Set(listAgents(db).filter(a => beating.some(b => b.name === a.name && b.heartbeat_at !== a.heartbeat_at)).map(a => a.name));
-    dead = online.filter(a => !alive(a.pid) || (a.heartbeat_at !== null && !moved.has(a.name))).map(a => a.name);
+    // no heartbeat yet while the setup command or Codex's first-start wait runs: a live pid that started lately is starting
+    const starting = (a: Agent) => now - a.started_at < STARTUP_GRACE_MS;
+    dead = online.filter(a => !alive(a.pid) || (a.heartbeat_at !== null && !moved.has(a.name) && !starting(a))).map(a => a.name);
   } else {
     if (slept) log('sweep: every heartbeat is stale, the machine was probably asleep; judging by pid only');
     dead = online.filter(a => !alive(a.pid) || (!slept && stale(a))).map(a => a.name);

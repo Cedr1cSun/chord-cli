@@ -232,12 +232,16 @@ test('a watch over stale heartbeats tells a sleeping machine from dead wrappers'
   const t = Date.now();
   db.addAgent(d, { name: 'x', tool: 'claude', pid: 1, cwd: '/', heartbeat: true });
   db.addAgent(d, { name: 'y', tool: 'codex', pid: 2, cwd: '/', heartbeat: true });
-  d.prepare('update agents set heartbeat_at = ?').run(t - db.HEARTBEAT_STALE_MS - 5000);
+  d.prepare('update agents set heartbeat_at = ?, started_at = ?').run(t - db.HEARTBEAT_STALE_MS - 5000, t - 3_600_000);
   assert.deepEqual(db.sweep(d, () => true, t), []); // every heartbeat stale at once: asleep, not dead
   // a heartbeat that moves during the watch is a live wrapper; the one that does not is dead
   assert.deepEqual(db.sweep(d, () => true, t, 10, () => db.heartbeat(d, 'x')), ['y']);
   assert.equal(db.getAgent(d, 'x')!.status, 'busy');
   d.prepare('update agents set heartbeat_at = ?').run(t - db.HEARTBEAT_STALE_MS - 5000);
-  assert.deepEqual(db.sweep(d, () => true, t, 10).sort(), ['x']); // y already offline; watched and x did not move: dead
+  // an agent still starting (setup, Codex's first-start wait) writes no heartbeat yet; its live pid keeps it
+  db.addAgent(d, { name: 'z', tool: 'codex', pid: 3, cwd: '/', heartbeat: true });
+  d.prepare("update agents set heartbeat_at = ? where name = 'z'").run(t - db.HEARTBEAT_STALE_MS - 5000);
+  assert.deepEqual(db.sweep(d, () => true, t, 10).sort(), ['x']); // y already offline; x did not move: dead; z is starting
+  assert.deepEqual(db.sweep(d, () => false, t, 10).sort(), ['z']); // but a dead pid is dead, starting or not
   assert.equal(db.getAgent(d, 'x')!.status, 'offline');
 });

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ago, cleanArgs, events, fit, listArgs, ls, messages, refuseHookKillers, resumeArgv, stop, takeSettings, when, width } from '../src/cli.ts';
+import { ago, cleanArgs, cleanReport, events, fit, listArgs, ls, messages, refuseHookKillers, resumeArgv, stop, takeSettings, when, width } from '../src/cli.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -202,4 +202,11 @@ test('help and version go to stdout; unknown commands and bad arguments to stder
   assert.equal(resume.code, 2); assert.equal(resume.err, 'usage: chord resume <agent> [tool args...]\n');
   const ls = run('ls', '-a');
   assert.equal(ls.code, 1); assert.match(ls.err, /unknown argument -a; usage: chord ls \[--all\]/);
+});
+
+test('cleanReport lists removals, kept agents and names those a --force would hit', () => {
+  assert.equal(cleanReport({ removed: [], kept: [] }), 'nothing to clean\n');
+  assert.equal(cleanReport({ removed: ['a'], kept: [] }), 'removed a\n');
+  const r = { removed: ['a'], kept: [{ name: 'b', why: 'unmerged commits on chord/b' }, { name: 'c', why: 'uncommitted changes in chord/agents/c/repo' }, { name: 'd', why: 'still online' }] };
+  assert.equal(cleanReport(r), 'removed a\nkept b: unmerged commits on chord/b\nkept c: uncommitted changes in chord/agents/c/repo\nkept d: still online\nto discard their work: chord clean --force b c\n');
 });

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
-import { clean } from './clean.ts';
+import { clean, type CleanResult } from './clean.ts';
 import * as db from './db.ts';
 import { mergeUserSettings, prepare } from './launch.ts';
 import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
@@ -117,6 +117,15 @@ export function events(d: ReturnType<typeof db.openDb>, agent?: string, limit = 
   if (!es.length) return agent ? `no events for ${agent}\n` : 'no events\n';
   const w = Math.max(...es.map(e => e.agent.length));
   return es.map(e => `${when(e.at, now)} ${e.agent.padEnd(w)} ${e.kind.padEnd(8)} ${[e.file, e.detail].filter(Boolean).join(' ')}`).join('\n') + '\n';
+}
+
+/** chord clean's report: what went, what stayed and why, and the exact --force that would discard the held work. */
+export function cleanReport(r: CleanResult): string {
+  const lines = [...r.removed.map(n => `removed ${n}`), ...r.kept.map(k => `kept ${k.name}: ${k.why}`)];
+  // named, so the hint never reads as a bare "chord clean --force", which would discard every offline agent's work
+  const held = r.kept.filter(k => /^(unmerged|uncommitted)/.test(k.why)).map(k => k.name);
+  if (held.length) lines.push(`to discard their work: chord clean --force ${held.join(' ')}`);
+  return (lines.length ? lines : ['nothing to clean']).join('\n') + '\n';
 }
 
 /** chord stop <agent>: the wrapper quits the tool once the agent is idle and nothing is typed. `watchMs`: see db.sweep;
@@ -271,13 +280,7 @@ async function main(argv: string[]): Promise<number> {
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
     const { names, force } = cleanArgs(rest);
-    const r = clean(project, db.openDb(file), names, force);
-    for (const n of r.removed) process.stdout.write(`removed ${n}\n`);
-    for (const k of r.kept) process.stdout.write(`kept ${k.name}: ${k.why}\n`);
-    // named, so the hint never reads as "chord clean --force" bare, which would discard every offline agent's work
-    const held = r.kept.filter(k => /^(unmerged|uncommitted)/.test(k.why)).map(k => k.name);
-    if (held.length) process.stdout.write(`to discard their work: chord clean --force ${held.join(' ')}\n`);
-    if (!r.removed.length && !r.kept.length) process.stdout.write('nothing to clean\n');
+    process.stdout.write(cleanReport(clean(project, db.openDb(file), names, force)));
     return 0;
   }
   if (cmd !== 'claude' && cmd !== 'codex') { process.stderr.write(`chord: unknown command "${cmd}"\n${USAGE}`); return 2; }

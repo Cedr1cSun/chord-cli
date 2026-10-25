@@ -18,9 +18,10 @@ export function insideDir(dir: string, file: string): boolean {
 
 /**
  * The claim key for a path an agent names: workspace-relative with forward slashes. Absolute paths and
- * paths starting with the repository directory are taken as given; any other relative path is read as
- * repository-relative (what the schema used to say, and what agents working inside the repo naturally
- * write). Paths outside the workspace are refused: chord cannot coordinate them.
+ * paths starting with the repository directory are taken as given; a path from the project folder
+ * (chord/agents/<name>/<repo>/...) is resolved there; any other relative path is read as
+ * repository-relative (what agents working inside the repo naturally write). Paths outside the
+ * workspace are refused: chord cannot coordinate them.
  */
 export function claimPath(ctx: Ctx, file: string): string {
   const repoDir = path.relative(ctx.cwd, ctx.worktree).split(path.sep).join('/');

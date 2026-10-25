@@ -18,6 +18,7 @@ export interface Agent {
   updated_at: number;
   heartbeat_at: number | null; // refreshed by the wrapper; null for agents without one (tests)
   stop_requested_at: number | null; // set by `chord stop`; the wrapper quits the tool once the agent is idle
+  session_id: string | null; // the tool's own conversation id, recorded by the hooks, for `chord resume`
 }
 
 export interface Claim {
@@ -97,7 +98,8 @@ function setup(db: DatabaseSync): void {
       started_at integer not null,
       updated_at integer not null,
       heartbeat_at integer,
-      stop_requested_at integer
+      stop_requested_at integer,
+      session_id text
     );
     create table if not exists claims (
       agent    text not null references agents(name),
@@ -132,7 +134,7 @@ function setup(db: DatabaseSync): void {
 
 /** Bump when the schema changes and add a step below; `pragma user_version` records what a database has. A database
  *  from before versioning reads as 0 and gets every step, each of which checks what is actually there. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function migrate(db: DatabaseSync): void {
   const v = (db.prepare('pragma user_version').get() as { user_version: number }).user_version;
@@ -140,6 +142,7 @@ function migrate(db: DatabaseSync): void {
   const agentCols = () => (db.prepare('pragma table_info(agents)').all() as { name: string }[]).map(c => c.name);
   if (v < 1 && !agentCols().includes('heartbeat_at')) db.exec('alter table agents add column heartbeat_at integer'); // 2026-10-17
   if (v < 2 && !agentCols().includes('stop_requested_at')) db.exec('alter table agents add column stop_requested_at integer'); // 2026-10-17; the events table is created above
+  if (v < 3 && !agentCols().includes('session_id')) db.exec('alter table agents add column session_id text'); // 2026-10-25
   db.exec(`pragma user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -163,6 +166,11 @@ export function removeAgent(db: DatabaseSync, name: string): void {
   db.prepare('delete from claims where agent = ?').run(name);
   db.prepare('delete from messages where sender = ? or recipient = ?').run(name, name);
   db.prepare('delete from agents where name = ?').run(name);
+}
+
+/** The tool's conversation id, from the hook payloads; a relaunch keeps the old one until the new session reports its own. */
+export function setSession(db: DatabaseSync, name: string, id: string): void {
+  db.prepare('update agents set session_id = ? where name = ?').run(id, name);
 }
 
 export function setTask(db: DatabaseSync, name: string, task: string, scope: string | null): void {

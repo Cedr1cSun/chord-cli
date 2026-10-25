@@ -200,3 +200,13 @@ test('a hook that cannot open the database still refuses the write', async () =>
   const quiet = execFileSync(process.execPath, [path.join(import.meta.dirname, '..', 'src', 'hooks.ts'), 'stop'], { input: '{}', env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
   assert.equal(quiet, '');
 });
+
+test('session-start and user-prompt-submit record the tool session id', () => {
+  const { d, ctx } = setup();
+  handleHook(ctx('a'), 'claude', 'session-start', { session_id: 's1', source: 'startup' });
+  assert.equal(db.getAgent(d, 'a')!.session_id, 's1');
+  handleHook(ctx('a'), 'codex', 'user-prompt-submit', { session_id: 's2', prompt: 'hi' });
+  assert.equal(db.getAgent(d, 'a')!.session_id, 's2');
+  handleHook(ctx('a'), 'claude', 'user-prompt-submit', {}); // no id in the payload: unchanged
+  assert.equal(db.getAgent(d, 'a')!.session_id, 's2');
+});

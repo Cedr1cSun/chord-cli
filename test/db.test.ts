@@ -223,6 +223,8 @@ test('session id survives a relaunch and is replaced by the next session', () =>
   assert.equal(db.getAgent(d, 'a')!.session_id, 'sid-1');
   db.setSession(d, 'a', 'sid-2');
   assert.equal(db.getAgent(d, 'a')!.session_id, 'sid-2');
+  db.addAgent(d, { name: 'a', tool: 'codex', pid: 3, cwd: '/' }); // another tool: its conversations are elsewhere
+  assert.equal(db.getAgent(d, 'a')!.session_id, null);
 });
 
 test('a watch over stale heartbeats tells a sleeping machine from dead wrappers', () => {

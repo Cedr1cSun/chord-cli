@@ -70,7 +70,7 @@ test('resume relaunches an agent under its own tool, reopening its recorded conv
 
 test('ls lists agents and claims, sweeping dead ones', () => {
   const d = db.openDb(':memory:');
-  assert.equal(ls(d), 'no agents\n\nno claims\n');
+  assert.equal(ls(d), 'no agents\n');
   db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/' });
   db.setTask(d, 'a', 'build api', 'src/api');
   db.addAgent(d, { name: 'dead', tool: 'codex', pid: 999_999_999, cwd: '/' });
@@ -82,7 +82,11 @@ test('ls lists agents and claims, sweeping dead ones', () => {
   assert.match(out, /^a \(claude\)\s+busy\s+1\s+\?\s+build api \[src\/api\]$/m); // no repo given: branch unknown
   assert.match(out, /^dead \(codex\)\s+off \d+s\s+0\s+\?\s+-$/m);
   assert.equal(ago(12_000), '12s'); assert.equal(ago(180_000), '3m'); assert.equal(ago(7_200_000), '2h'); assert.equal(ago(3 * 86_400_000), '3d');
-  assert.match(out, /^src\/api\/x.ts\s+a\s+add\s+add route/m);
+  assert.match(out, /^a \(claude\)[^\n]*\n {4}add {4}src\/api\/x.ts  add route$/m); // claims sit under their agent
+  assert.doesNotMatch(out, /no claims/);
+  db.addClaim(d, { agent: 'dead', file: 'src/api/x.ts', intent: 'rename route', kind: 'rename' });
+  assert.match(ls(d), /^ {4}add {4}src\/api\/x.ts  add route \(also dead\)$/m); // a file two agents hold says so on both lines
+  assert.match(ls(d), /^ {4}rename src\/api\/x.ts  rename route \(also a\)$/m);
 });
 
 test('takeName accepts --name x and --name=x anywhere and insists on a value', async () => {

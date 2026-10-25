@@ -119,6 +119,14 @@ export function events(d: ReturnType<typeof db.openDb>, agent?: string, limit = 
   return es.map(e => `${when(e.at, now)} ${e.agent.padEnd(w)} ${e.kind.padEnd(8)} ${[e.file, e.detail].filter(Boolean).join(' ')}`).join('\n') + '\n';
 }
 
+/** What chord says when the tool has exited: how to carry on, or why resume cannot yet. */
+export function quitHint(d: ReturnType<typeof db.openDb>, name: string): string {
+  const a = db.getAgent(d, name);
+  return a?.session_id
+    ? `chord: ${name} quit; \`chord resume ${name}\` continues it\n`
+    : `chord: ${name} quit before its conversation was recorded; start it again with chord ${a?.tool ?? 'claude'} --name ${name}\n`;
+}
+
 /** chord clean's report: what went, what stayed and why, and the exact --force that would discard the held work. */
 export function cleanReport(r: CleanResult): string {
   const lines = [...r.removed.map(n => `removed ${n}`), ...r.kept.map(k => `kept ${k.name}: ${k.why}`)];
@@ -307,7 +315,7 @@ async function main(argv: string[]): Promise<number> {
   spawned(); // right after the spawn: it releases the Codex first-start lock
   const code = await exit;
   // the tool's own parting line (Codex prints "codex resume <id>") would start it outside chord
-  process.stderr.write(`chord: ${launch.name} quit; \`chord resume ${launch.name}\` continues it\n`);
+  process.stderr.write(quitHint(db.openDb(launch.dbFile), launch.name));
   return code;
 }
 

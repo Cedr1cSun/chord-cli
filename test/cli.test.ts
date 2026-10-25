@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ago, cleanArgs, cleanReport, events, fit, listArgs, ls, messages, refuseHookKillers, resumeArgv, stop, takeSettings, when, width } from '../src/cli.ts';
+import { ago, cleanArgs, cleanReport, events, fit, listArgs, ls, messages, quitHint, refuseHookKillers, resumeArgv, stop, takeSettings, when, width } from '../src/cli.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -209,4 +209,12 @@ test('cleanReport lists removals, kept agents and names those a --force would hi
   assert.equal(cleanReport({ removed: ['a'], kept: [] }), 'removed a\n');
   const r = { removed: ['a'], kept: [{ name: 'b', why: 'unmerged commits on chord/b' }, { name: 'c', why: 'uncommitted changes in chord/agents/c/repo' }, { name: 'd', why: 'still online' }] };
   assert.equal(cleanReport(r), 'removed a\nkept b: unmerged commits on chord/b\nkept c: uncommitted changes in chord/agents/c/repo\nkept d: still online\nto discard their work: chord clean --force b c\n');
+});
+
+test('the quit hint offers chord resume only when a conversation was recorded', () => {
+  const d = db.openDb(':memory:');
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/' });
+  assert.equal(quitHint(d, 'a'), 'chord: a quit before its conversation was recorded; start it again with chord claude --name a\n');
+  db.setSession(d, 'a', 'sid');
+  assert.equal(quitHint(d, 'a'), 'chord: a quit; `chord resume a` continues it\n');
 });

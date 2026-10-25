@@ -134,7 +134,8 @@ test('openDb upgrades a database from before heartbeat_at and keeps its rows', (
     insert into agents (name, tool, pid, cwd, worktree, status, started_at, updated_at) values ('old', 'claude', 1, '/', '/', 'offline', 1, 1);`);
   old.close();
   const d = db.openDb(file);
-  assert.equal(d.prepare('pragma user_version').get()!.user_version, 2);
+  assert.equal(d.prepare('pragma user_version').get()!.user_version, 3);
+  assert.equal(db.getAgent(d, 'old')!.session_id, null);
   assert.deepEqual(db.getAgent(d, 'old')!.heartbeat_at, null);
   assert.equal(db.getAgent(d, 'old')!.stop_requested_at, null);
   assert.equal(db.requestStop(d, 'old'), false); // offline
@@ -143,7 +144,7 @@ test('openDb upgrades a database from before heartbeat_at and keeps its rows', (
   db.heartbeat(d, 'old'); // the new column works
   assert.ok(db.getAgent(d, 'old')!.heartbeat_at! > 0);
   d.close();
-  assert.equal(db.openDb(file).prepare('pragma user_version').get()!.user_version, 2); // idempotent
+  assert.equal(db.openDb(file).prepare('pragma user_version').get()!.user_version, 3); // idempotent
 });
 
 test('claims, releases and sweeps leave events behind', () => {
@@ -212,4 +213,14 @@ console.log('ok');`);
     const at = Date.now() + 1500;
     assert.deepEqual(await Promise.all(Array.from({ length: 6 }, () => run(at))), Array(6).fill('ok'));
   }
+});
+
+test('session id survives a relaunch and is replaced by the next session', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });
+  db.setSession(d, 'a', 'sid-1');
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 2, cwd: '/' }); // relaunch
+  assert.equal(db.getAgent(d, 'a')!.session_id, 'sid-1');
+  db.setSession(d, 'a', 'sid-2');
+  assert.equal(db.getAgent(d, 'a')!.session_id, 'sid-2');
 });

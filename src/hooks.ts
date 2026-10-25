@@ -94,16 +94,22 @@ export function briefing(ctx: Ctx): string {
  *  only takes the JSON form, so both events use it. */
 const context = (hookEventName: string, additionalContext: string) => ({ hookSpecificOutput: { hookEventName, additionalContext } });
 
+/** Both tools put their conversation id in the payload as session_id; `chord resume` reopens that conversation. Taken on
+ *  every prompt too, because Codex /new and a /resume start a new conversation without a SessionStart hook. */
+const recordSession = (ctx: Ctx, payload: Record<string, any>) => { if (typeof payload.session_id === 'string' && payload.session_id) db.setSession(ctx.db, ctx.agent, payload.session_id); };
+
 export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<string, any>): HookOut {
   db.sweep(ctx.db);
   switch (event) {
     case 'session-start':
+      recordSession(ctx, payload);
       // The agent now waits for its first prompt: idle, so messages that arrive before the user types still wake it.
       // Claude Code also fires this after compacting a long conversation, in the middle of a turn: not idle then.
       if (payload.source !== 'compact') db.setStatus(ctx.db, ctx.agent, 'idle');
       return context('SessionStart', briefing(ctx));
 
     case 'user-prompt-submit': {
+      recordSession(ctx, payload);
       db.setStatus(ctx.db, ctx.agent, 'busy');
       const ms = db.takeUnread(ctx.db, ctx.agent);
       // One line of identity on every prompt: a conversation that started without the briefing (Codex /new fires no

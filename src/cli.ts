@@ -56,12 +56,11 @@ export function fit(s: string, max: number): string {
   return out + '...';
 }
 
-/** Agents (status, unread messages, commits on their branch not yet on main, task) and claims. `repo` is the main
- *  checkout; without it the branch column shows "?". `cols` is the terminal width: the task is cut to fit. */
+/** Agents (status, unread messages, commits on their branch not yet on main, task), each followed by its claims. `repo`
+ *  is the main checkout; without it the branch column shows "?". `cols` is the terminal width: lines are cut to fit. */
 export function ls(d: ReturnType<typeof db.openDb>, repo?: string, now = Date.now(), cols = Infinity): string {
   db.sweep(d);
   const agents = db.listAgents(d);
-  const claims = db.allClaims(d);
   const main = repo ? gitOut(repo, 'rev-parse', '--abbrev-ref', 'HEAD') : undefined;
   const ahead = (name: string) => { if (!repo || !main) return '?'; const n = gitOut(repo, 'rev-list', '--count', `${main}..chord/${name}`); return n === undefined ? '-' : `+${n}`; };
   // messages only: a merge notice never wakes an agent, so it is not waiting on anyone
@@ -75,9 +74,11 @@ export function ls(d: ReturnType<typeof db.openDb>, repo?: string, now = Date.no
     return head + fit(`${a.task ?? '-'}${a.scope ? ` [${a.scope}]` : ''}`, cols - head.length);
   };
   const header = ['agent'.padEnd(nameW), 'status'.padEnd(8), 'unread', 'branch', 'task'].join(' ');
-  const out = agents.length ? [header, ...agents.map(row)] : ['no agents'];
-  out.push('', ...(claims.length ? claims.map(c => `${c.file.padEnd(40)} ${c.agent.padEnd(28)} ${c.kind.padEnd(7)} ${c.intent}`) : ['no claims']));
-  return out.join('\n') + '\n';
+  // each agent's claims under its row; a file held by several agents says so on each of their lines
+  const also = (c: db.Claim) => { const o = db.claimsFor(d, c.file).filter(x => x.agent !== c.agent).map(x => x.agent); return o.length ? ` (also ${o.join(', ')})` : ''; };
+  const claimLines = (a: db.Agent) => db.claimsBy(d, a.name).map(c => fit(`    ${c.kind.padEnd(6)} ${c.file}  ${c.intent}${also(c)}`, cols));
+  if (!agents.length) return 'no agents\n';
+  return [header, ...agents.flatMap(a => [row(a), ...claimLines(a)])].join('\n') + '\n';
 }
 export function lsAll(cols = Infinity): string {
   const projects = knownProjects();

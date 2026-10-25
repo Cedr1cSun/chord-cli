@@ -38,27 +38,53 @@ export function when(t: number, now = Date.now()): string {
   return d.toDateString() === new Date(now).toDateString() ? time : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
 }
 
-/** Agents (with unread messages, time since the last sign of life, commits on their branch not yet on main) and
- *  claims. `repo` is the main checkout; without it the branch column shows "?". */
-export function ls(d: ReturnType<typeof db.openDb>, repo?: string, now = Date.now()): string {
+// East Asian wide and fullwidth ranges, plus emoji: two terminal cells each
+const WIDE = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F300}-\u{1FAFF}\u{20000}-\u{3FFFD}]/u;
+
+/** Terminal cells `s` takes. */
+export function width(s: string): number {
+  let n = 0;
+  for (const ch of s) n += WIDE.test(ch) ? 2 : 1;
+  return n;
+}
+
+/** `s` cut to `max` cells with an ASCII "..." (the ellipsis character is ambiguous-width). */
+export function fit(s: string, max: number): string {
+  if (width(s) <= max) return s;
+  let out = '', n = 0;
+  for (const ch of s) { const w = WIDE.test(ch) ? 2 : 1; if (n + w > max - 3) break; out += ch; n += w; }
+  return out + '...';
+}
+
+/** Agents (status, unread messages, commits on their branch not yet on main, task) and claims. `repo` is the main
+ *  checkout; without it the branch column shows "?". `cols` is the terminal width: the task is cut to fit. */
+export function ls(d: ReturnType<typeof db.openDb>, repo?: string, now = Date.now(), cols = Infinity): string {
   db.sweep(d);
   const agents = db.listAgents(d);
   const claims = db.allClaims(d);
   const main = repo ? gitOut(repo, 'rev-parse', '--abbrev-ref', 'HEAD') : undefined;
   const ahead = (name: string) => { if (!repo || !main) return '?'; const n = gitOut(repo, 'rev-list', '--count', `${main}..chord/${name}`); return n === undefined ? '-' : `+${n}`; };
-  const unread = (name: string) => (d.prepare('select count(*) c from messages where recipient = ? and read_at is null').get(name) as { c: number }).c;
-  const row = (a: db.Agent) => [a.name.padEnd(28), a.tool.padEnd(7), a.status.padEnd(8), String(unread(a.name)).padEnd(6), ago(now - (a.heartbeat_at ?? a.updated_at)).padEnd(7), ahead(a.name).padEnd(6), `${a.task ?? '-'}${a.scope ? ` [${a.scope}]` : ''}`].join(' ');
-  const header = ['agent'.padEnd(28), 'tool'.padEnd(7), 'status'.padEnd(8), 'unread', 'active'.padEnd(7), 'branch', 'task'].join(' ');
+  // messages only: a merge notice never wakes an agent, so it is not waiting on anyone
+  const unread = (name: string) => (d.prepare("select count(*) c from messages where recipient = ? and read_at is null and kind = 'message'").get(name) as { c: number }).c;
+  const label = (a: db.Agent) => (a.name.startsWith(`${a.tool}-`) ? a.name : `${a.name} (${a.tool})`);
+  const nameW = Math.max(5, ...agents.map(a => label(a).length));
+  // a live agent's heartbeat is always seconds old, so the age only means something once it is offline
+  const state = (a: db.Agent) => (a.status === 'offline' ? `off ${ago(now - (a.heartbeat_at ?? a.updated_at))}` : a.status);
+  const row = (a: db.Agent) => {
+    const head = [label(a).padEnd(nameW), state(a).padEnd(8), String(unread(a.name)).padEnd(6), ahead(a.name).padEnd(6), ''].join(' ');
+    return head + fit(`${a.task ?? '-'}${a.scope ? ` [${a.scope}]` : ''}`, cols - head.length);
+  };
+  const header = ['agent'.padEnd(nameW), 'status'.padEnd(8), 'unread', 'branch', 'task'].join(' ');
   const out = agents.length ? [header, ...agents.map(row)] : ['no agents'];
   out.push('', ...(claims.length ? claims.map(c => `${c.file.padEnd(40)} ${c.agent.padEnd(28)} ${c.kind.padEnd(7)} ${c.intent}`) : ['no claims']));
   return out.join('\n') + '\n';
 }
-export function lsAll(): string {
+export function lsAll(cols = Infinity): string {
   const projects = knownProjects();
   if (!projects.length) return 'no chord projects on this machine yet\n';
   const repoOf = (dir?: string) => { try { return dir ? resolveProject(dir).repo : undefined; } catch { return undefined; } };
   return projects.map(p => {
-    try { return `== ${p.dir ?? p.stateDir}\n${ls(db.openDb(p.dbFile), repoOf(p.dir ?? undefined))}`; } catch (e) { return `== ${p.dir ?? p.stateDir}\n(unreadable: ${(e as Error).message})\n`; }
+    try { return `== ${p.dir ?? p.stateDir}\n${ls(db.openDb(p.dbFile), repoOf(p.dir ?? undefined), Date.now(), cols)}`; } catch (e) { return `== ${p.dir ?? p.stateDir}\n(unreadable: ${(e as Error).message})\n`; }
   }).join('\n');
 }
 
@@ -192,7 +218,8 @@ async function offerRestructure(e: NeedsRestructure): Promise<void> {
 async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === 'ls') {
-    if (rest.includes('--all')) { process.stdout.write(lsAll()); return 0; }
+    const cols = process.stdout.isTTY ? process.stdout.columns ?? Infinity : Infinity; // piped output is never cut
+    if (rest.includes('--all')) { process.stdout.write(lsAll(cols)); return 0; }
     let project;
     try { project = resolveProject(process.cwd()); } catch (e) {
       if (e instanceof NeedsRestructure) throw new Error(`${e.message}; run \`chord claude\` or \`chord codex\` here to set the project up, or \`chord ls --all\` for every project`);
@@ -200,7 +227,7 @@ async function main(argv: string[]): Promise<number> {
     }
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
-    process.stdout.write(ls(db.openDb(file), project.repo));
+    process.stdout.write(ls(db.openDb(file), project.repo, Date.now(), cols));
     return 0;
   }
   if (cmd === 'messages' || cmd === 'events' || cmd === 'stop' || cmd === 'resume') {

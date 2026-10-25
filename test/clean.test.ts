@@ -90,6 +90,13 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   assert.equal(git(repo, 'branch', '--list', 'chord/orphan'), '');
   assert.ok(!fs.existsSync(path.join(project.stateDir, 'setup-done', 'orphan'))); // the setup marker goes with the agent
 
+  // a row whose cwd is the project folder itself must not make clean delete the project
+  const stray = mk('stray'); db.setStatus(d, 'stray', 'offline');
+  d.prepare("update agents set cwd = ? where name = 'stray'").run(project.dir);
+  r = clean(project, d, ['stray']);
+  assert.deepEqual(r.removed, ['stray']);
+  assert.ok(fs.existsSync(repo) && !fs.existsSync(stray.ws));
+
   r = clean(project, d, ['unmerged'], true);
   assert.deepEqual(r.removed, ['unmerged']);
   assert.equal(git(repo, 'branch', '--list', 'chord/unmerged'), '');

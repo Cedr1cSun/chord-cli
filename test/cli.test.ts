@@ -57,12 +57,14 @@ test('stop flags an online agent and refuses offline or unknown ones', () => {
   assert.throws(() => stop(d, 'zz'), /no such agent: zz/);
 });
 
-test('resume relaunches an agent under its own tool with that tool\'s continue flags', () => {
+test('resume relaunches an agent under its own tool, reopening its recorded conversation', () => {
   const d = db.openDb(':memory:');
-  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/' });
-  db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/' });
-  assert.deepEqual(resumeArgv(d, 'a', ['go on']), ['claude', '--name', 'a', '--continue', 'go on']);
-  assert.deepEqual(resumeArgv(d, 'b', []), ['codex', '--name', 'b', 'resume', '--last']);
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/' }); db.setSession(d, 'a', 'sid-a');
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/' }); db.setSession(d, 'b', 'sid-b');
+  db.addAgent(d, { name: 'c', tool: 'codex', pid: process.pid, cwd: '/' });
+  assert.deepEqual(resumeArgv(d, 'a', ['go on']), ['claude', '--name', 'a', '--resume', 'sid-a', 'go on']);
+  assert.deepEqual(resumeArgv(d, 'b', []), ['codex', '--name', 'b', 'resume', 'sid-b']);
+  assert.throws(() => resumeArgv(d, 'c', []), /no recorded conversation for c; start it again with chord codex --name c/);
   assert.throws(() => resumeArgv(d, 'zz', []), /no such agent: zz/);
 });
 

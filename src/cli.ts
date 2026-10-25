@@ -1,11 +1,5 @@
 #!/usr/bin/env node
-// chord <claude|codex> [--name <agent>] [tool args...]   launch an agent in its own workspace
-// chord resume <agent> [tool args...]                     launch it again and reopen its recorded conversation
-// chord ls [--all]                                        agents and file claims, this project or all
-// chord messages [agent] [-n N]                           message history
-// chord events [agent] [-n N]                             claim, release, merge and conflict history
-// chord stop <agent>                                      quit an agent once it is idle
-// chord clean [--force] [agent...]                        remove offline agents' workspaces, worktrees and branches
+// The chord command line; see USAGE.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,7 +13,22 @@ import { resolveCommand, run } from './pty.ts';
 import { codexFirstStart, disabledCodexHooks } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
-const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord resume <agent> [tool args...]\n       chord ls [--all]\n       chord messages [agent] [-n N]\n       chord events [agent] [-n N]\n       chord stop <agent>\n       chord clean [--force] [agent...]\n';
+const USAGE = [
+  'usage: chord <command> [arguments]',
+  '',
+  '  chord claude [--name <agent>] ...   start a Claude Code agent here',
+  '  chord codex [--name <agent>] ...    start a Codex agent here',
+  "  chord resume <agent> ...            reopen an agent's conversation",
+  '  chord ls [--all]                    agents and claims (--all: every project)',
+  '  chord messages [agent] [-n N]       message history, latest N',
+  '  chord events [agent] [-n N]         claims, releases, merges, conflicts',
+  '  chord stop <agent>                  quit an agent once it is idle',
+  "  chord clean [--force] [agent...]    remove offline agents' worktrees",
+  '  chord --version',
+  '',
+  '  ... stands for arguments passed on to the tool.',
+  '',
+].join('\n');
 
 const gitOut = (cwd: string, ...args: string[]): string | undefined => {
   try { return execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return undefined; }
@@ -221,7 +230,14 @@ async function offerRestructure(e: NeedsRestructure): Promise<void> {
 
 async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
+  if (cmd === undefined || cmd === 'help' || cmd === '-h' || cmd === '--help') { process.stdout.write(USAGE); return 0; }
+  if (cmd === '--version' || cmd === '-V') { process.stdout.write(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version + '\n'); return 0; }
+  // argument shapes are checked before the project is looked up, so a typo gets one line, not a project error
+  if (cmd === 'stop' && rest.length !== 1) { process.stderr.write('usage: chord stop <agent>\n'); return 2; }
+  if (cmd === 'resume' && (!rest[0] || rest[0].startsWith('-'))) { process.stderr.write('usage: chord resume <agent> [tool args...]\n'); return 2; }
   if (cmd === 'ls') {
+    const bad = rest.find(a => a !== '--all');
+    if (bad) throw new Error(`unknown argument ${bad}; usage: chord ls [--all]`);
     const cols = process.stdout.isTTY ? process.stdout.columns ?? Infinity : Infinity; // piped output is never cut
     if (rest.includes('--all')) { process.stdout.write(lsAll(cols)); return 0; }
     let project;
@@ -239,8 +255,8 @@ async function main(argv: string[]): Promise<number> {
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
     const d = db.openDb(file);
-    if (cmd === 'stop') { if (rest.length !== 1) { process.stderr.write(USAGE); return 2; } process.stdout.write(stop(d, rest[0])); return 0; }
-    if (cmd === 'resume') { if (!rest[0] || rest[0].startsWith('-')) { process.stderr.write(USAGE); return 2; } return main(resumeArgv(d, rest[0], rest.slice(1))); }
+    if (cmd === 'stop') { process.stdout.write(stop(d, rest[0])); return 0; }
+    if (cmd === 'resume') return main(resumeArgv(d, rest[0], rest.slice(1)));
     const { agent, limit } = listArgs(rest);
     process.stdout.write(cmd === 'messages' ? messages(d, agent, limit) : events(d, agent, limit));
     return 0;
@@ -259,7 +275,7 @@ async function main(argv: string[]): Promise<number> {
     if (!r.removed.length && !r.kept.length) process.stdout.write('nothing to clean\n');
     return 0;
   }
-  if (cmd !== 'claude' && cmd !== 'codex') { process.stderr.write(USAGE); return 2; }
+  if (cmd !== 'claude' && cmd !== 'codex') { process.stderr.write(`chord: unknown command "${cmd}"\n${USAGE}`); return 2; }
   const name = takeName(rest);
   const userSettings = cmd === 'claude' ? takeSettings(rest) : undefined;
   refuseHookKillers(cmd as Tool, rest);

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -165,4 +166,29 @@ test('ls cuts the task to the terminal width, counting CJK as two cells', () => 
   assert.equal(fit('中文中文', 5), '中...');
   assert.equal(fit('abc', Infinity), 'abc');
   assert.equal(width('a中b'), 4);
+});
+
+test('help and version go to stdout; unknown commands and bad arguments to stderr with exit 2', () => {
+  const cli = path.join(import.meta.dirname, '..', 'src', 'cli.ts');
+  const run = (...a: string[]) => {
+    try { return { code: 0, out: execFileSync(process.execPath, [cli, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), err: '' }; }
+    catch (e: any) { return { code: e.status as number, out: e.stdout as string, err: e.stderr as string }; }
+  };
+  for (const a of [[], ['help'], ['-h'], ['--help']]) {
+    const r = run(...a);
+    assert.equal(r.code, 0, a.join(' '));
+    assert.match(r.out, /chord ls \[--all\]/); assert.match(r.out, /chord resume <agent>/); assert.match(r.out, /chord clean/);
+    for (const l of r.out.split('\n')) assert.ok(l.length < 80, l);
+  }
+  const v = run('--version');
+  assert.equal(v.code, 0);
+  assert.equal(v.out.trim(), JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 'package.json'), 'utf8')).version);
+  const bad = run('bogus');
+  assert.equal(bad.code, 2); assert.match(bad.err, /^chord: unknown command "bogus"\n/);
+  const stop = run('stop');
+  assert.equal(stop.code, 2); assert.equal(stop.err, 'usage: chord stop <agent>\n');
+  const resume = run('resume', '--x');
+  assert.equal(resume.code, 2); assert.equal(resume.err, 'usage: chord resume <agent> [tool args...]\n');
+  const ls = run('ls', '-a');
+  assert.equal(ls.code, 1); assert.match(ls.err, /unknown argument -a; usage: chord ls \[--all\]/);
 });

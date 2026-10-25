@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ago, events, listArgs, ls, messages, refuseHookKillers, resumeArgv, stop, takeSettings, when } from '../src/cli.ts';
+import { ago, cleanArgs, events, listArgs, ls, messages, refuseHookKillers, resumeArgv, stop, takeSettings, when } from '../src/cli.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -130,4 +130,11 @@ test('takeSettings lifts the user --settings out of the tool arguments; hook-kil
     assert.throws(() => refuseHookKillers('codex', ['-c', 'sandbox_mode="workspace-write"']), /sandbox/);
     refuseHookKillers('codex', ['-s', 'danger-full-access']); // fine
   }
+});
+
+test('cleanArgs takes --force or -f and agent names, refusing other options', () => {
+  assert.deepEqual(cleanArgs(['-f', 'a']), { names: ['a'], force: true });
+  assert.deepEqual(cleanArgs(['a', '--force', 'b']), { names: ['a', 'b'], force: true });
+  assert.deepEqual(cleanArgs([]), { names: [], force: false });
+  assert.throws(() => cleanArgs(['--all']), /unknown option --all/);
 });

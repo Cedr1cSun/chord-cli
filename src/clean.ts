@@ -31,13 +31,13 @@ export function clean(project: Project, d: DatabaseSync, names: string[] = [], f
       if (hasBranch && !force) {
         let merged = true;
         try { git(project.repo, 'merge-base', '--is-ancestor', branch, main); } catch { merged = false; }
-        if (!merged) { kept(a.name, `${branch} has commits that are not on ${main}; use --force to discard them`); return; }
+        if (!merged) { kept(a.name, `unmerged commits on ${branch}`); return; }
       }
       // work that was never committed (an agent stopped half-way) is just as much work as an unmerged commit
       if (!force && fs.existsSync(path.join(a.worktree, '.git'))) {
         let dirty = '';
         try { dirty = git(a.worktree, 'status', '--porcelain'); } catch { /* a broken worktree holds nothing to keep */ }
-        if (dirty) { kept(a.name, `${a.worktree} has uncommitted changes; use --force to discard them`); return; }
+        if (dirty) { kept(a.name, `uncommitted changes in ${path.relative(project.dir, a.worktree).split(path.sep).join('/')}`); return; }
       }
       // The directory goes first. On Windows a directory some process is using (a shell left open in it) cannot be
       // removed; then the branch and the database row stay too, so the next clean sees the agent whole.

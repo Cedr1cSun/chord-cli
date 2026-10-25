@@ -138,6 +138,18 @@ export function refuseHookKillers(tool: Tool, rest: string[]): void {
   }
 }
 
+/** `[--force|-f] [agent...]` for chord clean. */
+export function cleanArgs(rest: string[]): { names: string[]; force: boolean } {
+  const names: string[] = [];
+  let force = false;
+  for (const a of rest) {
+    if (a === '--force' || a === '-f') force = true;
+    else if (a.startsWith('-')) throw new Error(`unknown option ${a}`);
+    else names.push(a);
+  }
+  return { names, force };
+}
+
 export function takeName(rest: string[]): string | undefined {
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
@@ -206,10 +218,13 @@ async function main(argv: string[]): Promise<number> {
     const project = resolveProject(process.cwd());
     const file = db.dbPath(project.stateDir);
     if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
-    const force = rest.includes('--force');
-    const r = clean(project, db.openDb(file), rest.filter(a => a !== '--force'), force);
+    const { names, force } = cleanArgs(rest);
+    const r = clean(project, db.openDb(file), names, force);
     for (const n of r.removed) process.stdout.write(`removed ${n}\n`);
     for (const k of r.kept) process.stdout.write(`kept ${k.name}: ${k.why}\n`);
+    // named, so the hint never reads as "chord clean --force" bare, which would discard every offline agent's work
+    const held = r.kept.filter(k => /^(unmerged|uncommitted)/.test(k.why)).map(k => k.name);
+    if (held.length) process.stdout.write(`to discard their work: chord clean --force ${held.join(' ')}\n`);
     if (!r.removed.length && !r.kept.length) process.stdout.write('nothing to clean\n');
     return 0;
   }

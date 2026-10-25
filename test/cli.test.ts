@@ -27,7 +27,14 @@ test('events lists claims, releases and merges oldest first, one line each', () 
   assert.throws(() => listArgs(['--full']), /unknown option/);
   assert.throws(() => listArgs(['a', 'b']), /at most one agent/);
   assert.match(when(now, now), /^\d\d:\d\d:\d\d$/);
-  assert.match(when(now - 3 * 86_400_000, now), /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/);
+  assert.match(when(now - 3 * 86_400_000, now), /^[A-Z][a-z]{2} \d\d \d\d:\d\d$/); // another day: "Oct 17 23:39"
+  assert.match(when(now, now + 400 * 86_400_000), /^[A-Z][a-z]{2} \d\d \d{4} \d\d:\d\d$/); // another year: with the year
+  // names are padded to the longest one listed, not to a fixed 28
+  db.addAgent(d, { name: 'longname', tool: 'codex', pid: process.pid, cwd: '/' });
+  db.addClaim(d, { agent: 'longname', file: 'y.ts', intent: 'y', kind: 'add' });
+  const padded = events(d, undefined, 50, now);
+  assert.match(padded, /^\d\d:\d\d:\d\d a {8}claim\s/m);
+  assert.match(padded, /^\d\d:\d\d:\d\d longname claim\s/m);
 });
 
 test('messages lists message history oldest first, marking notices and unread ones', () => {

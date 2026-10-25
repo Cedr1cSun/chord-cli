@@ -40,11 +40,13 @@ export function ago(ms: number): string {
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
 }
 
-/** Local time of day, with the date in front when it is not today. */
+/** Local time of day; another day reads "Oct 17 23:39" (a numeric date differs between the UK and the US), another
+ *  year adds the year. */
 export function when(t: number, now = Date.now()): string {
-  const d = new Date(t), pad = (n: number) => String(n).padStart(2, '0');
+  const d = new Date(t), n = new Date(now), pad = (x: number) => String(x).padStart(2, '0');
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  return d.toDateString() === new Date(now).toDateString() ? time : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
+  if (d.toDateString() === n.toDateString()) return time;
+  return `${d.toDateString().slice(4, 10)}${d.getFullYear() === n.getFullYear() ? '' : ` ${d.getFullYear()}`} ${time.slice(0, 5)}`;
 }
 
 // East Asian wide and fullwidth ranges, plus emoji: two terminal cells each
@@ -113,7 +115,8 @@ export function messages(d: ReturnType<typeof db.openDb>, agent?: string, limit 
 export function events(d: ReturnType<typeof db.openDb>, agent?: string, limit = 50, now = Date.now()): string {
   const es = db.listEvents(d, agent, limit);
   if (!es.length) return agent ? `no events for ${agent}\n` : 'no events\n';
-  return es.map(e => `${when(e.at, now)} ${e.agent.padEnd(28)} ${e.kind.padEnd(8)} ${[e.file, e.detail].filter(Boolean).join(' ')}`).join('\n') + '\n';
+  const w = Math.max(...es.map(e => e.agent.length));
+  return es.map(e => `${when(e.at, now)} ${e.agent.padEnd(w)} ${e.kind.padEnd(8)} ${[e.file, e.detail].filter(Boolean).join(' ')}`).join('\n') + '\n';
 }
 
 /** chord stop <agent>: the wrapper quits the tool once the agent is idle and nothing is typed. */

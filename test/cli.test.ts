@@ -73,6 +73,10 @@ test('stop flags an online agent and refuses offline or unknown ones', () => {
   db.setStatus(d, 'b', 'offline');
   assert.throws(() => stop(d, 'b'), /b is already offline/);
   assert.throws(() => stop(d, 'zz'), /no such agent: zz/);
+  // a wrapper that died with its pid reused: stop must not promise a quit that never comes
+  db.addAgent(d, { name: 'ghost', tool: 'codex', pid: process.pid, cwd: '/', heartbeat: true });
+  d.prepare("update agents set heartbeat_at = ?, started_at = ? where name = 'ghost'").run(Date.now() - db.HEARTBEAT_STALE_MS - 5000, Date.now() - 3_600_000);
+  assert.throws(() => stop(d, 'ghost', 10), /ghost is already offline/);
 });
 
 test('resume relaunches an agent under its own tool, reopening its recorded conversation', () => {

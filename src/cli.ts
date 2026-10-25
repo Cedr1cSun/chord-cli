@@ -299,8 +299,11 @@ async function main(argv: string[]): Promise<number> {
   }
   const spawned = cmd === 'codex' ? await codexFirstStart() : () => {};
   const exit = run(cmd as Tool, launch, rest);
-  spawned();
-  return exit;
+  spawned(); // right after the spawn: it releases the Codex first-start lock
+  const code = await exit;
+  // the tool's own parting line (Codex prints "codex resume <id>") would start it outside chord
+  process.stderr.write(`chord: ${launch.name} quit; \`chord resume ${launch.name}\` continues it\n`);
+  return code;
 }
 
 // run only as the entry point (argv[1] may be a symlink such as an npm bin link)

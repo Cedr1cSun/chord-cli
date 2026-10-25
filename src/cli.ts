@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // chord <claude|codex> [--name <agent>] [tool args...]   launch an agent in its own workspace
-// chord resume <agent> [tool args...]                     launch it again and continue its last conversation
+// chord resume <agent> [tool args...]                     launch it again and reopen its recorded conversation
 // chord ls [--all]                                        agents and file claims, this project or all
 // chord messages [agent] [-n N]                           message history
 // chord events [agent] [-n N]                             claim, release, merge and conflict history
@@ -83,12 +83,13 @@ export function stop(d: ReturnType<typeof db.openDb>, name: string): string {
   throw new Error(db.getAgent(d, name) ? `${name} is already offline` : `no such agent: ${name}`);
 }
 
-/** chord resume <agent>: the launch of that agent again under its own tool, with the tool's flags for continuing the
- *  latest conversation. Each agent has a workspace of its own, so the latest conversation there is that agent's. */
+/** chord resume <agent>: the launch of that agent again under its own tool, reopening the conversation its hooks
+ *  recorded. Every agent runs in the project folder, so the tools' "latest conversation here" could be anyone's. */
 export function resumeArgv(d: ReturnType<typeof db.openDb>, name: string, more: string[]): string[] {
   const a = db.getAgent(d, name);
   if (!a) throw new Error(`no such agent: ${name}`);
-  return [a.tool, '--name', a.name, ...(a.tool === 'codex' ? ['resume', '--last'] : ['--continue']), ...more];
+  if (!a.session_id) throw new Error(`no recorded conversation for ${name}; start it again with chord ${a.tool} --name ${name}`);
+  return [a.tool, '--name', a.name, ...(a.tool === 'codex' ? ['resume', a.session_id] : ['--resume', a.session_id]), ...more];
 }
 
 /** [agent] and -n N for the history commands. */

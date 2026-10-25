@@ -124,7 +124,8 @@ test('pre-tool-use polices only the worktree and forbids other checkouts in the 
   const write = (file_path: string) => handleHook(ctx, 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path } }) as any;
   assert.match(write(`${cwd}/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /not claimed/); // inside the worktree: needs a claim
   assert.equal(write(`${cwd}/notes.md`), undefined); // workspace scratch file outside the repo: not policed
-  assert.match(write(`${P}/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /outside your workspace.*edit your own copy chord\/agents\/a\/repo\/src\/x\.ts/); // the main checkout
+  const own = path.join(cwd, 'repo', 'src', 'x.ts').replace(/[\\/]/g, '[\\\\/]');
+  assert.match(write(`${P}/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, new RegExp(`outside your workspace.*edit your own copy ${own}`)); // the main checkout; Claude's Edit wants an absolute path
   assert.match(write(`${P}/chord/agents/b/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /outside your workspace/); // another agent
   // Codex resolves relative patch paths against its real cwd, the project folder
   const patch = (f: string, workdir?: string) => handleHook(ctx, 'codex', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { command: `*** Begin Patch\n*** Update File: ${f}\n*** End Patch`, ...(workdir ? { workdir } : {}) } }) as any;
@@ -228,4 +229,14 @@ test('briefing and reminder name the worktree as seen from the project folder', 
   assert.match(out, /"repo\/" in the project folder is the main checkout/);
   const again = (handleHook(ctx, 'claude', 'user-prompt-submit', {}) as any).hookSpecificOutput.additionalContext as string;
   assert.match(again, /Your worktree is "chord\/agents\/a\/repo"; edit and run git only there\.$/);
+});
+
+test('the deny reason finds the own copy when another agent is named like the repository', () => {
+  const d = db.openDb(':memory:');
+  const P = process.platform === 'win32' ? 'D:\\P' : '/P';
+  const cwd = path.join(P, 'chord', 'agents', 'a');
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
+  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd, worktree: path.join(cwd, 'repo') });
+  const other = handleHook(ctx, 'codex', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { command: '*** Begin Patch\n*** Update File: chord/agents/repo/repo/src/y.ts\n*** End Patch' } }) as any;
+  assert.match(other.hookSpecificOutput.permissionDecisionReason, /edit your own copy chord\/agents\/a\/repo\/src\/y\.ts instead/);
 });

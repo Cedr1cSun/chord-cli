@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ago, cleanArgs, events, listArgs, ls, messages, refuseHookKillers, resumeArgv, stop, takeSettings, when } from '../src/cli.ts';
+import { ago, cleanArgs, events, fit, listArgs, ls, messages, refuseHookKillers, resumeArgv, stop, takeSettings, when, width } from '../src/cli.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -76,10 +76,11 @@ test('ls lists agents and claims, sweeping dead ones', () => {
   db.addAgent(d, { name: 'dead', tool: 'codex', pid: 999_999_999, cwd: '/' });
   db.addClaim(d, { agent: 'a', file: 'src/api/x.ts', intent: 'add route', kind: 'add' });
   db.send(d, 'dead', ['a'], 'unread one');
+  db.send(d, 'dead', ['a'], 'dead merged', 'notice'); // notices never wake anyone, so they are not "unread"
   const out = ls(d);
-  assert.match(out, /^agent\s+tool\s+status\s+unread\s+active\s+branch\s+task$/m);
-  assert.match(out, /^a\s+claude\s+busy\s+1\s+\d+s\s+\?\s+build api \[src\/api\]$/m); // no repo given: branch unknown
-  assert.match(out, /^dead\s+codex\s+offline\s+0\s+\d+s\s+\?\s+-$/m);
+  assert.match(out, /^agent\s+status\s+unread\s+branch\s+task$/m);
+  assert.match(out, /^a \(claude\)\s+busy\s+1\s+\?\s+build api \[src\/api\]$/m); // no repo given: branch unknown
+  assert.match(out, /^dead \(codex\)\s+off \d+s\s+0\s+\?\s+-$/m);
   assert.equal(ago(12_000), '12s'); assert.equal(ago(180_000), '3m'); assert.equal(ago(7_200_000), '2h'); assert.equal(ago(3 * 86_400_000), '3d');
   assert.match(out, /^src\/api\/x.ts\s+a\s+add\s+add route/m);
 });
@@ -137,4 +138,17 @@ test('cleanArgs takes --force or -f and agent names, refusing other options', ()
   assert.deepEqual(cleanArgs(['a', '--force', 'b']), { names: ['a', 'b'], force: true });
   assert.deepEqual(cleanArgs([]), { names: [], force: false });
   assert.throws(() => cleanArgs(['--all']), /unknown option --all/);
+});
+
+test('ls cuts the task to the terminal width, counting CJK as two cells', () => {
+  const d = db.openDb(':memory:');
+  db.addAgent(d, { name: 'claude-x', tool: 'claude', pid: process.pid, cwd: '/' });
+  db.setTask(d, 'claude-x', '为 echo docstring 添加用例，并新增两个 pytest 测试后运行测试、提交并合并到 main', 'click/src/click/utils.py');
+  const lines = ls(d, undefined, Date.now(), 80).split('\n').filter(Boolean);
+  for (const l of lines) assert.ok(width(l) <= 80, `${width(l)} cells: ${l}`);
+  assert.match(lines[1], /\.\.\.$/);
+  assert.ok(ls(d).split('\n')[1].includes('合并到 main [click/src/click/utils.py]')); // no width: nothing cut
+  assert.equal(fit('中文中文', 5), '中...');
+  assert.equal(fit('abc', Infinity), 'abc');
+  assert.equal(width('a中b'), 4);
 });

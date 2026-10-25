@@ -224,3 +224,14 @@ test('session id survives a relaunch and is replaced by the next session', () =>
   db.setSession(d, 'a', 'sid-2');
   assert.equal(db.getAgent(d, 'a')!.session_id, 'sid-2');
 });
+
+test('a watch over stale heartbeats tells a sleeping machine from dead wrappers', () => {
+  const d = open();
+  const t = Date.now();
+  db.addAgent(d, { name: 'x', tool: 'claude', pid: 1, cwd: '/', heartbeat: true });
+  db.addAgent(d, { name: 'y', tool: 'codex', pid: 2, cwd: '/', heartbeat: true });
+  d.prepare('update agents set heartbeat_at = ?').run(t - db.HEARTBEAT_STALE_MS - 5000);
+  assert.deepEqual(db.sweep(d, () => true, t), []); // every heartbeat stale at once: asleep, not dead
+  assert.deepEqual(db.sweep(d, () => true, t, 10).sort(), ['x', 'y']); // watched for a moment and nothing moved: dead
+  assert.equal(db.getAgent(d, 'x')!.status, 'offline');
+});

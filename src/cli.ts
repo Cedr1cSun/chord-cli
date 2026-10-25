@@ -70,7 +70,7 @@ export function fit(s: string, max: number): string {
 /** Agents (status, unread messages, commits on their branch not yet on main, task), each followed by its claims. `repo`
  *  is the main checkout; without it the branch column shows "?". `cols` is the terminal width: lines are cut to fit. */
 export function ls(d: ReturnType<typeof db.openDb>, repo?: string, now = Date.now(), cols = Infinity): string {
-  db.sweep(d);
+  db.sweep(d, undefined, undefined, 2500); // a short watch, so a killed wrapper whose pid was reused is not shown online for ever
   const agents = db.listAgents(d);
   const main = repo ? gitOut(repo, 'rev-parse', '--abbrev-ref', 'HEAD') : undefined;
   const ahead = (name: string) => { if (!repo || !main) return '?'; const n = gitOut(repo, 'rev-list', '--count', `${main}..chord/${name}`); return n === undefined ? '-' : `+${n}`; };

@@ -15,7 +15,7 @@ export interface CleanResult { removed: string[]; kept: { name: string; why: str
  *  main, or whose worktree has uncommitted work, is kept unless `force`; an online agent is always kept. Directories
  *  under chord/agents/ with no database row (a launch that died before the tool started) are treated the same way. */
 export function clean(project: Project, d: DatabaseSync, names: string[] = [], force = false): CleanResult {
-  db.sweep(d);
+  db.sweep(d, undefined, undefined, 2500); // as in ls: a dead wrapper with a reused pid must not count as online
   const main = git(project.repo, 'rev-parse', '--abbrev-ref', 'HEAD');
   const agents = db.listAgents(d).filter(a => (names.length ? names.includes(a.name) : a.status === 'offline'));
   const result: CleanResult = { removed: [], kept: [] };

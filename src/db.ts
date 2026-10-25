@@ -137,13 +137,19 @@ function setup(db: DatabaseSync): void {
 const SCHEMA_VERSION = 3;
 
 function migrate(db: DatabaseSync): void {
-  const v = (db.prepare('pragma user_version').get() as { user_version: number }).user_version;
-  if (v >= SCHEMA_VERSION) return;
-  const agentCols = () => (db.prepare('pragma table_info(agents)').all() as { name: string }[]).map(c => c.name);
-  if (v < 1 && !agentCols().includes('heartbeat_at')) db.exec('alter table agents add column heartbeat_at integer'); // 2026-10-17
-  if (v < 2 && !agentCols().includes('stop_requested_at')) db.exec('alter table agents add column stop_requested_at integer'); // 2026-10-17; the events table is created above
-  if (v < 3 && !agentCols().includes('session_id')) db.exec('alter table agents add column session_id text'); // 2026-10-25
-  db.exec(`pragma user_version = ${SCHEMA_VERSION}`);
+  // under a write lock: several processes opening an old database together must not each add the same column
+  db.exec('begin immediate');
+  try {
+    const v = (db.prepare('pragma user_version').get() as { user_version: number }).user_version;
+    if (v < SCHEMA_VERSION) {
+      const agentCols = () => (db.prepare('pragma table_info(agents)').all() as { name: string }[]).map(c => c.name);
+      if (v < 1 && !agentCols().includes('heartbeat_at')) db.exec('alter table agents add column heartbeat_at integer'); // 2026-10-17
+      if (v < 2 && !agentCols().includes('stop_requested_at')) db.exec('alter table agents add column stop_requested_at integer'); // 2026-10-17; the events table is created above
+      if (v < 3 && !agentCols().includes('session_id')) db.exec('alter table agents add column session_id text'); // 2026-10-25
+      db.exec(`pragma user_version = ${SCHEMA_VERSION}`);
+    }
+    db.exec('commit');
+  } catch (e) { db.exec('rollback'); throw e; }
 }
 
 // agents

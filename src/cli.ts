@@ -89,12 +89,15 @@ export function lsAll(cols = Infinity): string {
   }).join('\n');
 }
 
-/** chord messages [agent] [-n N]: the latest messages, oldest first, one line each. */
+/** chord messages [agent] [-n N]: the latest sends, oldest first, one line each. */
 export function messages(d: ReturnType<typeof db.openDb>, agent?: string, limit = 50, now = Date.now()): string {
   const ms = db.listMessages(d, agent, limit);
   if (!ms.length) return agent ? `no messages to or from ${agent}\n` : 'no messages\n';
   const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
-  return ms.map(m => `${when(m.created_at, now)} ${m.sender} -> ${m.recipient}${m.kind !== 'message' ? ` [${m.kind}]` : ''}${m.read_at ? '' : ' (unread)'}: ${oneLine(m.body)}`).join('\n') + '\n';
+  const body = (m: db.MessageGroup) => (m.kind === 'notice' && m.body.endsWith('\n' + db.NOTICE_TAIL) ? m.body.slice(0, -db.NOTICE_TAIL.length - 1) : m.body);
+  const to = (m: db.MessageGroup) => (m.n > 3 ? `${m.n} agents` : m.recipient);
+  const flag = (m: db.MessageGroup) => (m.unread === 0 ? '' : m.unread === m.n ? ' (unread)' : ` (${m.unread}/${m.n} unread)`);
+  return ms.map(m => `${when(m.created_at, now)} ${m.sender} -> ${to(m)}${m.kind !== 'message' ? ` [${m.kind}]` : ''}${flag(m)}: ${oneLine(body(m))}`).join('\n') + '\n';
 }
 
 /** chord events [agent] [-n N]: claims, releases, merges and conflicts, oldest first. */

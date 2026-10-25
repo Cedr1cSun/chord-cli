@@ -263,7 +263,7 @@ function finishLocked(ctx: Ctx) {
   db.addEvent(ctx.db, ctx.agent, 'merge', null, `${subjects.length} commit(s) into ${main}: ${subjects.join('; ')}`);
   db.releaseAll(ctx.db, ctx.agent, 'finish');
   const online = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent && a.status !== 'offline').map(a => a.name);
-  if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\nNo action is needed: finish() rebases your branch for you when you call it. This is a notification; do not reply.`, 'notice');
+  if (online.length) db.send(ctx.db, ctx.agent, online, `${ctx.agent} merged into ${main}:\n${subjects.map(s => `- ${s}`).join('\n')}\n${db.NOTICE_TAIL}`, 'notice');
   return { merged: subjects, into: main, notified: online };
 }
 

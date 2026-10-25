@@ -1,4 +1,5 @@
-// Entry point for the per-agent MCP server. Spawned by the coding agent over stdio, in the agent's workspace.
+// Entry point for the per-agent MCP server. Spawned by the coding agent over stdio, in the project folder; the
+// agent's workspace comes from the CHORD_* environment, not from cwd.
 import { openDb } from './db.ts';
 import { serve } from './mcp.ts';
 import { tools } from './tools.ts';

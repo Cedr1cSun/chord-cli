@@ -17,7 +17,7 @@ Tests and `node src/cli.ts` run the TypeScript directly. `npm install` builds `d
 ## Layout
 
 - `src/cli.ts`: the commands
-- `src/launch.ts` and `src/pty.ts`: starting an agent in its worktree and watching its terminal
+- `src/launch.ts` and `src/pty.ts`: starting an agent in the project folder with a worktree of its own, and watching its terminal
 - `src/hooks.ts` and `src/tools.ts`: what the agent sees, as hooks and as MCP tools
 - `src/db.ts`: the shared SQLite board
 - `test/`: unit tests, one file per module

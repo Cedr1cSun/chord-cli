@@ -119,8 +119,10 @@ export function events(d: ReturnType<typeof db.openDb>, agent?: string, limit = 
   return es.map(e => `${when(e.at, now)} ${e.agent.padEnd(w)} ${e.kind.padEnd(8)} ${[e.file, e.detail].filter(Boolean).join(' ')}`).join('\n') + '\n';
 }
 
-/** chord stop <agent>: the wrapper quits the tool once the agent is idle and nothing is typed. */
-export function stop(d: ReturnType<typeof db.openDb>, name: string): string {
+/** chord stop <agent>: the wrapper quits the tool once the agent is idle and nothing is typed. `watchMs`: see db.sweep;
+ *  a wrapper that died with its pid reused must be found out here, or the quit is promised and never comes. */
+export function stop(d: ReturnType<typeof db.openDb>, name: string, watchMs = 2500): string {
+  db.sweep(d, undefined, undefined, watchMs);
   if (db.requestStop(d, name)) return `stop requested: ${name} will quit when its current turn ends and its input box is empty\n`;
   throw new Error(db.getAgent(d, name) ? `${name} is already offline` : `no such agent: ${name}`);
 }

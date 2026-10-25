@@ -47,7 +47,19 @@ const MAX_CLAIM_LINES = 60;
 const MAX_WARNED_FILES = 20;
 const MAX_INSTRUCTION_CHARS = 8000;
 
-/** The repository's own agent instructions. The agent's cwd is the workspace, so the tools do not load them themselves. */
+/** The agent's worktree as a path from its cwd, the project folder: chord/agents/<name>/<repoName>. */
+const repoDirOf = (ctx: Ctx) => path.relative(ctx.project ?? ctx.cwd, ctx.worktree).split(path.sep).join('/') || '.';
+
+/** The same file in the agent's own worktree, for a path that hit the main checkout or another agent's worktree:
+ *  both are named after the repository, so what follows that directory is the file. */
+function ownCopy(ctx: Ctx, abs: string): string {
+  const parts = path.relative(ctx.project ?? ctx.cwd, abs).split(path.sep);
+  const i = parts.indexOf(path.basename(ctx.worktree));
+  return `${repoDirOf(ctx)}/${i >= 0 ? parts.slice(i + 1).join('/') : ''}`;
+}
+
+/** The repository's own agent instructions. The agent's cwd is the project folder, which is not a git repository, so
+ *  Codex does not load the worktree's AGENTS.md and Claude only reads a nested CLAUDE.md once it opens a file there. */
 function projectInstructions(ctx: Ctx, repoDir: string): string[] {
   const out: string[] = [];
   for (const name of ['AGENTS.md', 'CLAUDE.md']) {
@@ -64,9 +76,9 @@ export function briefing(ctx: Ctx): string {
   const me = db.getAgent(ctx.db, ctx.agent);
   const peers = db.listAgents(ctx.db).filter(a => a.name !== ctx.agent && a.status !== 'offline');
   const claims = db.allClaims(ctx.db);
-  const repoDir = path.relative(ctx.cwd, ctx.worktree).split(path.sep).join('/') || '.';
+  const repoDir = repoDirOf(ctx), repoName = path.basename(ctx.worktree);
   const lines = [
-    `You are agent "${ctx.agent}" (${me?.tool ?? 'unknown'}), one of several coding agents working on the same project. Your working directory is your own workspace; the repository is the directory "${repoDir}" inside it, a git worktree on your own branch. Run git commands inside "${repoDir}". Name files as paths from your working directory, e.g. "${repoDir}/src/x.ts" (claim() also accepts repository-relative paths like "src/x.ts"). Other agents have their own worktrees of the same repository; never edit files outside your workspace. Coordination goes through the "chord" MCP tools.`,
+    `You are agent "${ctx.agent}" (${me?.tool ?? 'unknown'}), one of several coding agents working on the same project. Your working directory is the project folder. Your own copy of the repository is "${repoDir}", a git worktree on your own branch: edit, build and run git only there. "${repoName}/" in the project folder is the main checkout and other agents have their copies under chord/agents/; never touch those. Name files as "${repoDir}/src/x.ts" or repository-relative "src/x.ts" (claim() accepts both). Coordination goes through the "chord" MCP tools.`,
     '',
     'Rules:',
     '1. First thing: call register(task, scope) to say what you are doing.',
@@ -114,7 +126,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       const ms = db.takeUnread(ctx.db, ctx.agent);
       // One line of identity on every prompt: a conversation that started without the briefing (Codex /new fires no
       // session hooks; a resumed conversation may predate chord) still learns what it is and what the rules are.
-      const reminder = `[chord] You are agent "${ctx.agent}" in a chord project: claim a file with the chord claim tool before editing it, talk to the other agents with chord send, merge with chord finish.`;
+      const reminder = `[chord] You are agent "${ctx.agent}" in a chord project: claim a file with the chord claim tool before editing it, talk to the other agents with chord send, merge with chord finish. Your worktree is "${repoDirOf(ctx)}"; edit and run git only there.`;
       return context('UserPromptSubmit', ms.length
         ? `${formatMessages(ms)}\n\n[chord] ${ms.length} message(s) above arrived from other agents. Act on them in this turn as well as on the user's request: reply with the chord send tool where a reply is asked for.\n${reminder}`
         : reminder);
@@ -125,14 +137,16 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       if (!files.length && isEditTool(tool, payload.tool_name)) {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'chord could not tell which file this call writes, so it is refused; use the editor tool with a plain file path' } };
       }
-      // Codex resolves a patch's relative paths against the call's workdir when it gives one; otherwise the workspace
-      const workdir = tool === 'codex' && typeof payload.tool_input?.workdir === 'string' ? path.resolve(ctx.cwd, payload.tool_input.workdir) : ctx.cwd;
+      // Codex resolves a patch's relative paths against the call's workdir when it gives one, else against its own cwd,
+      // the project folder (the workspace when no project is known: older rows, tests)
+      const base = ctx.project ?? ctx.cwd;
+      const workdir = tool === 'codex' && typeof payload.tool_input?.workdir === 'string' ? path.resolve(base, payload.tool_input.workdir) : base;
       for (const f of files) {
         const abs = path.resolve(workdir, f);
         if (!insideDir(ctx.worktree, abs)) {
           // the main checkout and the other agents' workspaces are off limits; anything else is not ours to police
           if (ctx.project && insideDir(ctx.project, abs) && !insideDir(ctx.cwd, abs)) {
-            return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `${f} is outside your workspace: edit files only inside your own worktree ${ctx.worktree}` } };
+            return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `${f} is outside your workspace (the main checkout or another agent's worktree); edit your own copy ${ownCopy(ctx, abs)} instead` } };
           }
           continue;
         }

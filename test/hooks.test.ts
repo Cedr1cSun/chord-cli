@@ -64,7 +64,7 @@ test('user-prompt-submit delivers unread messages once and always restates who t
   const again = (handleHook(ctx('a'), 'claude', 'user-prompt-submit', {}) as any).hookSpecificOutput.additionalContext as string;
   assert.doesNotMatch(again, /hello a/);
   assert.match(again, /^\[chord\] You are agent "a" in a chord project: claim a file with the chord claim tool before editing it/);
-  assert.ok(again.length < 250);
+  assert.ok(again.length < 320);
 });
 
 test('pre-tool-use denies unclaimed writes and allows claimed ones', () => {
@@ -124,8 +124,15 @@ test('pre-tool-use polices only the worktree and forbids other checkouts in the 
   const write = (file_path: string) => handleHook(ctx, 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path } }) as any;
   assert.match(write(`${cwd}/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /not claimed/); // inside the worktree: needs a claim
   assert.equal(write(`${cwd}/notes.md`), undefined); // workspace scratch file outside the repo: not policed
-  assert.match(write(`${P}/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /outside your workspace/); // the main checkout
+  assert.match(write(`${P}/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /outside your workspace.*edit your own copy chord\/agents\/a\/repo\/src\/x\.ts/); // the main checkout
   assert.match(write(`${P}/chord/agents/b/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /outside your workspace/); // another agent
+  // Codex resolves relative patch paths against its real cwd, the project folder
+  const patch = (f: string, workdir?: string) => handleHook(ctx, 'codex', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { command: `*** Begin Patch\n*** Update File: ${f}\n*** End Patch`, ...(workdir ? { workdir } : {}) } }) as any;
+  assert.match(patch('repo/src/x.ts').hookSpecificOutput.permissionDecisionReason, /main checkout.*chord\/agents\/a\/repo\/src\/x\.ts/); // from P that is the main checkout
+  assert.match(patch('chord/agents/a/repo/src/x.ts').hookSpecificOutput.permissionDecisionReason, /not claimed/); // own worktree: the claim check
+  db.addClaim(d, { agent: 'a', file: 'repo/src/x.ts', intent: 'x', kind: 'add' });
+  assert.equal(patch('chord/agents/a/repo/src/x.ts'), undefined);
+  assert.equal(patch('src/x.ts', 'chord/agents/a/repo'), undefined); // workdir relative to P
   assert.equal(write(os.tmpdir() + '/scratch.txt'), undefined); // elsewhere: not ours
   if (process.platform === 'win32') assert.equal(write('C:\\elsewhere\\x.txt'), undefined); // another drive is not "inside" anything
 });
@@ -209,4 +216,16 @@ test('session-start and user-prompt-submit record the tool session id', () => {
   assert.equal(db.getAgent(d, 'a')!.session_id, 's2');
   handleHook(ctx('a'), 'claude', 'user-prompt-submit', {}); // no id in the payload: unchanged
   assert.equal(db.getAgent(d, 'a')!.session_id, 's2');
+});
+
+test('briefing and reminder name the worktree as seen from the project folder', () => {
+  const { d } = setup();
+  const P = process.platform === 'win32' ? 'D:\\P' : '/P';
+  const cwd = path.join(P, 'chord', 'agents', 'a');
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
+  const out = (handleHook(ctx, 'claude', 'session-start', {}) as any).hookSpecificOutput.additionalContext as string;
+  assert.match(out, /Your working directory is the project folder\. Your own copy of the repository is "chord\/agents\/a\/repo"/);
+  assert.match(out, /"repo\/" in the project folder is the main checkout/);
+  const again = (handleHook(ctx, 'claude', 'user-prompt-submit', {}) as any).hookSpecificOutput.additionalContext as string;
+  assert.match(again, /Your worktree is "chord\/agents\/a\/repo"; edit and run git only there\.$/);
 });

@@ -6,8 +6,8 @@ import * as db from './db.ts';
 import { readConfig } from './launch.ts';
 import type { Tool } from './mcp.ts';
 
-/** cwd is the agent's workspace (claims are relative to it); worktree is the repository checkout inside it;
- *  project, when known, is the project folder that holds the main checkout and every agent's workspace. */
+/** cwd is the agent's workspace W (claims are relative to it); worktree is the repository checkout inside it; project,
+ *  when known, is the project folder that holds the main checkout and every agent's workspace, and is the tool's real cwd. */
 export interface Ctx { db: DatabaseSync; agent: string; cwd: string; worktree: string; project?: string }
 
 /** Is `file` inside `dir`? False for paths on another drive or above it. */
@@ -26,7 +26,9 @@ export function claimPath(ctx: Ctx, file: string): string {
   const repoDir = path.relative(ctx.cwd, ctx.worktree).split(path.sep).join('/');
   const asGiven = normFile(ctx, file);
   let abs: string;
+  const fromProject = 'chord/agents/'; // the spelling from the tool's cwd, the project folder; another agent's folder then fails the check below
   if (path.isAbsolute(file) || !repoDir || repoDir === '.' || /^\.\.(\/|$)/.test(asGiven)) abs = path.resolve(ctx.cwd, file);
+  else if (ctx.project && asGiven.startsWith(fromProject)) abs = path.resolve(ctx.project, file);
   else if (asGiven === repoDir || asGiven.startsWith(repoDir + '/')) {
     // "rich/console.py" is the workspace path of the repository's console.py, or the repository path of a package
     // named like the repository (rich/rich/console.py); whichever exists is meant, and both existing is ambiguous
@@ -292,7 +294,7 @@ export function tools(ctx: Ctx): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          file: str('The file, as a path from your working directory (e.g. <repo>/src/x.ts) or relative to the repository root (src/x.ts)'),
+          file: str('The file, as a path from your working directory (chord/agents/<you>/<repo>/src/x.ts) or relative to the repository root (src/x.ts)'),
           intent: str('One sentence: what you will change and why'),
           kind: { type: 'string', enum: ['add', 'modify', 'delete', 'rename'] },
           symbols: str('Optional: the functions or blocks you will touch, comma-separated. When you and an earlier holder of the file both name them and none are shared, you need not talk first.'),

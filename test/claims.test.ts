@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../src/db.ts';
 import { handle } from '../src/mcp.ts';
-import { tools, canWrite, normFile, REPLY_TIMEOUT_MS, type Ctx } from '../src/tools.ts';
+import path from 'node:path';
+import { tools, canWrite, claimPath, normFile, REPLY_TIMEOUT_MS, type Ctx } from '../src/tools.ts';
 
 function setup() {
   const d = db.openDb(':memory:');
@@ -191,4 +192,15 @@ test('two modify claims naming disjoint symbols go ahead without talking; any sh
   d.prepare('update claims set created_at = created_at - 1000 where agent != ?').run('e');
   const e = call('e', 'claim', { file: 'f.ts', intent: 'rework it', kind: 'modify' });
   assert.deepEqual(e.must_talk_to.map((o: any) => o.agent).sort(), ['a', 'b', 'c'], 'no symbols named: everyone earlier');
+});
+
+test('claimPath accepts the project-relative spelling of the own worktree', () => {
+  const d = db.openDb(':memory:');
+  const P = process.platform === 'win32' ? 'D:\\P' : '/P';
+  const cwd = path.join(P, 'chord', 'agents', 'a');
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
+  assert.equal(claimPath(ctx, 'chord/agents/a/repo/src/x.ts'), 'repo/src/x.ts');
+  assert.equal(claimPath(ctx, 'src/x.ts'), 'repo/src/x.ts');
+  assert.equal(claimPath(ctx, 'repo/src/x.ts'), 'repo/src/x.ts'); // the workspace-relative spelling keeps working
+  assert.throws(() => claimPath(ctx, 'chord/agents/b/repo/src/x.ts'), /outside your workspace/);
 });

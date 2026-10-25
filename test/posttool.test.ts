@@ -100,3 +100,21 @@ test('post-tool-use also warns about commits to unclaimed files, git stash, and 
   fs.appendFileSync(path.join(root, 'a.txt'), 'oops');
   assert.match(run('ls'), /main checkout \(.*\) has uncommitted changes.*a.txt/);
 });
+
+test('post-tool-use says so when a shell command ran in the main checkout', () => {
+  const P = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-post-p-')));
+  const main = path.join(P, 'repo'); fs.mkdirSync(main);
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'init', '-q', '-b', 'main'], { cwd: main, stdio: 'ignore' });
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init'], { cwd: main, stdio: 'ignore' });
+  const W = path.join(P, 'chord', 'agents', 'a');
+  const wt = ensureWorktree(main, path.join(W, 'repo'), 'a');
+  const d = db.openDb(':memory:');
+  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd: W, worktree: wt });
+  const ctx: Ctx = { db: d, agent: 'a', cwd: W, worktree: wt, project: P };
+  const warn = (tool_input: Record<string, string>) => ((handleHook(ctx, 'codex', 'post-tool-use', { tool_name: 'Bash', tool_input }) as any)?.hookSpecificOutput?.additionalContext ?? '') as string;
+  assert.match(warn({ command: 'npm test', workdir: 'repo' }), /ran in the main checkout.*chord\/agents\/a\/repo/); // Codex workdir
+  assert.match(warn({ command: 'cd repo && git status' }), /main checkout/);
+  assert.match(warn({ command: 'cat repo/x.txt' }), /main checkout/);
+  assert.equal(warn({ command: 'npm test', workdir: 'chord/agents/a/repo' }), '');
+  assert.equal(warn({ command: 'cat chord/agents/a/repo/x.txt && git -C chord/agents/a/repo status' }), '');
+});

@@ -21,7 +21,6 @@ const here = (f: string) => fs.realpathSync.native(fileURLToPath(new URL(f + pat
 export const HOOKS_TS = here('./hooks');
 export const SERVE_TS = here('./serve');
 
-const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 /** `staleWaitMs`: how long to watch a stale heartbeat before calling its agent dead (tests shorten it). */
 export function pickName(d: DatabaseSync, tool: Tool, project: string, override?: string, staleWaitMs = 2500): string {
@@ -38,7 +37,7 @@ export function pickName(d: DatabaseSync, tool: Tool, project: string, override?
       // else's heartbeat is fresh to compare with. A heartbeat that stays stale while we watch it is a dead wrapper
       // (a live one writes every second), and this launch itself proves the machine is awake.
       const stale = clash.heartbeat_at !== null && Date.now() - clash.heartbeat_at > db.HEARTBEAT_STALE_MS;
-      if (stale) sleepSync(staleWaitMs);
+      if (stale) db.sleepSync(staleWaitMs);
       const again = stale ? db.getAgent(d, clash.name) : clash;
       if (!stale || again?.heartbeat_at !== clash.heartbeat_at) throw new Error(`agent "${override}" is already online`);
       db.log(`launch: ${override} has not had a heartbeat for ${Math.round((Date.now() - clash.heartbeat_at!) / 1000)}s; taking it for dead`);

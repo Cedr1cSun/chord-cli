@@ -219,17 +219,28 @@ export function heartbeat(db: DatabaseSync, name: string): void {
   db.prepare(`update agents set heartbeat_at = ?, status = case when status = 'offline' then 'busy' else status end where name = ?`).run(Date.now(), name);
 }
 
+export const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
 /** Mark agents whose process is gone as offline and drop their claims. Returns the names swept. A missing
- *  process or a stale heartbeat both count: Windows reuses pids quickly, so the pid alone can lie. */
-export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAlive, now = Date.now()): string[] {
+ *  process or a stale heartbeat both count: Windows reuses pids quickly, so the pid alone can lie.
+ *  `watchMs`: when every heartbeat is stale, wait that long and see whose heartbeat moves (a live wrapper writes every
+ *  second); the rest are dead. Zero, the default for hooks and tools, judges by pid alone in that case. */
+export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAlive, now = Date.now(), watchMs = 0): string[] {
   const online = listAgents(db).filter(a => a.status !== 'offline');
   // Every heartbeat stale at once means the machine was asleep, not that everyone died: judge by pid alone then.
-  // ponytail: a lone dead agent whose pid was reused is therefore missed until a second agent comes online.
+  // ponytail: a lone dead agent whose pid was reused is therefore missed by the hooks until a second agent comes online.
   const beating = online.filter(a => a.heartbeat_at !== null);
   const stale = (a: Agent) => a.heartbeat_at !== null && now - a.heartbeat_at > HEARTBEAT_STALE_MS;
   const slept = beating.length > 0 && beating.every(stale);
-  if (slept) log('sweep: every heartbeat is stale, the machine was probably asleep; judging by pid only');
-  const dead = online.filter(a => !alive(a.pid) || (!slept && stale(a))).map(a => a.name);
+  let dead: string[];
+  if (slept && watchMs > 0) {
+    sleepSync(watchMs);
+    const moved = new Set(listAgents(db).filter(a => beating.some(b => b.name === a.name && b.heartbeat_at !== a.heartbeat_at)).map(a => a.name));
+    dead = online.filter(a => !alive(a.pid) || (a.heartbeat_at !== null && !moved.has(a.name))).map(a => a.name);
+  } else {
+    if (slept) log('sweep: every heartbeat is stale, the machine was probably asleep; judging by pid only');
+    dead = online.filter(a => !alive(a.pid) || (!slept && stale(a))).map(a => a.name);
+  }
   for (const name of dead) {
     log(`sweep: ${name} marked offline, claims released`);
     setStatus(db, name, 'offline');

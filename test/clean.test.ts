@@ -41,7 +41,7 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
 
   r = clean(project, d, ['online', 'ghost']);
   assert.deepEqual(r.removed, []);
-  assert.deepEqual(r.kept.map(k => k.why.split(';')[0]), ['no such agent', 'still online']);
+  assert.deepEqual(r.kept.map(k => k.why), ['no such agent', 'still online']);
 
   // uncommitted and untracked work is kept too: an agent stopped half-way has not lost anything
   const dirty = mk('dirty');
@@ -50,7 +50,7 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   db.setStatus(d, 'dirty', 'offline');
   r = clean(project, d);
   assert.deepEqual(r.removed, []);
-  assert.match(r.kept.find(k => k.name === 'dirty')!.why, /has uncommitted changes; use --force/);
+  assert.match(r.kept.find(k => k.name === 'dirty')!.why, /^uncommitted changes in chord\/agents\/dirty\/repo$/);
   assert.ok(fs.existsSync(path.join(dirty.wt, 'wip.txt')));
   assert.equal(fs.readFileSync(path.join(dirty.wt, 'm.txt'), 'utf8'), '1edited');
   assert.deepEqual(clean(project, d, ['dirty'], true).removed, ['dirty']);
@@ -81,7 +81,7 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   const orphanWt = ensureWorktree(repo, path.join(project.dir, 'chord', 'agents', 'orphan', 'repo'), 'orphan');
   fs.writeFileSync(path.join(orphanWt, 'o.txt'), '1'); git(orphanWt, 'add', '.'); git(orphanWt, 'commit', '-q', '-m', 'o');
   r = clean(project, d);
-  assert.match(r.kept.find(k => k.name === 'orphan')!.why, /not on main/);
+  assert.match(r.kept.find(k => k.name === 'orphan')!.why, /^unmerged commits on chord\/orphan$/);
   git(repo, 'merge', '-q', '--ff-only', 'chord/orphan');
   fs.mkdirSync(path.join(project.stateDir, 'setup-done'), { recursive: true }); fs.writeFileSync(path.join(project.stateDir, 'setup-done', 'orphan'), '1');
   r = clean(project, d);

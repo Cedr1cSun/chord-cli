@@ -44,6 +44,16 @@ test('messages lists message history oldest first, marking notices and unread on
   assert.match(ms[1], /^\d\d:\d\d:\d\d b -> a \[notice\] \(unread\): reply$/);
   assert.equal(messages(d, 'b', 1, now).split('\n').filter(Boolean).length, 1); // -n keeps the latest
   assert.equal(messages(d, 'c'), 'no messages to or from c\n');
+  // one send to several agents is one line, without the sentence meant for the agents
+  db.send(d, 'a', ['b', 'c', 'd', 'e'], 'a merged into main:\n- x\n' + db.NOTICE_TAIL, 'notice');
+  const grouped = messages(d, undefined, 50, now).split('\n').filter(Boolean);
+  assert.equal(grouped.length, 3);
+  assert.match(grouped[2], /^\d\d:\d\d:\d\d a -> 4 agents \[notice\] \(unread\): a merged into main: - x$/);
+  assert.match(messages(d, undefined, 1, now), /4 agents/); // -n counts sends, not recipients
+  db.takeUnread(d, 'b');
+  assert.match(messages(d, undefined, 1, now), /a -> 4 agents \[notice\] \(3\/4 unread\): /);
+  db.send(d, 'a', ['b', 'c'], 'two of you');
+  assert.match(messages(d, undefined, 1, now), /a -> b, c \(unread\): two of you\n$/); // up to three recipients are named
 });
 
 test('stop flags an online agent and refuses offline or unknown ones', () => {

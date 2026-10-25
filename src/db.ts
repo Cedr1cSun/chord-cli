@@ -280,12 +280,19 @@ export function listEvents(db: DatabaseSync, agent?: string, limit = 50): Event[
   return (rows as unknown as Event[]).reverse();
 }
 
-/** The latest `limit` messages (oldest first), all or those sent or received by one agent. */
-export function listMessages(db: DatabaseSync, agent?: string, limit = 50): Message[] {
-  const rows = agent
-    ? db.prepare('select * from messages where sender = ? or recipient = ? order by id desc limit ?').all(agent, agent, limit)
-    : db.prepare('select * from messages order by id desc limit ?').all(limit);
-  return (rows as unknown as Message[]).reverse();
+/** The closing sentence of a merge notice: for the agents, not for `chord messages`. */
+export const NOTICE_TAIL = 'No action is needed: finish() rebases your branch for you when you call it. This is a notification; do not reply.';
+
+/** One send: `recipient` names them all, `n` how many, `unread` how many have not read it. */
+export interface MessageGroup extends Message { n: number; unread: number }
+
+/** The latest `limit` sends (oldest first), all or those sent or received by one agent. A message to several agents
+ *  is one row per recipient in the table and one send here. */
+export function listMessages(db: DatabaseSync, agent?: string, limit = 50): MessageGroup[] {
+  const sql = (where: string) => `select min(id) id, sender, group_concat(recipient, ', ') recipient, kind, body, created_at, max(read_at) read_at,
+    count(*) n, count(*) - count(read_at) unread from messages ${where} group by sender, kind, body, created_at order by max(id) desc limit ?`;
+  const rows = agent ? db.prepare(sql('where sender = ? or recipient = ?')).all(agent, agent, limit) : db.prepare(sql('')).all(limit);
+  return (rows as unknown as MessageGroup[]).reverse();
 }
 
 /** `chord stop`: ask the wrapper to quit the tool once the agent is idle. Returns false for an unknown or offline agent. */

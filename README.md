@@ -122,7 +122,7 @@ Agents start in the project folder, the same directory you run plain `claude` or
 | command | what it does |
 |---|---|
 | `chord <agent> [--name x] [tool args...]` | start an agent: `claude` or `codex` |
-| `chord resume <agent> [tool args...]` | start an agent that has left again, in its own worktree, continuing its last conversation |
+| `chord resume <agent> [tool args...]` | start an agent that has left again, in its own worktree, reopening its own conversation |
 | `chord ls [--all]` | agents and claims of this project, or of every project |
 | `chord messages [agent] [-n N]` | message history |
 | `chord events [agent] [-n N]` | claim, release, merge and conflict history |

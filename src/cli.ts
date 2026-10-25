@@ -16,7 +16,7 @@ import * as db from './db.ts';
 import { mergeUserSettings, prepare } from './launch.ts';
 import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
 import { resolveCommand, run } from './pty.ts';
-import { codexFirstStart, disabledCodexHooks, pretrustClaude } from './trust.ts';
+import { codexFirstStart, disabledCodexHooks } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
 const USAGE = 'usage: chord <claude|codex> [--name <agent>] [tool args...]\n       chord resume <agent> [tool args...]\n       chord ls [--all]\n       chord messages [agent] [-n N]\n       chord events [agent] [-n N]\n       chord stop <agent>\n       chord clean [--force] [agent...]\n';
@@ -226,13 +226,8 @@ async function main(argv: string[]): Promise<number> {
     await offerRestructure(e);
     launch = prepare(cmd as Tool, process.cwd(), name);
   }
-  process.stderr.write(`chord: agent ${launch.name} in ${launch.cwd}\n`);
+  process.stderr.write(`chord: agent ${launch.name}; worktree ${launch.worktree}\n`);
   if (userSettings) launch.args = mergeUserSettings(launch.args, userSettings);
-  if (cmd === 'claude') { // otherwise every new workspace asks "do you trust this folder?"; a failure here only brings that dialogue back
-    // Claude inherits trust from a parent folder, so the project's agents folder is trusted once. One entry per
-    // workspace was lost whenever two agents started together: each launch, and every running Claude, rewrites the file.
-    try { pretrustClaude(path.dirname(launch.cwd)); } catch (e) { process.stderr.write(`chord: could not record the agents folder as trusted in ~/.claude.json (${(e as Error).message}); Claude may ask you to trust the folder\n`); }
-  }
   if (cmd === 'codex') {
     const off = disabledCodexHooks();
     if (off.length) process.stderr.write(`chord: Codex has chord's ${off.join(', ')} hook(s) switched off in ~/.codex/config.toml, so the matching chord features will not work. Remove the "enabled = false" line(s) under the [hooks.state.'...<session-flags>...'] tables to switch them back on.\n`);

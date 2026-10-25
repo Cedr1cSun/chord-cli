@@ -187,8 +187,9 @@ export function claudeArgs(env: Record<string, string>, projectConfig: boolean |
   // chord's own tools are pre-approved: in the default permission mode every claim, send and finish would otherwise
   // stop at a prompt, and an unattended agent would never get past the first one
   const ours = { hooks, permissions: { allow: ['mcp__chord'] } };
-  // The agent's cwd is its workspace, not the repository, so Claude Code would not pick up the repository's
-  // own CLAUDE.md, .claude/settings*.json or .mcp.json. --add-dir covers CLAUDE.md; the others are passed along.
+  // The agent's cwd is the project folder, not the repository, so Claude Code would not pick up the repository's
+  // skills, commands and agents under .claude/, nor its settings*.json or .mcp.json. --add-dir covers the first group
+  // (the briefing carries CLAUDE.md itself); the others are passed along.
   const wt = env.CHORD_WORKTREE;
   const addDir = wt ? ['--add-dir', wt] : [];
   const source: ProjectConfigSource | null = projectConfig === true ? { repo: wt ?? '' } : projectConfig || null;

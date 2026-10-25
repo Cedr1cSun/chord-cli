@@ -113,7 +113,9 @@ chord stop api           # let it finish its turn, then quit
 chord clean              # remove the workspaces and branches of agents that have left
 ```
 
-`--name` fixes an agent's name, workspace and branch, so launching the same name later returns to the same worktree. `chord resume <agent>` does that and also picks up the agent's last conversation, for Claude and Codex alike. Run chord in a repository root and it offers to move the repository into a child directory first.
+`--name` fixes an agent's name, workspace and branch, so launching the same name later returns to the same worktree. `chord resume <agent>` does that and also reopens the agent's own conversation, for Claude and Codex alike. Run chord in a repository root and it offers to move the repository into a child directory first.
+
+Agents start in the project folder, the same directory you run plain `claude` or `codex` in, so that stays their project too: one `/resume` list, one CLAUDE.md, one trust answer. Each agent edits only its own worktree under `chord/agents/<name>/`; chord refuses writes to the main checkout and to other agents' worktrees.
 
 ## 🧰 Commands
 
@@ -144,7 +146,7 @@ A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) 
 ## 🔌 How chord works with your tools
 
 - **Waking an agent** means typing a short note into its terminal. chord does this only when the input box is empty, the keyboard has been quiet for a few seconds, and the terminal has echoed the note; a dialogue never receives the Enter.
-- **Trust**: chord records the project's agents folder as trusted in `~/.claude.json` once, so Claude does not ask about each agent's workspace. Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off.
+- **Trust**: agents run in the project folder, so Claude asks about it once, as it does for plain `claude`; chord writes nothing to `~/.claude.json`. Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off.
 - **Branches and worktrees.** Each agent adds a `chord/<name>` branch and a worktree; `chord clean` removes them when the agent has left and keeps anything not yet on main.
 - **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex runs with full access. On Windows chord refuses a sandboxed launch, because that sandbox cannot run the hooks; on Linux the hooks run inside the sandbox, but Codex then asks you to approve each chord tool call.
 - **The terminal title** reads `chord <agent> · <task>`, so each window says which agent it is.

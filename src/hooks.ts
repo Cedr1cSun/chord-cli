@@ -249,6 +249,21 @@ export function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] 
   const shown = unclaimed.slice(0, MAX_WARNED_FILES);
   if (unclaimed.length) out.push(`[chord] The shell command changed files you have not claimed: ${shown.join(', ')}${unclaimed.length > shown.length ? ` and ${unclaimed.length - shown.length} more` : ''}. Claim them now with claim(), or revert the change.`);
   const cmd = typeof payload.tool_input?.command === 'string' ? payload.tool_input.command : '';
+  // From the project folder, "<repo>/" is the main checkout: a command that ran there (Codex's workdir), cd'd there or
+  // named a path there did not touch the agent's own copy. A heuristic on the command text, so a warning, not a gate.
+  if (ctx.project) {
+    const repoName = path.basename(ctx.worktree);
+    const workdir = typeof payload.tool_input?.workdir === 'string' ? path.resolve(ctx.project, payload.tool_input.workdir) : null;
+    const inMain = workdir !== null && insideDir(ctx.project, workdir) && !insideDir(ctx.cwd, workdir);
+    const words: string[] = cmd.split(/\s+/);
+    const namesMain = words.some((w, i) => {
+      if (/chord[\\/]agents[\\/]/.test(w)) return false;
+      const stripped = w.replace(/^["'(]+/, '').replace(/^\.[\\/]/, '');
+      const head = stripped.split(/[\\/]/)[0].replace(/["';&|)]+$/, '');
+      return head === repoName && (/[\\/]/.test(stripped) || words[i - 1] === 'cd');
+    });
+    if (inMain || namesMain) out.push(`[chord] That command ran in the main checkout (${repoName}/) or named a path there; your copy is ${repoDirOf(ctx)}. Build, test and run git only there.`);
+  }
   if (/\bgit\b[^|;&\n]*\bstash\b/.test(cmd)) out.push("[chord] git stash is shared by every worktree of this repository: a stash pop can hand you another agent's changes, and yours to them. Make a work-in-progress commit instead.");
   if (root && path.resolve(root) !== path.resolve(ctx.worktree)) {
     const dirty = gitOut(root, 'status', '--porcelain', '--untracked-files=no').split('\n').filter(Boolean).map(l => l.slice(3));

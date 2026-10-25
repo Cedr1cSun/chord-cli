@@ -115,7 +115,7 @@ chord clean              # remove the workspaces and branches of agents that hav
 
 `--name` fixes an agent's name, workspace and branch, so launching the same name later returns to the same worktree. `chord resume <agent>` does that and also reopens the agent's own conversation, for Claude and Codex alike. Run chord in a repository root and it offers to move the repository into a child directory first.
 
-Agents start in the project folder, the same directory you run plain `claude` or `codex` in, so that stays their project too: one `/resume` list, one CLAUDE.md, one trust answer. Each agent edits only its own worktree under `chord/agents/<name>/`; chord refuses writes to the main checkout and to other agents' worktrees.
+Agents start in the project folder, the same directory you run plain `claude` or `codex` in, so that stays their project too: one `/resume` list, one CLAUDE.md, one trust answer. Each agent edits only its own worktree under `chord/agents/<name>/`; chord refuses edits (editor tools, apply_patch) to the main checkout and to other agents' worktrees, and tells the agent off after a shell command that ran there.
 
 ## 🧰 Commands
 

@@ -49,7 +49,7 @@ test('post-tool-use reports paths relative to the workspace when the repo is a s
   const git = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: wt, stdio: 'ignore' });
   git('init', '-q', '-b', 'main'); fs.writeFileSync(path.join(wt, 'a.txt'), '1\n'); git('add', 'a.txt'); git('commit', '-q', '-m', 'i');
   const d = db.openDb(':memory:');
-  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd: ws, worktree: wt });
+  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd: ws });
   const ctx: Ctx = { db: d, agent: 'a', cwd: ws, worktree: wt };
   fs.appendFileSync(path.join(wt, 'a.txt'), '2\n');
   const out = handleHook(ctx, 'codex', 'post-tool-use', { tool_name: 'Bash' }) as any;
@@ -91,7 +91,7 @@ test('post-tool-use also warns about commits to unclaimed files, git stash, and 
   const ws = path.join(proj, 'chord', 'agents', 'w');
   const wt = ensureWorktree(root, path.join(ws, 'repo'), 'w');
   const d = db.openDb(':memory:');
-  db.addAgent(d, { name: 'w', tool: 'claude', pid: process.pid, cwd: ws, worktree: wt });
+  db.addAgent(d, { name: 'w', tool: 'claude', pid: process.pid, cwd: ws });
   const ctx: Ctx = { db: d, agent: 'w', cwd: ws, worktree: wt };
   const run = (command: string) => ((handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Bash', tool_input: { command } }) as any)?.hookSpecificOutput?.additionalContext ?? '') as string;
   assert.equal(run('ls'), '');
@@ -122,7 +122,7 @@ test('post-tool-use says so when a shell command ran in the main checkout', () =
   const W = path.join(P, 'chord', 'agents', 'a');
   const wt = ensureWorktree(main, path.join(W, 'repo'), 'a');
   const d = db.openDb(':memory:');
-  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd: W, worktree: wt });
+  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd: W });
   const ctx: Ctx = { db: d, agent: 'a', cwd: W, worktree: wt, project: P };
   const warn = (tool_input: Record<string, string>) => ((handleHook(ctx, 'codex', 'post-tool-use', { tool_name: 'Bash', tool_input }) as any)?.hookSpecificOutput?.additionalContext ?? '') as string;
   assert.match(warn({ command: 'npm test', workdir: 'repo' }), /ran in the main checkout.*chord\/agents\/a\/repo/); // Codex workdir

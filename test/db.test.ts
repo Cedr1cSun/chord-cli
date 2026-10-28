@@ -50,8 +50,6 @@ test('claims: multiple agents per file, release', () => {
   db.addClaim(d, { agent: 'a', file: 'g.ts', intent: 'new', kind: 'add' });
   assert.equal(db.claimsFor(d, 'f.ts').length, 2);
   assert.equal(db.claimsBy(d, 'a').length, 2);
-  db.setAskedAt(d, 'b', 'f.ts', 123);
-  assert.equal(db.claimsFor(d, 'f.ts').find(c => c.agent === 'b')!.asked_at, 123);
   db.removeClaim(d, 'a', 'g.ts');
   db.releaseAll(d, 'b');
   assert.deepEqual(db.allClaims(d).map(c => c.agent + ':' + c.file), ['a:f.ts']);
@@ -141,7 +139,9 @@ test('openDb upgrades a database from before heartbeat_at and keeps its rows', (
     insert into agents (name, tool, pid, cwd, worktree, status, started_at, updated_at) values ('old', 'claude', 1, '/', '/', 'offline', 1, 1);`);
   old.close();
   const d = db.openDb(file);
-  assert.equal(d.prepare('pragma user_version').get()!.user_version, 3);
+  assert.equal(d.prepare('pragma user_version').get()!.user_version, 4);
+  const cols = (table: string) => (d.prepare(`pragma table_info(${table})`).all() as { name: string }[]).map(c => c.name);
+  assert.ok(!cols('agents').includes('worktree') && !cols('claims').includes('asked_at')); // written and never read: dropped
   assert.equal(db.getAgent(d, 'old')!.session_id, null);
   assert.deepEqual(db.getAgent(d, 'old')!.heartbeat_at, null);
   assert.equal(db.getAgent(d, 'old')!.stop_requested_at, null);
@@ -151,7 +151,7 @@ test('openDb upgrades a database from before heartbeat_at and keeps its rows', (
   db.heartbeat(d, 'old'); // the new column works
   assert.ok(db.getAgent(d, 'old')!.heartbeat_at! > 0);
   d.close();
-  assert.equal(db.openDb(file).prepare('pragma user_version').get()!.user_version, 3); // idempotent
+  assert.equal(db.openDb(file).prepare('pragma user_version').get()!.user_version, 4); // idempotent
 });
 
 test('claims, releases and sweeps leave events behind', () => {

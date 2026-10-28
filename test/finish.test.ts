@@ -24,7 +24,7 @@ function setup() {
   const wt = ensureWorktree(repo, path.join(ws, 'repo'), 'w');
   process.env.CHORD_DB = path.join(proj, 'state', 'chord.db'); fs.mkdirSync(path.join(proj, 'state'));
   const d = db.openDb(':memory:');
-  db.addAgent(d, { name: 'w', tool: 'claude', pid: process.pid, cwd: ws, worktree: wt });
+  db.addAgent(d, { name: 'w', tool: 'claude', pid: process.pid, cwd: ws });
   db.addAgent(d, { name: 'peer', tool: 'codex', pid: process.pid, cwd: '/p' });
   db.addAgent(d, { name: 'gone', tool: 'codex', pid: process.pid, cwd: '/g' }); db.setStatus(d, 'gone', 'offline');
   db.addClaim(d, { agent: 'w', file: 'repo/b.txt', intent: 'x', kind: 'add' });
@@ -219,7 +219,7 @@ test('finish ignores line-ending-only differences a repository shows from the mo
   const wt2 = ensureWorktree(root, path.join(ws2, 'repo'), 'w2');
   assert.equal(git(wt2, 'status', '--porcelain', '--untracked-files=no'), '');
   fs.writeFileSync(path.join(wt2, 'c.txt'), 'y\n'); git(wt2, 'add', 'c.txt'); git(wt2, 'commit', '-q', '-m', 'feat: c');
-  db.addAgent(ctx.db, { name: 'w2', tool: 'claude', pid: process.pid, cwd: ws2, worktree: wt2 });
+  db.addAgent(ctx.db, { name: 'w2', tool: 'claude', pid: process.pid, cwd: ws2 });
   assert.deepEqual(finish({ ...ctx, agent: 'w2', cwd: ws2, worktree: wt2 }).merged, ['feat: c']);
 });
 

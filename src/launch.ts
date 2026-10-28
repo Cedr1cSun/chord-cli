@@ -297,7 +297,7 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
   // Take the name now, before the worktree and setup take their time: a second launch under the same name a moment
   // later must find it online. No heartbeat yet: nobody writes one until the wrapper runs, and setup or Codex's first
   // start can take minutes, so a sweep meanwhile must judge this agent by its (live) pid alone.
-  db.addAgent(d, { name, tool, pid: process.pid, cwd: ws, worktree: path.join(ws, project.repoName) });
+  db.addAgent(d, { name, tool, pid: process.pid, cwd: ws });
   try {
     const config = readConfig(project);
     const worktree = ensureWorktree(project.repo, path.join(ws, project.repoName), name);

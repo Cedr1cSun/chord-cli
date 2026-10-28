@@ -20,7 +20,7 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   const d = db.openDb(':memory:');
   const mk = (name: string) => {
     const ws = workspacePath(project, name); const wt = ensureWorktree(repo, path.join(ws, 'repo'), name);
-    db.addAgent(d, { name, tool: 'claude', pid: process.pid, cwd: ws, worktree: wt });
+    db.addAgent(d, { name, tool: 'claude', pid: process.pid, cwd: ws });
     db.send(d, name, [name], 'note to self');
     return { ws, wt };
   };
@@ -92,7 +92,7 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
 
   // a row whose cwd is the project folder itself must not make clean delete the project
   const stray = mk('stray'); db.setStatus(d, 'stray', 'offline');
-  d.prepare("update agents set cwd = ?, worktree = ? where name = 'stray'").run(project.dir, online.wt); // the row lies about both
+  d.prepare("update agents set cwd = ? where name = 'stray'").run(project.dir); // the row lies
   r = clean(project, d, ['stray']);
   assert.deepEqual(r.removed, ['stray']);
   assert.ok(fs.existsSync(repo) && fs.existsSync(online.wt) && !fs.existsSync(stray.ws)); // only stray's own folder went

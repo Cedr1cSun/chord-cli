@@ -10,7 +10,6 @@ export interface Agent {
   tool: string;
   pid: number;
   cwd: string;      // the agent's working directory (its workspace W)
-  worktree: string; // the repository worktree inside W, used by finish
   task: string | null;
   scope: string | null;
   status: Status;
@@ -29,7 +28,6 @@ export interface Claim {
   kind: string;
   symbols: string | null;
   created_at: number;
-  asked_at: number | null;
 }
 
 export type MessageKind = 'message' | 'notice';
@@ -92,7 +90,6 @@ function setup(db: DatabaseSync): void {
       tool       text not null,
       pid        integer not null,
       cwd        text not null,
-      worktree   text not null,
       task       text,
       scope      text,
       status     text not null default 'busy',
@@ -109,7 +106,6 @@ function setup(db: DatabaseSync): void {
       kind     text not null,
       symbols    text,
       created_at integer not null,
-      asked_at   integer,
       primary key (agent, file)
     );
     create table if not exists messages (
@@ -135,7 +131,7 @@ function setup(db: DatabaseSync): void {
 
 /** Bump when the schema changes and add a step below; `pragma user_version` records what a database has. A database
  *  from before versioning reads as 0 and gets every step, each of which checks what is actually there. */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function migrate(db: DatabaseSync): void {
   // under a write lock: several processes opening an old database together must not each add the same column
@@ -147,6 +143,10 @@ function migrate(db: DatabaseSync): void {
       if (v < 1 && !agentCols().includes('heartbeat_at')) db.exec('alter table agents add column heartbeat_at integer'); // 2026-10-17
       if (v < 2 && !agentCols().includes('stop_requested_at')) db.exec('alter table agents add column stop_requested_at integer'); // 2026-10-17; the events table is created above
       if (v < 3 && !agentCols().includes('session_id')) db.exec('alter table agents add column session_id text'); // 2026-10-25
+      if (v < 4) { // 2026-10-28: two columns written and never read
+        if (agentCols().includes('worktree')) db.exec('alter table agents drop column worktree');
+        if ((db.prepare('pragma table_info(claims)').all() as { name: string }[]).some(c => c.name === 'asked_at')) db.exec('alter table claims drop column asked_at');
+      }
       db.exec(`pragma user_version = ${SCHEMA_VERSION}`);
     }
     db.exec('commit');
@@ -155,15 +155,15 @@ function migrate(db: DatabaseSync): void {
 
 // agents
 
-export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid: number; cwd: string; worktree?: string; heartbeat?: boolean }): void {
+export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid: number; cwd: string; heartbeat?: boolean }): void {
   const now = Date.now();
   db.prepare(
-    `insert into agents (name, tool, pid, cwd, worktree, status, started_at, updated_at, heartbeat_at)
-     values (?, ?, ?, ?, ?, 'busy', ?, ?, ?)
-     on conflict(name) do update set tool = excluded.tool, pid = excluded.pid, cwd = excluded.cwd, worktree = excluded.worktree,
+    `insert into agents (name, tool, pid, cwd, status, started_at, updated_at, heartbeat_at)
+     values (?, ?, ?, ?, 'busy', ?, ?, ?)
+     on conflict(name) do update set tool = excluded.tool, pid = excluded.pid, cwd = excluded.cwd,
        status = 'busy', task = null, scope = null, started_at = excluded.started_at, updated_at = excluded.updated_at, heartbeat_at = excluded.heartbeat_at,
        stop_requested_at = null, session_id = case when tool = excluded.tool then session_id end`,
-  ).run(a.name, a.tool, a.pid, a.cwd, a.worktree ?? a.cwd, now, now, a.heartbeat ? now : null);
+  ).run(a.name, a.tool, a.pid, a.cwd, now, now, a.heartbeat ? now : null);
   // a relaunch under the same name must not inherit messages meant for the previous session
   db.prepare('delete from messages where recipient = ? and read_at is null').run(a.name);
 }
@@ -282,10 +282,6 @@ export function addClaim(db: DatabaseSync, c: { agent: string; file: string; int
      on conflict(agent, file) do update set intent = excluded.intent, kind = excluded.kind, symbols = excluded.symbols`,
   ).run(c.agent, c.file, c.intent, c.kind, c.symbols ?? null, Date.now());
   addEvent(db, c.agent, 'claim', c.file, `${c.kind}: ${c.intent}`);
-}
-
-export function setAskedAt(db: DatabaseSync, agent: string, file: string, at: number): void {
-  db.prepare('update claims set asked_at = ? where agent = ? and file = ?').run(at, agent, file);
 }
 
 export function removeClaim(db: DatabaseSync, agent: string, file: string): void {

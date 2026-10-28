@@ -129,7 +129,7 @@ test('pre-tool-use polices only the worktree and forbids other checkouts in the 
   const P = process.platform === 'win32' ? 'D:\\P' : '/P';
   const cwd = `${P}/chord/agents/a`.split('/').join(path.sep);
   const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: `${cwd}/repo`, project: P };
-  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd, worktree: `${cwd}/repo` });
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd });
   const write = (file_path: string) => handleHook(ctx, 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path } }) as any;
   assert.match(write(`${cwd}/repo/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /not claimed/); // inside the worktree: needs a claim
   assert.equal(write(`${cwd}/notes.md`), undefined); // workspace scratch file outside the repo: not policed
@@ -151,7 +151,7 @@ test('pre-tool-use is not fooled by a change of case on macOS, whose file system
   const d = db.openDb(':memory:');
   const cwd = '/P/chord/agents/a';
   const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: `${cwd}/repo`, project: '/P' };
-  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd, worktree: `${cwd}/repo` });
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd });
   const write = (file_path: string) => handleHook(ctx, 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path } }) as any;
   assert.match(write(`${cwd}/REPO/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /not claimed/); // the own worktree still needs a claim
   assert.match(write('/p/Repo/src/x.ts').hookSpecificOutput.permissionDecisionReason, /outside your workspace/); // still the main checkout
@@ -167,7 +167,7 @@ test('pre-tool-use sees through a link to the worktree or the main checkout', ()
   const links = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-links-')); // outside the project, as /tmp or a user's shortcut would be
   fs.symlinkSync(wt, path.join(links, 'mine'), 'junction'); fs.symlinkSync(main, path.join(links, 'theirs'), 'junction');
   const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: wt, project: P };
-  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd, worktree: wt });
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd });
   const write = (file_path: string) => handleHook(ctx, 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path } }) as any;
   assert.match(write(path.join(links, 'mine', 'src', 'x.ts')).hookSpecificOutput.permissionDecisionReason, /not claimed/); // the own worktree, however reached
   assert.match(write(path.join(links, 'theirs', 'src', 'x.ts')).hookSpecificOutput.permissionDecisionReason, /outside your workspace/); // the main checkout, however reached
@@ -281,7 +281,7 @@ test('the deny reason finds the own copy when another agent is named like the re
   const P = process.platform === 'win32' ? 'D:\\P' : '/P';
   const cwd = path.join(P, 'chord', 'agents', 'a');
   const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
-  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd, worktree: path.join(cwd, 'repo') });
+  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd });
   const other = handleHook(ctx, 'codex', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { command: '*** Begin Patch\n*** Update File: chord/agents/repo/repo/src/y.ts\n*** End Patch' } }) as any;
   assert.match(other.hookSpecificOutput.permissionDecisionReason, /edit your own copy chord\/agents\/a\/repo\/src\/y\.ts instead/);
 });

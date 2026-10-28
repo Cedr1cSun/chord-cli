@@ -6,7 +6,7 @@ import { execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import * as db from './db.ts';
 import { ensureStateDir, resolveProject, type Project } from './project.ts';
@@ -272,6 +272,18 @@ export function codexArgs(env: Record<string, string>, writableRoots: string[] =
   return args;
 }
 
+/** OpenCode takes its configuration from the environment: `OPENCODE_CONFIG_CONTENT` carries chord's MCP server and
+ *  the plugin beside this module, named by file URL so that OpenCode imports it where it is (a plugin directory it
+ *  would fill with a package.json and node_modules). The plugin runs inside OpenCode's own process and spawns
+ *  `node $CHORD_HOOKS <event>` for each hook, so it needs nothing from chord but that path and the CHORD_* variables,
+ *  which it inherits. */
+export function opencodeEnv(env: Record<string, string>): Record<string, string> {
+  const plugin = pathToFileURL(path.join(path.dirname(HOOKS_TS), 'opencode', 'plugins', `chord${path.extname(HOOKS_TS)}`)).href;
+  // finish may wait minutes for the merge lock; OpenCode's default MCP timeout is 30 s
+  const config = { plugin: [plugin], mcp: { chord: { type: 'local', command: [NODE, SERVE_TS], environment: env, timeout: 600_000 } } };
+  return { ...env, CHORD_HOOKS: HOOKS_TS, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) };
+}
+
 export interface Launch {
   name: string;
   project: Project;
@@ -315,6 +327,7 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
       projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir) ? { repo: project.repo } : false;
       if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it or the project folder in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
     }
+    if (tool === 'opencode') return { name, project, cwd: ws, worktree, dbFile, env: opencodeEnv(env), args: [] };
     return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env, [path.join(project.repo, '.git')]) };
   } catch (e) {
     db.setStatus(d, name, 'offline'); // the launch failed: the name is free again

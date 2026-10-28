@@ -195,11 +195,12 @@ export function nextAction(s: { status: string | undefined; unread: boolean; sto
   return null;
 }
 
-/** Codex reports its state to the terminal as OSC 7501 ("state=idle" / "state=working"); Claude Code does not. */
+/** Codex reports its state to the terminal as OSC 7501 ("state=idle" / "state=working", and "state=done" when a turn
+ *  ends, as of 0.164); Claude Code does not. */
 export function oscState(chunk: string): 'idle' | 'busy' | null {
   const m = /\x1b\]7501;state=(\w+)/g;
   let last: 'idle' | 'busy' | null = null;
-  for (const x of chunk.matchAll(m)) last = x[1] === 'idle' ? 'idle' : 'busy';
+  for (const x of chunk.matchAll(m)) last = x[1] === 'idle' || x[1] === 'done' ? 'idle' : 'busy';
   return last;
 }
 

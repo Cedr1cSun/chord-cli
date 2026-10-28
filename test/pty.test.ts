@@ -161,6 +161,7 @@ test('oscState reads the last Codex state report in a chunk', () => {
   assert.equal(oscState('text\x1b]7501;state=working:app=codex\x1b\\more'), 'busy');
   assert.equal(oscState('\x1b]7501;state=working:app=codex\x1b\\..\x1b]7501;state=idle:app=codex\x1b\\'), 'idle');
   assert.equal(oscState('no report here'), null);
+  assert.equal(oscState('\x1b]7501;state=working:app=codex\x07\x1b]7501;state=done:app=codex\x07'), 'idle'); // a finished turn, as Codex 0.164 reports it
 });
 
 test('whereIs scans PATH without where.exe', { skip: process.platform !== 'win32' }, () => {

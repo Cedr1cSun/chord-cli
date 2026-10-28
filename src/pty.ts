@@ -131,7 +131,7 @@ export function stripAnsi(s: string): string {
 }
 
 /** What `chord stop` types to quit the tool, once the agent is idle and the input box is empty. */
-export const EXIT_COMMAND: Record<Tool, string> = { claude: '/exit', codex: '/quit' };
+export const EXIT_COMMAND: Record<Tool, string> = { claude: '/exit', codex: '/quit', opencode: '/exit' };
 
 /** Did the TUI echo the typed text into its input box? A dialog, picker or any other mode that swallows keystrokes
  *  does not echo them, so this is the test before Enter is pressed: Enter in a dialog picks the default answer. Only

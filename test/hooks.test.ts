@@ -273,3 +273,25 @@ test('the deny reason finds the own copy when another agent is named like the re
   const other = handleHook(ctx, 'codex', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { command: '*** Begin Patch\n*** Update File: chord/agents/repo/repo/src/y.ts\n*** End Patch' } }) as any;
   assert.match(other.hookSpecificOutput.permissionDecisionReason, /edit your own copy chord\/agents\/a\/repo\/src\/y\.ts instead/);
 });
+
+test('OpenCode: edit, write and apply_patch name their files; relative paths and workdir resolve against the project folder', () => {
+  assert.deepEqual(filesTouched('opencode', { tool_name: 'edit', tool_input: { filePath: '/P/chord/agents/a/repo/x.ts', oldString: 'a', newString: 'b' } }), ['/P/chord/agents/a/repo/x.ts']);
+  assert.deepEqual(filesTouched('opencode', { tool_name: 'write', tool_input: { filePath: '/P/chord/agents/a/repo/y.ts', content: '' } }), ['/P/chord/agents/a/repo/y.ts']);
+  assert.deepEqual(filesTouched('opencode', { tool_name: 'apply_patch', tool_input: { patchText: '*** Begin Patch\n*** Update File: src/z.ts\n*** End Patch' } }), ['src/z.ts']);
+  assert.deepEqual(filesTouched('opencode', { tool_name: 'bash', tool_input: { command: 'ls' } }), []);
+  const d = db.openDb(':memory:');
+  const P = process.platform === 'win32' ? 'D:\\P' : '/P';
+  const cwd = path.join(P, 'chord', 'agents', 'a');
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
+  db.addAgent(d, { name: 'a', tool: 'opencode', pid: process.pid, cwd });
+  const write = (filePath: string) => handleHook(ctx, 'opencode', 'pre-tool-use', { tool_name: 'write', tool_input: { filePath, content: '' } }) as any;
+  assert.match(write(path.join(cwd, 'repo', 'src', 'x.ts')).hookSpecificOutput.permissionDecisionReason, /not claimed/);
+  const own = path.join(cwd, 'repo', 'src', 'x.ts').replace(/[\\/]/g, '[\\\\/]');
+  assert.match(write(path.join(P, 'repo', 'src', 'x.ts')).hookSpecificOutput.permissionDecisionReason, new RegExp(`outside your workspace.*edit your own copy ${own}`)); // the main checkout; OpenCode's edit wants absolute paths too
+  assert.equal((handleHook(ctx, 'opencode', 'pre-tool-use', { tool_name: 'edit', tool_input: {} }) as any).hookSpecificOutput.permissionDecision, 'deny'); // names no file
+  const patch = (f: string, workdir?: string) => handleHook(ctx, 'opencode', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { patchText: `*** Begin Patch\n*** Update File: ${f}\n*** End Patch`, ...(workdir ? { workdir } : {}) } }) as any;
+  assert.match(patch('repo/src/x.ts').hookSpecificOutput.permissionDecisionReason, /main checkout/); // relative to the project folder, like Codex
+  db.addClaim(d, { agent: 'a', file: 'repo/src/x.ts', intent: 'x', kind: 'add' });
+  assert.equal(write(path.join(cwd, 'repo', 'src', 'x.ts')), undefined);
+  assert.equal(patch('src/x.ts', 'chord/agents/a/repo'), undefined);
+});

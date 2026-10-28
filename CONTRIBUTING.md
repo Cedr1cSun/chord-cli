@@ -28,6 +28,6 @@ Commit messages look like `fix(hooks): refuse a write on an unclaimed file`: a t
 
 ## Pull requests
 
-Keep a pull request to one topic. Add or adjust a test when behaviour changes, and update the README if the user would notice. `npm test` and `npm run typecheck` run in CI on every push.
+Keep a pull request to one topic. Add or adjust a test when behaviour changes, and update the README if the user would notice. `npm test` and `npm run typecheck` run in CI on every pull request.
 
 The end-to-end scenarios with real agents live outside this repository. If you tried the change with a real agent, say so in the pull request.

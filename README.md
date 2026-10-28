@@ -67,7 +67,7 @@ A new agent needs three things from its tool: a way to inject hooks and an MCP s
 
 1. **Isolation.** Every agent works on its own branch in its own worktree. The main checkout changes through `finish` alone.
 2. **Coordination.** A shared board holds claims, messages and events. Agents register, claim and talk through tools chord gives them; hooks check claims before each write and hand new messages to the agent as it works.
-3. **Merging.** `finish` rebases the branch onto main and fast-forwards. A clean rebase merges; anything else stops where it is and waits for you.
+3. **Merging.** `finish` rebases the branch onto main and fast-forwards. A clean rebase that passes the project's test command merges; on a conflict nothing moves, and the agent resolves it and finishes again.
 
 ## 📦 Install
 
@@ -129,6 +129,7 @@ Agents start in the project folder, the same directory you run plain `claude` or
 | `chord events [agent] [-n N]` | claim, release, merge and conflict history |
 | `chord stop <agent>` | quit an agent once its turn ends and its input box is empty |
 | `chord clean [--force] [agent...]` | remove offline agents' workspaces, worktrees and branches; work not yet on main stays unless `--force` |
+| `chord --version` | the installed version |
 
 ## ⚙️ Configuration
 
@@ -142,14 +143,14 @@ Agents start in the project folder, the same directory you run plain `claude` or
 
 `test`, when set, runs in the agent's worktree each time `finish` has rebased the branch onto main, before main moves. If it fails nothing is merged and the agent gets the end of the output: a clean rebase can still break what another agent merged. Other agents' `finish` waits while it runs.
 
-A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) reaches an agent once you have trusted that repository in Claude Code yourself; the MCP servers you approved there are the ones that start.
+A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) reaches an agent once you have trusted that repository, or the project folder, in Claude Code yourself; the MCP servers you approved there are the ones that start.
 
 ## 🔌 How chord works with your tools
 
 - **Waking an agent** means typing a short note into its terminal. chord does this only when the input box is empty, the keyboard has been quiet for a few seconds, and the terminal has echoed the note; a dialogue never receives the Enter.
 - **Trust**: agents run in the project folder, so Claude asks about it once, as it does for plain `claude`; chord writes nothing to `~/.claude.json`. Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off.
 - **Branches and worktrees.** Each agent adds a `chord/<name>` branch and a worktree; `chord clean` removes them when the agent has left and keeps anything not yet on main.
-- **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex runs with full access. On Windows chord refuses a sandboxed launch, because that sandbox cannot run the hooks; on Linux and macOS the hooks still run in a sandboxed launch, but Codex then asks you to approve each chord tool call.
+- **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex keeps the sandbox and approval mode from your own configuration. On Windows chord refuses a sandbox given on the command line, because that sandbox cannot run the hooks; on Linux and macOS the hooks run inside the sandbox, but Codex then asks you to approve each chord tool call.
 - **The terminal title** reads `chord <agent> · <task>`, so each window says which agent it is.
 - **Hooks gate the editor tools.** Files changed from the shell are reported by name after each command, with the claim to make.
 

@@ -218,11 +218,19 @@ export function pidAlive(pid: number): boolean {
   }
 }
 
+/** The log is moved aside to .log.1 once it passes this size, so twenty agents logging every hook for days do not
+ *  fill the disk; one old copy stays for looking into what just happened. */
+export const LOG_MAX_BYTES = 16 * 1024 * 1024;
+
 /** Append a line to chord.db.log next to the database, when CHORD_DB is known. Silent otherwise. */
 export function log(line: string): void {
   if (!process.env.CHORD_DB) return;
-  try { fs.appendFileSync(process.env.CHORD_DB + '.log', `${new Date().toISOString()} [${process.env.CHORD_AGENT_ID ?? '-'}/${process.pid}] ${line}
-`); } catch { /* best effort */ }
+  const file = process.env.CHORD_DB + '.log';
+  try {
+    try { if (fs.statSync(file).size > LOG_MAX_BYTES) fs.renameSync(file, file + '.1'); } catch { /* no log yet, or another process just rotated it */ }
+    fs.appendFileSync(file, `${new Date().toISOString()} [${process.env.CHORD_AGENT_ID ?? '-'}/${process.pid}] ${line}
+`);
+  } catch { /* best effort */ }
 }
 
 /** The wrapper refreshes this every second; an agent whose heartbeat is this old is dead even if its pid is taken again. */

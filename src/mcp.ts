@@ -1,4 +1,5 @@
 // Minimal MCP server over stdio: newline-delimited JSON-RPC 2.0, tools only.
+import fs from 'node:fs';
 import { createInterface } from 'node:readline';
 
 export interface Tool {
@@ -11,6 +12,7 @@ export interface Tool {
 interface Request { jsonrpc: '2.0'; id?: number | string; method: string; params?: Record<string, unknown> }
 
 const PROTOCOL = '2025-06-18';
+const VERSION: string = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version; // src/ and dist/ both sit under the package root
 
 /** Handle one JSON-RPC message. Returns the response, or undefined for notifications. */
 export function handle(tools: Tool[], req: Request): object | undefined {
@@ -21,7 +23,7 @@ export function handle(tools: Tool[], req: Request): object | undefined {
 
   switch (method) {
     case 'initialize':
-      return ok({ protocolVersion: PROTOCOL, capabilities: { tools: {} }, serverInfo: { name: 'chord', version: '0.0.0' } });
+      return ok({ protocolVersion: PROTOCOL, capabilities: { tools: {} }, serverInfo: { name: 'chord', version: VERSION } });
     case 'ping':
       return ok({});
     case 'tools/list':

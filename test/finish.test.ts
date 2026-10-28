@@ -1,17 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
 import { ensureWorktree } from '../src/launch.ts';
 import { finish, type Ctx } from '../src/tools.ts';
+import { git } from './helpers/git.ts';
 
 // autocrlf off for every git call in this process, chord's own included: the fixtures must reach the index and the
 // worktrees byte for byte, whatever the machine's global git config says (GitHub's Windows runners set it to true)
 for (const [k, v] of Object.entries({ GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.autocrlf', GIT_CONFIG_VALUE_0: 'false' })) process.env[k] ??= v;
-const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
 
 /** Project layout: <proj>/repo is the main checkout, <proj>/chord/agents/w/repo the agent's worktree. */
 function setup() {

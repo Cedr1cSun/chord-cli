@@ -7,12 +7,8 @@ import path from 'node:path';
 import * as db from '../src/db.ts';
 import { NODE, ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeProjectSettings, mergeUserSettings, withNodeOnPath } from '../src/launch.ts';
 import { NeedsRestructure, resolveProject, restructure, encodeProjectPath, knownProjects } from '../src/project.ts';
+import { git, initRepo, tempProject, tmp } from './helpers/git.ts';
 
-const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, stdio: 'ignore' });
-const tmp = (p: string) => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), p)));
-function initRepo(dir: string) { fs.mkdirSync(dir, { recursive: true }); git(dir, 'init', '-q', '-b', 'main'); git(dir, 'commit', '-q', '--allow-empty', '-m', 'init'); }
-/** A project folder with one child repository. */
-function tempProject() { const proj = tmp('chord-proj-'); initRepo(path.join(proj, 'repo')); return proj; }
 process.env.CHORD_HOME = tmp('chord-home-'); // keep test state out of ~/.chord
 
 test('resolveProject: one child repo is the project', () => {

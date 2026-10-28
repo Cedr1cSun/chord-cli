@@ -24,7 +24,10 @@ export function resolveCommand(tool: string, readFile = (f: string) => fs.readFi
   const hit = lookup(tool);
   if (!hit) throw new Error(`${tool} not found on PATH`);
   if (!/\.cmd$/i.test(hit)) return { file: hit, args: [] };
-  const m = /"%~?dp0%?\\([^"]+\.(?:js|mjs|cjs))"/.exec(readFile(hit)); // npm writes %dp0%\, pnpm and yarn %~dp0\
+  const text = readFile(hit);
+  const exe = /"%~?dp0%?\\([^"]+\.exe)"/i.exec(text); // a shim around a native binary (opencode-ai): run the binary itself
+  if (exe) return { file: path.join(path.dirname(hit), exe[1]), args: [] };
+  const m = /"%~?dp0%?\\([^"]+\.(?:js|mjs|cjs))"/.exec(text); // npm writes %dp0%\, pnpm and yarn %~dp0\
   if (!m) throw new Error(`cannot read the script path from ${hit}`);
   return { file: process.execPath, args: [path.join(path.dirname(hit), m[1])] };
 }

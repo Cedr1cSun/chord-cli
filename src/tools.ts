@@ -3,7 +3,6 @@ import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as db from './db.ts';
-import { readConfig } from './launch.ts';
 import type { Tool } from './mcp.ts';
 
 /** cwd is the agent's workspace W (claims are relative to it); worktree is the repository checkout inside it; project,
@@ -178,6 +177,26 @@ export function withLock<T>(file: string, fn: () => T, waitMs = 240_000, staleMs
   }
   // only our own lock is removed: one taken over meanwhile belongs to whoever holds it now
   try { return fn(); } finally { try { if (fs.readFileSync(file, 'utf8') === String(process.pid)) fs.unlinkSync(file); } catch { /* already gone */ } }
+}
+
+/** <project>/chord/config.json. `setup` is a shell command run in every new worktree before the agent starts,
+ *  for example "npm install". `test` is a shell command finish runs in the worktree after rebasing onto main and
+ *  before fast-forwarding it, for example "npm test"; when it fails nothing is merged. Lives here, not in launch.ts,
+ *  so the hooks (which load this module for finish's sake) do not load the launch code on every tool call. */
+export function readConfig(project: { dir: string }): { setup?: string; test?: string } {
+  const file = path.join(project.dir, 'chord', 'config.json');
+  let raw: string;
+  try { raw = fs.readFileSync(file, 'utf8'); } catch { return {}; }
+  let cfg: unknown;
+  try { cfg = JSON.parse(raw); } catch (e) { throw new Error(`${file} is not valid JSON: ${(e as Error).message}`); }
+  if (typeof cfg !== 'object' || cfg === null) throw new Error(`${file} must hold a JSON object`);
+  const out: { setup?: string; test?: string } = {};
+  for (const key of ['setup', 'test'] as const) {
+    const v = (cfg as Record<string, unknown>)[key];
+    if (v !== undefined && typeof v !== 'string') throw new Error(`${file}: "${key}" must be a string (a shell command)`);
+    if (v) out[key] = v;
+  }
+  return out;
 }
 
 /** Rebase the agent's branch onto main and fast-forward main to it. Atomic from the agent's point of view.

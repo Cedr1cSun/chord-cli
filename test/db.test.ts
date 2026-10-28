@@ -222,6 +222,20 @@ console.log('ok');`);
   }
 });
 
+test('the log rotates once it grows past its limit, keeping one old copy', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-log-')), 'chord.db');
+  const saved = process.env.CHORD_DB;
+  process.env.CHORD_DB = file;
+  try {
+    fs.writeFileSync(`${file}.log`, Buffer.alloc(db.LOG_MAX_BYTES + 1, 0x78));
+    db.log('after the limit');
+    assert.ok(fs.statSync(`${file}.log.1`).size > db.LOG_MAX_BYTES); // the full file moved aside
+    assert.match(fs.readFileSync(`${file}.log`, 'utf8'), /^[^\n]*after the limit\n$/); // the new file starts with this line
+    db.log('and another'); // well under the limit: appended
+    assert.equal(fs.readFileSync(`${file}.log`, 'utf8').split('\n').length, 3);
+  } finally { process.env.CHORD_DB = saved; }
+});
+
 test('removeAgent keeps what the agent said and nobody has read yet', () => {
   const d = open();
   db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });

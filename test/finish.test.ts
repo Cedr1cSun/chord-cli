@@ -227,16 +227,16 @@ test('finish refuses a submodule commit that only exists inside the worktree', (
   const { root, wt, ctx } = setup();
   const subsrc = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-subsrc-')));
   git(subsrc, 'init', '-q', '-b', 'main'); fs.writeFileSync(path.join(subsrc, 's.txt'), '1\n'); git(subsrc, 'add', '.'); git(subsrc, 'commit', '-q', '-m', 'sub init');
-  git(root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', subsrc, 'sub'); git(root, 'commit', '-q', '-m', 'add submodule');
+  git(root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', subsrc, '子模块'); git(root, 'commit', '-q', '-m', 'add submodule'); // a non-ASCII name: git quotes it in --raw output unless told not to
   git(wt, 'rebase', '-q', 'main');
   git(wt, '-c', 'protocol.file.allow=always', 'submodule', 'update', '-q', '--init');
-  const sub = path.join(wt, 'sub');
+  const sub = path.join(wt, '子模块');
   fs.writeFileSync(path.join(sub, 's.txt'), '2\n'); git(sub, 'commit', '-q', '-am', 'sub change');
-  git(wt, 'add', 'sub'); git(wt, 'commit', '-q', '-m', 'bump submodule');
+  git(wt, 'add', '子模块'); git(wt, 'commit', '-q', '-m', 'bump submodule');
   assert.throws(() => finish(ctx), /submodule .* does not have; push that commit/);
   assert.equal(git(root, 'log', '--format=%s', '-1'), 'add submodule');
   // once the commit is where the main checkout's submodule can see it, finish goes ahead
-  git(path.join(root, 'sub'), 'fetch', '-q', sub, 'HEAD');
+  git(path.join(root, '子模块'), 'fetch', '-q', sub, 'HEAD');
   assert.deepEqual(finish(ctx).merged, ['bump submodule']);
 });
 

@@ -269,7 +269,7 @@ function finishLocked(ctx: Ctx) {
   const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
   // A submodule commit the branch points at must exist in the main checkout's copy of the submodule, or the
   // fast-forward leaves main pointing at a commit that is nowhere but inside this agent's worktree.
-  for (const line of git(root, 'diff', '--raw', main, branch).split('\n')) {
+  for (const line of git(root, '-c', 'core.quotePath=false', 'diff', '--raw', main, branch).split('\n')) { // a non-ASCII path arrives as itself, not quoted and escaped
     const m = /^:\d{6} 160000 [0-9a-f]+ ([0-9a-f]+) [AM]\t(.+)$/.exec(line);
     if (!m) continue;
     const [, sha, sub] = m;

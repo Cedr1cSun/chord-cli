@@ -24,7 +24,7 @@ test('five agents finishing at the same moment all land on main', async () => {
   const agents = names.map(n => {
     const ws = path.join(proj, 'chord', 'agents', n);
     const wt = ensureWorktree(repo, path.join(ws, 'repo'), n);
-    db.addAgent(d, { name: n, tool: 'claude', pid: process.pid, cwd: ws, worktree: wt });
+    db.addAgent(d, { name: n, tool: 'claude', pid: process.pid, cwd: ws });
     db.addClaim(d, { agent: n, file: `repo/${n}.txt`, intent: 'x', kind: 'add' });
     fs.writeFileSync(path.join(wt, `${n}.txt`), n + '\n'); git(wt, 'add', `${n}.txt`); git(wt, 'commit', '-q', '-m', `feat: ${n}`);
     return { ws, wt };

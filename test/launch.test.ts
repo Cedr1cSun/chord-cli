@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as db from '../src/db.ts';
 import { NODE, ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeProjectSettings, mergeUserSettings, withNodeOnPath } from '../src/launch.ts';
 import { NeedsRestructure, resolveProject, restructure, encodeProjectPath, knownProjects } from '../src/project.ts';
@@ -299,4 +300,22 @@ test('the setup command from <project>/chord/config.json runs once per new workt
   assert.throws(() => prepare('codex', proj, 'three'), /"setup" must be a string/);
   cfg({});
   assert.ok(prepare('codex', proj, 'three').worktree); // no setup configured: nothing runs
+});
+
+test('opencode gets chord through the environment: inline config with the MCP server and the plugin', () => {
+  const proj = tempProject();
+  const l = prepare('opencode', proj, 'oc');
+  assert.deepEqual(l.args, []); // nothing on the command line: the user's own arguments go through untouched
+  const cfg = JSON.parse(l.env.OPENCODE_CONFIG_CONTENT);
+  assert.equal(cfg.mcp.chord.type, 'local');
+  assert.equal(cfg.mcp.chord.command[0], NODE);
+  assert.match(cfg.mcp.chord.command[1], /serve\.(ts|js)$/);
+  assert.equal(cfg.mcp.chord.environment.CHORD_AGENT_ID, 'oc');
+  assert.equal(cfg.mcp.chord.environment.CHORD_WORKTREE, l.env.CHORD_WORKTREE);
+  assert.ok(cfg.mcp.chord.timeout >= 600_000); // finish may wait minutes for the merge lock
+  assert.match(cfg.plugin[0], /^file:\/\/\/.*\/opencode\/plugins\/chord\.(ts|js)$/); // OpenCode imports the plugin from there
+  assert.equal(fs.existsSync(fileURLToPath(cfg.plugin[0])), true);
+  assert.equal(l.env.OPENCODE_CONFIG_DIR, undefined); // the user's own stays in force
+  assert.match(l.env.CHORD_HOOKS, /hooks\.(ts|js)$/); // the plugin spawns this for every event
+  assert.equal(l.env.CHORD_TOOL, 'opencode');
 });

@@ -9,6 +9,10 @@ import { handleHook } from '../src/hooks.ts';
 import { ensureWorktree } from '../src/launch.ts';
 import type { Ctx } from '../src/tools.ts';
 
+// autocrlf off for every git call in this process, chord's own included: the CRLF fixture below must reach the index
+// byte for byte, whatever the machine's global git config says
+for (const [k, v] of Object.entries({ GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.autocrlf', GIT_CONFIG_VALUE_0: 'false' })) process.env[k] ??= v;
+
 function repo() {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-post-')));
   const git = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: root, stdio: 'ignore' });
@@ -99,6 +103,12 @@ test('post-tool-use also warns about commits to unclaimed files, git stash, and 
   // stash is shared between worktrees
   assert.match(run('git stash && npm test && git stash pop'), /git stash is shared by every worktree/);
   assert.equal(run('echo stash'), '');
+  // a line-ending-only difference in the main checkout (a CRLF file under a "* text" rule never renormalised) does not
+  // block finish, so it is not reported either: the warning uses finish's own rule
+  fs.writeFileSync(path.join(root, 'crlf.txt'), 'one\r\ntwo\r\n'); git(root, 'add', 'crlf.txt'); git(root, 'commit', '-q', '-m', 'crlf');
+  fs.writeFileSync(path.join(root, '.gitattributes'), '* text\n'); git(root, 'add', '.gitattributes'); git(root, 'commit', '-q', '-m', 'attributes');
+  assert.notEqual(git(root, 'status', '--porcelain', '--untracked-files=no'), ''); // the phantom change
+  assert.equal(run('ls'), '');
   // the main checkout dirtied by the shell blocks everyone's finish
   fs.appendFileSync(path.join(root, 'a.txt'), 'oops');
   assert.match(run('ls'), /main checkout \(.*\) has uncommitted changes.*a.txt/);

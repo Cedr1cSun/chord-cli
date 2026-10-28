@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as db from './db.ts';
 import { patchFiles } from './patch.ts';
-import { canWrite, insideDir, normFile, type Ctx } from './tools.ts';
+import { canWrite, dirtyTracked, insideDir, normFile, type Ctx } from './tools.ts';
 
 export type Event = 'session-start' | 'user-prompt-submit' | 'pre-tool-use' | 'post-tool-use' | 'stop' | 'session-end' | 'notification';
 export type Tool = 'claude' | 'codex';
@@ -276,8 +276,9 @@ export function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] 
     if (inMain || namesMain) out.push(`[chord] That command ran in the main checkout (${repoName}/) or named a path there; your copy is ${repoDirOf(ctx)}. Build, test and run git only there.`);
   }
   if (/\bgit\b[^|;&\n]*\bstash\b/.test(cmd)) out.push("[chord] git stash is shared by every worktree of this repository: a stash pop can hand you another agent's changes, and yours to them. Make a work-in-progress commit instead.");
-  if (root && path.resolve(root) !== path.resolve(ctx.worktree)) {
-    const dirty = gitOut(root, 'status', '--porcelain', '--untracked-files=no').split('\n').filter(Boolean).map(l => l.slice(3));
+  if (path.resolve(root) !== path.resolve(ctx.worktree)) {
+    // the same rule finish applies, so what finish will not mind (line endings, submodule insides) is not reported
+    const dirty = (() => { try { return dirtyTracked(root).split('\n').filter(Boolean); } catch { return []; } })();
     if (dirty.length) out.push(`[chord] The main checkout (${root}) has uncommitted changes, which blocks everyone's finish(): ${dirty.slice(0, 10).join(', ')}. If your command did this, undo it there; the main branch is only ever changed through finish().`);
   }
   return out;

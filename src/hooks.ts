@@ -302,17 +302,18 @@ async function main(): Promise<void> {
   const agent = process.env.CHORD_AGENT_ID;
   const file = process.env.CHORD_DB;
   const tool = process.env.CHORD_TOOL as Tool;
-  if (!agent || !file || !tool) { process.stderr.write('chord hook: CHORD_AGENT_ID, CHORD_DB and CHORD_TOOL must be set\n'); process.exit(0); }
+  // the workspace is fixed per agent and comes from the launch; the tool's own cwd is the project folder, which would
+  // make every claim path wrong, so it is never used as a stand-in
+  const { CHORD_WORKSPACE: cwd, CHORD_WORKTREE: worktree } = process.env;
+  if (!agent || !file || !tool || !cwd || !worktree) { process.stderr.write('chord hook: CHORD_AGENT_ID, CHORD_DB, CHORD_TOOL, CHORD_WORKSPACE and CHORD_WORKTREE must be set\n'); process.exit(0); }
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
   const raw = Buffer.concat(chunks).toString('utf8'); // decode once: a multi-byte character may straddle chunks
   let payload: Record<string, any> = {};
   try { payload = JSON.parse(raw); } catch { /* no payload */ }
-  // the workspace is fixed per agent; the tool's own cwd moves when the agent runs `cd`, so it is not used as the base
-  const cwd = process.env.CHORD_WORKSPACE ?? (typeof payload.cwd === 'string' ? payload.cwd : process.cwd());
   let ctx: Ctx;
   try {
-    ctx = { db: db.openDb(file), agent, cwd, worktree: process.env.CHORD_WORKTREE ?? cwd, project: process.env.CHORD_PROJECT };
+    ctx = { db: db.openDb(file), agent, cwd, worktree, project: process.env.CHORD_PROJECT };
   } catch (e) {
     // the database would not open: a write must still not go through unchecked
     const msg = (e as Error).message;

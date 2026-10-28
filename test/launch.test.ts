@@ -48,6 +48,8 @@ test('encodeProjectPath is readable and collision-free', () => {
   assert.match(encodeProjectPath('D:\\chord-agents\\x'), /^D--chord-agents-x-[0-9a-f]{6}$/);
   assert.match(encodeProjectPath('/home/u/p'), /^-home-u-p-[0-9a-f]{6}$/);
   assert.notEqual(encodeProjectPath('D:\\a-b'), encodeProjectPath('D:\\a\\b')); // same dashes, different folders
+  // Windows and macOS file systems ignore case, so two spellings of one folder must share one state directory
+  assert.equal(encodeProjectPath('/Users/me/Proj').slice(-6) === encodeProjectPath('/users/me/proj').slice(-6), process.platform !== 'linux');
 });
 
 test('ensureWorktree creates the branch and is idempotent', () => {

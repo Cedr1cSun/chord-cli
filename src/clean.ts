@@ -36,9 +36,11 @@ export function clean(project: Project, d: DatabaseSync, names: string[] = [], f
       }
       // work that was never committed (an agent stopped half-way) is just as much work as an unmerged commit
       if (!force && fs.existsSync(path.join(wt, '.git'))) {
+        const rel = path.relative(project.dir, wt).split(path.sep).join('/');
         let dirty = '';
-        try { dirty = git(wt, 'status', '--porcelain'); } catch { /* a broken worktree holds nothing to keep */ }
-        if (dirty) { kept(a.name, `uncommitted changes in ${path.relative(project.dir, wt).split(path.sep).join('/')}`); return; }
+        // a worktree git cannot read (its link broken by a move) may still hold work: not knowing is not clean
+        try { dirty = git(wt, 'status', '--porcelain'); } catch { kept(a.name, `uncommitted changes unknown: git status failed in ${rel}`); return; }
+        if (dirty) { kept(a.name, `uncommitted changes in ${rel}`); return; }
       }
       // The directory goes first. On Windows a directory some process is using (a shell left open in it) cannot be
       // removed; then the branch and the database row stay too, so the next clean sees the agent whole.

@@ -97,6 +97,16 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   assert.deepEqual(r.removed, ['stray']);
   assert.ok(fs.existsSync(repo) && fs.existsSync(online.wt) && !fs.existsSync(stray.ws)); // only stray's own folder went
 
+  // a worktree whose git link is broken may still hold uncommitted work: not knowing is not the same as clean
+  const broken = mk('broken'); db.setStatus(d, 'broken', 'offline');
+  fs.writeFileSync(path.join(broken.wt, 'wip.txt'), 'half done');
+  fs.rmSync(path.join(broken.wt, '.git')); fs.writeFileSync(path.join(broken.wt, '.git'), 'gitdir: /nowhere/.git/worktrees/broken\n'); // git made it read-only
+  r = clean(project, d, ['broken']);
+  assert.deepEqual(r.removed, []);
+  assert.match(r.kept[0].why, /^uncommitted changes unknown: git status failed in chord\/agents\/broken\/repo/);
+  assert.ok(fs.existsSync(path.join(broken.wt, 'wip.txt')));
+  assert.deepEqual(clean(project, d, ['broken'], true).removed, ['broken']);
+
   r = clean(project, d, ['unmerged'], true);
   assert.deepEqual(r.removed, ['unmerged']);
   assert.equal(git(repo, 'branch', '--list', 'chord/unmerged'), '');

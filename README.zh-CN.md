@@ -5,7 +5,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
   <img alt="Node 24 or later" src="https://img.shields.io/badge/node-%E2%89%A5%2024-339933?logo=nodedotjs&logoColor=white">
-  <img alt="Windows and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue">
+  <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue">
   <a href="README.md"><img alt="English README" src="https://img.shields.io/badge/README-English-2F7CF6"></a>
 </p>
 
@@ -77,7 +77,7 @@
 npm install -g chord-cli
 ```
 
-Linux 上加 `--allow-scripts=node-pty`，并装好 python3、make 和 g++：node-pty 不带 Linux 的二进制，安装时现场编译。
+Linux 上加 `--allow-scripts=node-pty`，并装好 python3、make 和 g++：node-pty 不带 Linux 的二进制，安装时现场编译。macOS 不需要额外步骤：node-pty 自带 macOS 的二进制。
 
 或者从源码：
 
@@ -149,13 +149,13 @@ agent 在项目文件夹里启动，也就是你平时直接敲 `claude` 或 `co
 - **叫醒 agent** 就是往它的终端里敲一句短话。chord 只在输入框为空、键盘安静了几秒、终端回显了这句话之后才这么做；对话框永远收不到那个回车。
 - **信任**：agent 在项目文件夹里跑，所以 Claude 像平时敲 `claude` 一样只问一次；chord 不往 `~/.claude.json` 里写任何东西。Codex 会让你审核一次 chord 的 hook，hook 定义变了会再问一次；选 "trust all"。有 hook 被关掉时 chord 会在启动时告诉你。
 - **分支和 worktree。** 每个 agent 添一个 `chord/<名字>` 分支和一个 worktree；`chord clean` 在 agent 离开后删掉它们，还没到 main 上的东西留着。
-- **权限。** chord 自己的工具对 Claude 预先放行，所以独自干活的 agent 不会卡在它们的确认框上；你平时的 shell 和编辑审批照旧。Codex 以完全访问运行。Windows 上 chord 拒绝带沙箱启动，因为那个沙箱起不来 hook；Linux 上 hook 在沙箱里运行，但 Codex 会让你逐个批准 chord 的工具调用。
+- **权限。** chord 自己的工具对 Claude 预先放行，所以独自干活的 agent 不会卡在它们的确认框上；你平时的 shell 和编辑审批照旧。Codex 以完全访问运行。Windows 上 chord 拒绝带沙箱启动，因为那个沙箱起不来 hook；Linux 和 macOS 上带沙箱启动时 hook 照常运行，但 Codex 会让你逐个批准 chord 的工具调用。
 - **终端标题**是 `chord <agent> · <任务>`，每个窗口都说得出自己是谁。
 - **hook 把关的是编辑器工具。** 从 shell 改的文件在每条命令之后按名字报出来，并附上该做的占用。
 
 ## 🗺️ 范围
 
-- 在 Windows 11 和 Linux 上运行。
+- 在 Windows 11、macOS 和 Linux 上运行。
 - 每个项目一个仓库。
 - 项目路径最长约 190 个字符。
 - 仓库里有 CRLF 文件和一条从未重新规范化过的 `* text` 属性时，每个 worktree 都会出现假改动；chord 会报出文件名和把仓库修好的命令。

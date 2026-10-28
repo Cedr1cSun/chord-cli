@@ -140,7 +140,7 @@ export function typedEchoed(output: string, text: string): boolean {
 
 /** The Esc key as the tool reads it: in win32-input-mode (ConPTY turns a bare ESC byte into nothing, waiting for a
  *  sequence) a key-down and key-up record; elsewhere the CSI u form the tools ask for (`ESC [ > 5 u`), which a legacy
- *  reader ignores harmlessly. Linux form not yet verified against the real tools. */
+ *  reader ignores harmlessly. Verified against Claude Code on macOS; on Linux not yet. */
 export const ESC_INPUT = process.platform === 'win32' ? '\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_' : '\x1b[27u';
 
 /** Did the tool answer the exit command with its "background work is running, exit and stop it or stay?" dialogue?

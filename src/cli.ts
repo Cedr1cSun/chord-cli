@@ -9,7 +9,7 @@ import { clean, type CleanResult } from './clean.ts';
 import * as db from './db.ts';
 import { mergeUserSettings, prepare } from './launch.ts';
 import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
-import { resolveCommand, run } from './pty.ts';
+import { ensureSpawnHelper, resolveCommand, run } from './pty.ts';
 import { codexFirstStart, disabledCodexHooks } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
@@ -296,6 +296,7 @@ async function main(argv: string[]): Promise<number> {
   const userSettings = cmd === 'claude' ? takeSettings(rest) : undefined;
   refuseHookKillers(cmd as Tool, rest);
   resolveCommand(cmd); // fail before creating a workspace when the tool is not installed
+  if (process.platform === 'darwin') ensureSpawnHelper(); // or when node-pty could not start it
   let launch;
   try {
     launch = prepare(cmd as Tool, process.cwd(), name);

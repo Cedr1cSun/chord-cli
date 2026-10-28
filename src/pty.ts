@@ -1,6 +1,7 @@
 // Run the agent under a pseudo-terminal: pass the user's keyboard through, and when the
 // agent is idle with unread messages, type a nudge in as if the user had.
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import pty from 'node-pty';
@@ -26,6 +27,18 @@ export function resolveCommand(tool: string, readFile = (f: string) => fs.readFi
   const m = /"%~?dp0%?\\([^"]+\.(?:js|mjs|cjs))"/.exec(readFile(hit)); // npm writes %dp0%\, pnpm and yarn %~dp0\
   if (!m) throw new Error(`cannot read the script path from ${hit}`);
   return { file: process.execPath, args: [path.join(path.dirname(hit), m[1])] };
+}
+
+/** On macOS node-pty starts the tool through its `spawn-helper` binary, which the prebuilt package ships without the
+ *  execute bit (and npm no longer runs install scripts that might set it), so every launch would fail with
+ *  "posix_spawnp failed". The bit is set here, or the error says how when the install directory is not writable. */
+export function ensureSpawnHelper(root = path.dirname(createRequire(import.meta.url).resolve('node-pty/package.json'))): void {
+  for (const dir of ['build/Release', 'build/Debug', `prebuilds/${process.platform}-${process.arch}`]) { // where node-pty looks
+    const helper = path.join(root, dir, 'spawn-helper');
+    if (!fs.existsSync(helper)) continue;
+    try { fs.accessSync(helper, fs.constants.X_OK); continue; } catch { /* not executable */ }
+    try { fs.chmodSync(helper, 0o755); } catch (e) { throw new Error(`${helper} is not executable, so no agent can start (${(e as Error).message}); run: chmod +x "${helper}"`); }
+  }
 }
 
 const ESC_KEY = '';   // a decoded Esc key, kept apart from escape sequences while they are stripped

@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EXIT_COMMAND, InputGate, NUDGE, TitleFilter, decodeKeys, exitDeclined, nextAction, oscState, resolveCommand, stripAnsi, titleFor, titleSequence, typedEchoed, whereIs } from '../src/pty.ts';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import pty from 'node-pty';
+import { EXIT_COMMAND, InputGate, NUDGE, TitleFilter, decodeKeys, ensureSpawnHelper, exitDeclined, nextAction, oscState, resolveCommand, stripAnsi, titleFor, titleSequence, typedEchoed, whereIs } from '../src/pty.ts';
 
 const key = (uc: number, down = 1, ctrl = 0) => `\x1b[${uc};0;${uc};${down};${ctrl};1_`;
 
@@ -175,4 +179,26 @@ test('resolveCommand unwraps npm, pnpm and yarn .cmd shims on windows', { skip: 
   assert.deepEqual(resolveCommand('x', () => pnpm, () => 'C:\\p\\x.cmd').args, ['C:\\p\\node_modules\\x\\bin\\x.js']);
   assert.deepEqual(resolveCommand('claude', () => '', () => 'C:\\bin\\claude.exe'), { file: 'C:\\bin\\claude.exe', args: [] });
   assert.throws(() => resolveCommand('nope', () => '', () => undefined), /not found/);
+});
+
+test('ensureSpawnHelper sets the execute bit the prebuilt node-pty helper ships without', { skip: process.platform === 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-pty-'));
+  const helper = path.join(root, 'prebuilds', `${process.platform}-${process.arch}`, 'spawn-helper');
+  fs.mkdirSync(path.dirname(helper), { recursive: true });
+  fs.writeFileSync(helper, '');
+  fs.chmodSync(helper, 0o644); // as it comes out of the npm package
+  ensureSpawnHelper(root);
+  assert.equal(fs.statSync(helper).mode & 0o777, 0o755);
+  ensureSpawnHelper(root); // already executable: nothing to do
+  ensureSpawnHelper(path.join(root, 'nothing-here')); // no helper at all (a Linux build): nothing to do
+});
+
+test('a process starts and exits under node-pty', { skip: process.platform === 'win32' }, async () => {
+  if (process.platform === 'darwin') ensureSpawnHelper();
+  const term = pty.spawn(process.execPath, ['-e', 'process.stdout.write("pty-ok")'], { cwd: os.tmpdir(), env: process.env as Record<string, string> });
+  let out = '';
+  term.onData(x => { out += x; });
+  const code = await new Promise<number>(resolve => term.onExit(e => resolve(e.exitCode)));
+  assert.equal(code, 0);
+  assert.match(out, /pty-ok/);
 });

@@ -175,7 +175,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       // peers at the next tool call, not at turn end.
       db.setStatus(ctx.db, ctx.agent, 'busy');
       const parts: string[] = [];
-      if (isShell(payload.tool_name)) parts.push(...shellWarnings(ctx, payload));
+      if (isShell(payload.tool_name)) parts.push(...shellWarnings(ctx, payload), ...commandWarnings(ctx, payload));
       // a Claude Code subagent's tool calls fire this hook too (with its agent_id); context given to it never reaches
       // the main conversation, so the messages wait for a call of the agent's own
       const ms = payload.agent_id ? [] : db.takeUnread(ctx.db, ctx.agent);
@@ -223,8 +223,8 @@ const gitOut = (cwd: string, ...args: string[]): string => {
   try { return execFileSync('git', ['--no-optional-locks', ...args], { cwd, encoding: 'utf8', env: db.gitEnv(), maxBuffer: 64 * 1024 * 1024 }); } catch { return ''; }
 };
 
-/** What a shell command may have done behind chord's back: edits or commits to unclaimed files, git stash, and
- *  changes to the main checkout. */
+/** What a shell command may have done behind chord's back, according to git: edits or commits to unclaimed files,
+ *  and changes to the main checkout. */
 export function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
   const out: string[] = [];
   const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
@@ -243,9 +243,21 @@ export function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] 
   const unclaimed = touched.map(f => normFile(ctx, path.join(ctx.worktree, f))).filter(f => !claimed(f.toLowerCase()));
   const shown = unclaimed.slice(0, MAX_WARNED_FILES);
   if (unclaimed.length) out.push(`[chord] The shell command changed files you have not claimed: ${shown.join(', ')}${unclaimed.length > shown.length ? ` and ${unclaimed.length - shown.length} more` : ''}. Claim them now with claim(), or revert the change.`);
+  if (path.resolve(root) !== path.resolve(ctx.worktree)) {
+    // the same rule finish applies, so what finish will not mind (line endings, submodule insides) is not reported
+    const dirty = (() => { try { return dirtyTracked(root).split('\n').filter(Boolean); } catch { return []; } })();
+    if (dirty.length) out.push(`[chord] The main checkout (${root}) has uncommitted changes, which blocks everyone's finish(): ${dirty.slice(0, 10).join(', ')}. If your command did this, undo it there; the main branch is only ever changed through finish().`);
+  }
+  return out;
+}
+
+/** What the command's text alone gives away: it ran in or named the main checkout, or used git stash. Heuristics,
+ *  so warnings, not gates; no git involved, unlike shellWarnings. */
+export function commandWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
+  const out: string[] = [];
   const cmd = typeof payload.tool_input?.command === 'string' ? payload.tool_input.command : '';
   // From the project folder, "<repo>/" is the main checkout: a command that ran there (Codex's workdir), cd'd there or
-  // named a path there did not touch the agent's own copy. A heuristic on the command text, so a warning, not a gate.
+  // named a path there did not touch the agent's own copy.
   if (ctx.project) {
     const repoName = path.basename(ctx.worktree);
     const workdir = typeof payload.tool_input?.workdir === 'string' ? path.resolve(ctx.project, payload.tool_input.workdir) : null;
@@ -260,11 +272,6 @@ export function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] 
     if (inMain || namesMain) out.push(`[chord] That command ran in the main checkout (${repoName}/) or named a path there; your copy is ${repoDirOf(ctx)}. Build, test and run git only there.`);
   }
   if (/\bgit\b[^|;&\n]*\bstash\b/.test(cmd)) out.push("[chord] git stash is shared by every worktree of this repository: a stash pop can hand you another agent's changes, and yours to them. Make a work-in-progress commit instead.");
-  if (path.resolve(root) !== path.resolve(ctx.worktree)) {
-    // the same rule finish applies, so what finish will not mind (line endings, submodule insides) is not reported
-    const dirty = (() => { try { return dirtyTracked(root).split('\n').filter(Boolean); } catch { return []; } })();
-    if (dirty.length) out.push(`[chord] The main checkout (${root}) has uncommitted changes, which blocks everyone's finish(): ${dirty.slice(0, 10).join(', ')}. If your command did this, undo it there; the main branch is only ever changed through finish().`);
-  }
   return out;
 }
 

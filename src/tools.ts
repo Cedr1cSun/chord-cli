@@ -199,6 +199,11 @@ function finishLocked(ctx: Ctx) {
   // Line-ending-only differences are ignored: a repository with CRLF files and a "* text" attribute shows every
   // such file as modified the moment it is checked out, and no agent can commit that away.
   if (dirtyTracked(wt)) throw new Error('your worktree has uncommitted changes to tracked files; commit them first');
+  // Except the files this agent claimed: one it wrote and never added (git commit -a skips new files) would leave
+  // main with half the change, and the claim that protected it would be released below.
+  const claimed = db.claimsBy(ctx.db, ctx.agent).map(c => relativePath(wt, path.resolve(ctx.cwd, c.file)).split(path.sep).join('/')).filter(f => f && !f.startsWith('..'));
+  const lost = claimed.length ? git(wt, 'ls-files', '--others', '--exclude-standard', '--', ...claimed) : '';
+  if (lost) throw new Error(`you claimed ${lost.split('\n').join(', ')} but never committed it: git add and commit it (or release the claim) and call finish again. Nothing was merged.`);
   // What status still reports now differs only in line endings. git will not rebase over it, and nothing done in a
   // worktree can clear it: the repository needs a renormalised commit, which is the user's call.
   const phantom = git(wt, 'status', '--porcelain', '--untracked-files=no', '--ignore-submodules=dirty').split('\n').filter(Boolean).map(l => l.replace(/^[ MADRCU?!]{1,2}\s+/, ''));

@@ -151,6 +151,19 @@ test('finish ignores untracked files in the worktree instead of forcing them int
   assert.throws(() => finish(ctx), /uncommitted changes to tracked files/);
 });
 
+test('finish refuses when a claimed file sits untracked in the worktree, so half a change never reaches main', () => {
+  const { root, wt, ctx, d } = setup(); // repo/b.txt is claimed as an add
+  fs.writeFileSync(path.join(wt, 'b.txt'), 'two\n'); // written but never added
+  fs.appendFileSync(path.join(wt, 'a.txt'), 'more\n'); git(wt, 'commit', '-q', '-am', 'feat: more a'); // -a does not pick up new files
+  fs.writeFileSync(path.join(wt, 'scratch.log'), 'build output'); // unclaimed untracked files are still nobody's business
+  assert.throws(() => finish(ctx), /claimed .*b\.txt.* never committed/);
+  assert.equal(git(root, 'log', '--format=%s', '-1'), 'init');
+  assert.equal(db.claimsBy(d, 'w').length, 1);
+  git(wt, 'add', 'b.txt'); git(wt, 'commit', '-q', '-m', 'feat: b');
+  assert.deepEqual(finish(ctx).merged, ['feat: b', 'feat: more a']);
+  assert.ok(fs.existsSync(path.join(root, 'b.txt')));
+});
+
 test('finish refuses to fast-forward over untracked files of the same name in the main checkout', () => {
   const { root, wt, ctx, d } = setup();
   fs.writeFileSync(path.join(wt, 'gen.txt'), 'from branch\n'); git(wt, 'add', 'gen.txt'); git(wt, 'commit', '-q', '-m', 'feat: gen');

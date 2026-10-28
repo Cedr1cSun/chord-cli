@@ -204,22 +204,6 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
   }
 }
 
-/** Paths changed according to `git status --porcelain=v1 -z -uall`: entries are NUL-separated, a rename
- *  or copy is followed by the original path, and nothing is quoted or folded into directories. */
-export function changedPaths(statusZ: string): string[] {
-  const parts = statusZ.split('\0');
-  const out: string[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const entry = parts[i];
-    if (!entry) continue;
-    out.push(entry.slice(3));
-    const xy = entry.slice(0, 2);
-    if (/R/.test(xy)) { i++; if (parts[i]) out.push(parts[i]); } // a rename changes its "from" path too
-    else if (/C/.test(xy)) i++; // a copy leaves its source alone
-  }
-  return out;
-}
-
 /** The old names of renames in NUL-separated status output: a rename changes that path too, and diff --name-only
  *  lists only the new one. */
 export function renameSources(statusZ: string): string[] {

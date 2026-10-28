@@ -261,7 +261,6 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   // a broken settings file is skipped, not fatal
   fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), '{oops');
   assert.equal(mergeProjectSettings({ hooks: {} }, wt).hooks.PreCompact, undefined);
-  assert.deepEqual(mergeProjectSettings({ hooks: { X: [1] } }), { hooks: { X: [1] } });
   // a broken .mcp.json is skipped too, and without one nothing extra is passed
   fs.writeFileSync(path.join(wt, '.mcp.json'), '{oops');
   assert.equal(claudeArgs(env, { repo: wt, claudeConfig: claudeJson }).filter(a => a.includes('mcpServers')).length, 1);

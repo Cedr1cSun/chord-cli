@@ -175,7 +175,7 @@ export function projectMcpConfig(worktree: string, source: ProjectConfigSource):
   return Object.keys(keep).length ? JSON.stringify({ mcpServers: substituteProjectDir(keep, worktree) }) : null;
 }
 
-export function claudeArgs(env: Record<string, string>, projectConfig: boolean | ProjectConfigSource = false): string[] {
+export function claudeArgs(env: Record<string, string>, projectConfig: ProjectConfigSource | false = false): string[] {
   const hooks: Record<string, unknown[]> = {};
   for (const e of EVENTS) {
     hooks[e.claude] = [{
@@ -192,10 +192,9 @@ export function claudeArgs(env: Record<string, string>, projectConfig: boolean |
   // (the briefing carries CLAUDE.md itself); the others are passed along.
   const wt = env.CHORD_WORKTREE;
   const addDir = wt ? ['--add-dir', wt] : [];
-  const source: ProjectConfigSource | null = projectConfig === true ? { repo: wt ?? '' } : projectConfig || null;
-  const projectMcp = source && wt ? projectMcpConfig(wt, source) : null;
+  const projectMcp = projectConfig && wt ? projectMcpConfig(wt, projectConfig) : null;
   const mcpFiles = projectMcp ? [projectMcp] : [];
-  const settings = source ? mergeProjectSettings(ours, wt) : ours;
+  const settings = projectConfig && wt ? mergeProjectSettings(ours, wt) : ours;
   // --add-dir and --mcp-config take any number of values, so they must not come last: the user's own arguments
   // follow these, and a prompt such as `chord claude "fix the tests"` would be read as another directory.
   // --settings takes exactly one value and closes the list.
@@ -237,8 +236,7 @@ export function mergeSettings(ours: Record<string, any>, theirs: Record<string, 
   return out;
 }
 
-export function mergeProjectSettings(ours: Record<string, any>, worktree?: string): Record<string, any> {
-  if (!worktree) return ours;
+export function mergeProjectSettings(ours: Record<string, any>, worktree: string): Record<string, any> {
   let theirs: Record<string, any> = {};
   for (const name of ['settings.json', 'settings.local.json']) { // settings.local.json wins, as in Claude Code itself
     let one: Record<string, any>;
@@ -310,7 +308,7 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
       fs.mkdirSync(path.dirname(marker), { recursive: true });
       fs.writeFileSync(marker, `${Date.now()}\n`);
     }
-    let projectConfig: boolean | ProjectConfigSource = false;
+    let projectConfig: ProjectConfigSource | false = false;
     if (tool === 'claude' && hasProjectConfig(worktree)) {
       projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir) ? { repo: project.repo } : false;
       if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);

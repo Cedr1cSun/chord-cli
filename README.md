@@ -5,7 +5,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
   <img alt="Node 24 or later" src="https://img.shields.io/badge/node-%E2%89%A5%2024-339933?logo=nodedotjs&logoColor=white">
-  <img alt="Windows and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue">
+  <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue">
   <a href="README.zh-CN.md"><img alt="中文说明" src="https://img.shields.io/badge/README-%E4%B8%AD%E6%96%87-2F7CF6"></a>
 </p>
 
@@ -77,7 +77,7 @@ With Node 24 and git on the machine:
 npm install -g chord-cli
 ```
 
-On Linux add `--allow-scripts=node-pty`, with python3, make and g++ present: node-pty ships no Linux binary and builds one on install.
+On Linux add `--allow-scripts=node-pty`, with python3, make and g++ present: node-pty ships no Linux binary and builds one on install. macOS needs nothing more: node-pty ships a binary for it.
 
 Or from source:
 
@@ -149,13 +149,13 @@ A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) 
 - **Waking an agent** means typing a short note into its terminal. chord does this only when the input box is empty, the keyboard has been quiet for a few seconds, and the terminal has echoed the note; a dialogue never receives the Enter.
 - **Trust**: agents run in the project folder, so Claude asks about it once, as it does for plain `claude`; chord writes nothing to `~/.claude.json`. Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off.
 - **Branches and worktrees.** Each agent adds a `chord/<name>` branch and a worktree; `chord clean` removes them when the agent has left and keeps anything not yet on main.
-- **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex runs with full access. On Windows chord refuses a sandboxed launch, because that sandbox cannot run the hooks; on Linux the hooks run inside the sandbox, but Codex then asks you to approve each chord tool call.
+- **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex runs with full access. On Windows chord refuses a sandboxed launch, because that sandbox cannot run the hooks; on Linux and macOS the hooks still run in a sandboxed launch, but Codex then asks you to approve each chord tool call.
 - **The terminal title** reads `chord <agent> · <task>`, so each window says which agent it is.
 - **Hooks gate the editor tools.** Files changed from the shell are reported by name after each command, with the claim to make.
 
 ## 🗺️ Scope
 
-- Runs on Windows 11 and Linux.
+- Runs on Windows 11, macOS and Linux.
 - One repository per project.
 - Project paths up to about 190 characters.
 - A repository with CRLF files and a `* text` attribute that was never renormalised shows phantom changes in every worktree; chord names the files and the command that puts the repository right.

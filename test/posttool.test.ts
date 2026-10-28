@@ -131,3 +131,12 @@ test('post-tool-use says so when a shell command ran in the main checkout', () =
   assert.equal(warn({ command: 'npm test', workdir: 'chord/agents/a/repo' }), '');
   assert.equal(warn({ command: 'cat chord/agents/a/repo/x.txt && git -C chord/agents/a/repo status' }), '');
 });
+
+test('commandWarnings judges the command text alone, with no repository to look at', async () => {
+  const { commandWarnings } = await import('../src/hooks.ts');
+  const P = process.platform === 'win32' ? 'D:\P' : '/P';
+  const ctx: Ctx = { db: db.openDb(':memory:'), agent: 'a', cwd: path.join(P, 'chord', 'agents', 'a'), worktree: path.join(P, 'chord', 'agents', 'a', 'repo'), project: P };
+  assert.match(commandWarnings(ctx, { tool_input: { command: 'cd repo && npm test' } })[0], /main checkout/);
+  assert.match(commandWarnings(ctx, { tool_input: { command: 'git stash' } })[0], /git stash is shared/);
+  assert.deepEqual(commandWarnings(ctx, { tool_input: { command: 'npm test', workdir: 'chord/agents/a/repo' } }), []);
+});

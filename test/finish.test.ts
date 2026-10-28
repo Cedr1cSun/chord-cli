@@ -143,7 +143,7 @@ test('merge broadcasts are notices', () => {
   finish(ctx);
   const [m] = db.takeUnread(d, 'peer');
   assert.equal(m.kind, 'notice');
-  assert.equal(db.repliedSince(d, 'w', 'peer', 0), false);
+  assert.equal(db.firstMessageAt(d, 'w', 'peer', 0), null);
 });
 
 test('finish ignores untracked files in the worktree instead of forcing them into a commit', () => {

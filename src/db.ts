@@ -230,6 +230,13 @@ export function heartbeat(db: DatabaseSync, name: string): void {
   db.prepare(`update agents set heartbeat_at = ?, status = case when status = 'offline' then 'busy' else status end where name = ?`).run(Date.now(), name);
 }
 
+/** Every online wrapper's heartbeat refreshed at once. For the first wrapper to wake after the machine slept: its own
+ *  heartbeat alone would make the others look dead to a sweep in the second before they wake too. Agents without a
+ *  wrapper yet are left to their pid. */
+export function heartbeatAll(db: DatabaseSync): void {
+  db.prepare(`update agents set heartbeat_at = ? where status != 'offline' and heartbeat_at is not null`).run(Date.now());
+}
+
 /** How long after launch an agent may go without a heartbeat before the watch in sweep calls it dead. */
 const STARTUP_GRACE_MS = 10 * 60_000;
 

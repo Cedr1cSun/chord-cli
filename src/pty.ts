@@ -248,8 +248,12 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
   process.stdout.on('resize', onResize);
 
   Object.assign(process.env, launch.env); // so the wrapper writes to the same chord.db.log as the hooks
-  let typed: Typed | null = null, typedAt = 0, enteredAt = 0, enters = 0, echoed = false, lastState = '';
+  let typed: Typed | null = null, typedAt = 0, enteredAt = 0, enters = 0, echoed = false, lastState = '', lastTick = Date.now();
   const timer = setInterval(() => tolerant('wake loop', () => {
+    // a tick long overdue means the machine slept: vouch for every wrapper before a hook sweeps the ones not yet awake
+    const now = Date.now();
+    if (now - lastTick > db.HEARTBEAT_STALE_MS) db.heartbeatAll(d);
+    lastTick = now;
     db.heartbeat(d, launch.name);
     const me = db.getAgent(d, launch.name);
     const wanted = titleFor(launch.name, me?.task);

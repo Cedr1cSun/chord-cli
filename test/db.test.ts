@@ -215,6 +215,24 @@ console.log('ok');`);
   }
 });
 
+test('heartbeatAll refreshes every online wrapper at once, so a machine waking up kills nobody', () => {
+  const d = open();
+  const t = Date.now();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/', heartbeat: true });
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: 2, cwd: '/', heartbeat: true });
+  db.addAgent(d, { name: 'starting', tool: 'codex', pid: 3, cwd: '/' }); // no wrapper yet: judged by pid, not given a heartbeat
+  db.addAgent(d, { name: 'gone', tool: 'codex', pid: 4, cwd: '/', heartbeat: true }); db.setStatus(d, 'gone', 'offline');
+  d.prepare('update agents set heartbeat_at = ? where heartbeat_at is not null').run(t - db.HEARTBEAT_STALE_MS - 5000);
+  // the first wrapper to wake writes its own heartbeat; a hook sweeping in the next second would then see one fresh
+  // heartbeat among stale ones and kill the rest, unless the wrapper vouches for everyone
+  db.heartbeatAll(d);
+  db.heartbeat(d, 'a');
+  assert.deepEqual(db.sweep(d, () => true, Date.now()), []);
+  assert.ok(db.getAgent(d, 'b')!.heartbeat_at! > t - 1000);
+  assert.equal(db.getAgent(d, 'starting')!.heartbeat_at, null);
+  assert.equal(db.getAgent(d, 'gone')!.heartbeat_at, t - db.HEARTBEAT_STALE_MS - 5000);
+});
+
 test('the wrapper takes over a reserved agent with its pid and first heartbeat, keeping messages and a stop request', () => {
   const d = open();
   db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' }); // reserved by prepare, no heartbeat yet

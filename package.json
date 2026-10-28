@@ -33,7 +33,8 @@
   },
   "os": [
     "win32",
-    "linux"
+    "linux",
+    "darwin"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

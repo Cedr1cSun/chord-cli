@@ -21,7 +21,7 @@
 ## ✨ 特点
 
 - 一个仓库、N 个 agent、每人一个 worktree：并行干活，互不踩脚
-- 文件级的占用看板：改之前先登记，先占的人先说话，没登记过的写入被 hook 挡回去
+- 文件级的占用看板：改之前先登记，想改别人占着的文件先找占着的人说，没登记过的写入被 hook 挡回去
 - agent 之间的异步消息：空闲的被叫醒，忙着的在下一次工具调用时听到
 - `finish` 一步到位：rebase、快进 main、释放占用、通知其他人；遇到冲突什么都不动，让 agent 自己 rebase、解决、再 finish，解决不了才来问你
 - 规则由 chord 自己教给 agent，启动时讲一遍，每条 prompt 再提醒一次；你只派任务，不用解释 chord
@@ -67,7 +67,7 @@
 
 1. **隔离。** 每个 agent 在自己的分支、自己的 worktree 里干活。主 checkout 只通过 `finish` 变化。
 2. **协调。** 一块共享看板存着占用、消息和事件。agent 用 chord 给的工具登记、占用、对话；hook 在每次写入前查占用，并在它干活时把新消息递过去。
-3. **合并。** `finish` 把分支 rebase 到 main 再快进。rebase 干净就合进去；其他任何情况都停在原地等你。
+3. **合并。** `finish` 把分支 rebase 到 main 再快进。rebase 干净、项目的 test 命令通过就合进去；遇到冲突什么都不动，agent 自己解决再 finish。
 
 ## 📦 安装
 
@@ -129,6 +129,7 @@ agent 在项目文件夹里启动，也就是你平时直接敲 `claude` 或 `co
 | `chord events [agent] [-n N]` | 占用、释放、合并、冲突的记录 |
 | `chord stop <agent>` | 等 agent 这一轮结束、输入框为空时退出它 |
 | `chord clean [--force] [agent...]` | 删掉离线 agent 的工作区、worktree 和分支；还没到 main 上的工作留着，除非 `--force` |
+| `chord --version` | 安装的版本 |
 
 ## ⚙️ 配置
 
@@ -142,14 +143,14 @@ agent 在项目文件夹里启动，也就是你平时直接敲 `claude` 或 `co
 
 `test` 设置了的话，每次 `finish` 把分支 rebase 到 main 之后、main 移动之前，在 agent 的 worktree 里跑一遍。失败就什么都不合，agent 拿到输出的末尾：rebase 干净也可能弄坏别人刚合进去的东西。它跑的时候其他 agent 的 `finish` 等着。
 
-仓库自带的 Claude 配置（`.claude/settings*.json`、`.mcp.json`）在你自己在 Claude Code 里信任过这个仓库之后才会到达 agent；你在那里批准过的 MCP server 才会启动。
+仓库自带的 Claude 配置（`.claude/settings*.json`、`.mcp.json`）在你自己在 Claude Code 里信任过这个仓库或项目文件夹之后才会到达 agent；你在那里批准过的 MCP server 才会启动。
 
 ## 🔌 chord 怎么和你的工具相处
 
 - **叫醒 agent** 就是往它的终端里敲一句短话。chord 只在输入框为空、键盘安静了几秒、终端回显了这句话之后才这么做；对话框永远收不到那个回车。
 - **信任**：agent 在项目文件夹里跑，所以 Claude 像平时敲 `claude` 一样只问一次；chord 不往 `~/.claude.json` 里写任何东西。Codex 会让你审核一次 chord 的 hook，hook 定义变了会再问一次；选 "trust all"。有 hook 被关掉时 chord 会在启动时告诉你。
 - **分支和 worktree。** 每个 agent 添一个 `chord/<名字>` 分支和一个 worktree；`chord clean` 在 agent 离开后删掉它们，还没到 main 上的东西留着。
-- **权限。** chord 自己的工具对 Claude 预先放行，所以独自干活的 agent 不会卡在它们的确认框上；你平时的 shell 和编辑审批照旧。Codex 以完全访问运行。Windows 上 chord 拒绝带沙箱启动，因为那个沙箱起不来 hook；Linux 和 macOS 上带沙箱启动时 hook 照常运行，但 Codex 会让你逐个批准 chord 的工具调用。
+- **权限。** chord 自己的工具对 Claude 预先放行，所以独自干活的 agent 不会卡在它们的确认框上；你平时的 shell 和编辑审批照旧。Codex 沿用你自己配置里的沙箱和审批模式。Windows 上 chord 拒绝命令行里给出的沙箱，因为那个沙箱起不来 hook；Linux 和 macOS 上沙箱里 hook 照常运行，但 Codex 会让你逐个批准 chord 的工具调用。
 - **终端标题**是 `chord <agent> · <任务>`，每个窗口都说得出自己是谁。
 - **hook 把关的是编辑器工具。** 从 shell 改的文件在每条命令之后按名字报出来，并附上该做的占用。
 

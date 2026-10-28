@@ -19,8 +19,8 @@ const { git } = db;
 // realpath gives one canonical spelling (drive letter and directory case): Codex persists hook trust by hashing the command string
 // sibling modules by absolute path: .ts when run from src, .js from the built dist
 const here = (f: string) => fs.realpathSync.native(fileURLToPath(new URL(f + path.extname(fileURLToPath(import.meta.url)), import.meta.url))).split(path.sep).join('/');
-export const HOOKS_TS = here('./hooks');
-export const SERVE_TS = here('./serve');
+const HOOKS_TS = here('./hooks');
+const SERVE_TS = here('./serve');
 
 
 /** `staleWaitMs`: how long to watch a stale heartbeat before calling its agent dead (tests shorten it). */
@@ -145,11 +145,11 @@ export function withNodeOnPath(env: Record<string, string>): Record<string, stri
 /** `projectConfig`: also load the repository's own .claude settings and .mcp.json. Only when the user has trusted the
  *  repository in Claude Code, because Claude's trust dialogue is what normally stands between a cloned repository's
  *  hooks and MCP servers and running them. */
-export interface ProjectConfigSource { repo: string; claudeConfig?: string }
+interface ProjectConfigSource { repo: string; claudeConfig?: string }
 
 /** `$CLAUDE_PROJECT_DIR` in a repository's hook commands and MCP definitions means the repository, which for an agent
  *  is its worktree; Claude would point it at the workspace. */
-export function substituteProjectDir<T>(value: T, worktree: string): T {
+function substituteProjectDir<T>(value: T, worktree: string): T {
   const dir = worktree.split(path.sep).join('/');
   const walk = (v: unknown): unknown => {
     if (typeof v === 'string') return v.replace(/\$\{CLAUDE_PROJECT_DIR\}|\$CLAUDE_PROJECT_DIR/g, dir);
@@ -162,7 +162,7 @@ export function substituteProjectDir<T>(value: T, worktree: string): T {
 
 /** The repository's .mcp.json as an --mcp-config value, reduced to the servers the user approved in Claude Code, or
  *  null when there is nothing to pass. */
-export function projectMcpConfig(worktree: string, source: ProjectConfigSource): string | null {
+function projectMcpConfig(worktree: string, source: ProjectConfigSource): string | null {
   const file = path.join(worktree, '.mcp.json');
   if (!fs.existsSync(file)) return null;
   let parsed: { mcpServers?: Record<string, unknown> };
@@ -211,7 +211,7 @@ export function mergeUserSettings(args: string[], user: Record<string, any>): st
 }
 
 const PROJECT_CONFIG_FILES = ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json'];
-export const hasProjectConfig = (worktree: string) => PROJECT_CONFIG_FILES.some(f => fs.existsSync(path.join(worktree, f)));
+const hasProjectConfig = (worktree: string) => PROJECT_CONFIG_FILES.some(f => fs.existsSync(path.join(worktree, f)));
 
 /** chord's settings plus the repository's .claude/settings.json and settings.local.json (later files win,
  *  hook lists are concatenated so both chord's and the project's hooks run). */
@@ -224,7 +224,7 @@ function concatHooks(a: Record<string, any>, b: Record<string, any>): Record<str
 
 /** Somebody else's settings underneath chord's: their keys fill in, chord's keys win, hook lists are concatenated,
  *  and disableAllHooks is dropped because it would switch chord itself off. */
-export function mergeSettings(ours: Record<string, any>, theirs: Record<string, any>): Record<string, any> {
+function mergeSettings(ours: Record<string, any>, theirs: Record<string, any>): Record<string, any> {
   const out: Record<string, any> = { ...theirs, ...ours, hooks: concatHooks(ours, theirs) };
   if (ours.permissions || theirs.permissions) {
     // permission lists add up, as across Claude's own settings levels; other permission keys follow the usual precedence

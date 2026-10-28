@@ -141,7 +141,7 @@ export function typedEchoed(output: string, text: string): boolean {
 /** The Esc key as the tool reads it: in win32-input-mode (ConPTY turns a bare ESC byte into nothing, waiting for a
  *  sequence) a key-down and key-up record; elsewhere the CSI u form the tools ask for (`ESC [ > 5 u`), which a legacy
  *  reader ignores harmlessly. Verified against Claude Code on macOS; on Linux not yet. */
-export const ESC_INPUT = process.platform === 'win32' ? '\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_' : '\x1b[27u';
+const ESC_INPUT = process.platform === 'win32' ? '\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_' : '\x1b[27u';
 
 /** Did the tool answer the exit command with its "background work is running, exit and stop it or stay?" dialogue?
  *  Claude Code asks this while a shell the agent started (a monitor it is waiting on, say) still runs. */
@@ -171,8 +171,8 @@ export function titleFor(name: string, task: string | null | undefined): string 
 }
 export const titleSequence = (title: string) => `\x1b]0;${title.replace(/[\x00-\x1f\x7f]/g, ' ')}\x07`;
 
-export type Typed = 'nudge' | 'stop';
-export type Action = Typed | 'enter' | null;
+type Typed = 'nudge' | 'stop';
+type Action = Typed | 'enter' | null;
 
 /** What the idle-wake loop should do this tick: type the nudge (unread messages), type the exit command (`chord
  *  stop`), press Enter once more, or nothing. Messages stay in the inbox until a hook takes them, so a lost

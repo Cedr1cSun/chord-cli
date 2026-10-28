@@ -11,7 +11,7 @@ export interface Ctx { db: DatabaseSync; agent: string; cwd: string; worktree: s
 
 /** path.relative, except that on macOS directory names differing only in case match, as path.relative already has them
  *  on Windows: both file systems ignore case, so /P/Repo is /P/repo, and a write must not slip past a check that way. */
-export function relativePath(from: string, to: string): string {
+function relativePath(from: string, to: string): string {
   if (process.platform !== 'darwin') return path.relative(from, to);
   const a = path.resolve(from).split('/').filter(Boolean), b = path.resolve(to).split('/').filter(Boolean);
   let i = 0;
@@ -54,7 +54,7 @@ export function claimPath(ctx: Ctx, file: string): string {
 /** How long a latecomer waits for replies before it may write anyway. */
 export const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 /** How long before its claim a latecomer's message to an occupant still counts as asking about that file. */
-export const ASK_WINDOW_MS = 2 * 60 * 1000;
+const ASK_WINDOW_MS = 2 * 60 * 1000;
 
 const str = (desc: string) => ({ type: 'string', description: desc });
 
@@ -82,7 +82,7 @@ const symbolSet = (s: string | null) => new Set((s ?? '').toLowerCase().match(/[
 
 /** Two modify claims on one file that each name the functions or blocks they touch, with none in common, do not
  *  need to talk first. Anything less certain (no symbols on either side, or an add, delete or rename) does. */
-export function disjointEdits(a: db.Claim, b: db.Claim): boolean {
+function disjointEdits(a: db.Claim, b: db.Claim): boolean {
   if (a.kind !== 'modify' || b.kind !== 'modify') return false;
   const x = symbolSet(a.symbols), y = symbolSet(b.symbols);
   return x.size > 0 && y.size > 0 && ![...x].some(w => y.has(w));
@@ -98,7 +98,7 @@ function earlierOccupants(ctx: Ctx, mine: db.Claim): { overlap: db.Claim[]; else
   return { overlap: all.filter(c => !disjointEdits(c, mine)), elsewhere: all.filter(c => disjointEdits(c, mine)) };
 }
 
-export type WriteCheck = { ok: true } | { ok: false; reason: string };
+type WriteCheck = { ok: true } | { ok: false; reason: string };
 
 /**
  * May `ctx.agent` write `file` now? It must hold a claim, and if others claimed the file first it must

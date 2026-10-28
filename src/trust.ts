@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export const claudeConfigPath = () => path.join(os.homedir(), '.claude.json');
+const claudeConfigPath = () => path.join(os.homedir(), '.claude.json');
 // Claude Code keys projects by the cwd with forward slashes, even on Windows
 const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
 
@@ -29,7 +29,7 @@ export function claudeMcpChoices(dir: string, file = claudeConfigPath()): { all:
   } catch { return { all: false, enabled: [], disabled: [] }; }
 }
 
-export const codexConfigPath = () => path.join(os.homedir(), '.codex', 'config.toml');
+const codexConfigPath = () => path.join(os.homedir(), '.codex', 'config.toml');
 
 /** Codex keeps a trust hash and an on/off switch per hook in ~/.codex/config.toml. One keypress in its
  *  "Hooks need review" screen switches a hook off, and chord then silently loses the feature behind it, so

@@ -350,7 +350,6 @@ export function tools(ctx: Ctx): Tool[] {
         db.addClaim(ctx.db, { agent: ctx.agent, file, intent: req(a, 'intent'), kind, symbols: typeof a.symbols === 'string' ? a.symbols : null });
         const mine = db.claimsFor(ctx.db, file).find(c => c.agent === ctx.agent)!;
         const { overlap: others, elsewhere } = earlierOccupants(ctx, mine);
-        db.log(`claim ${file} by ${ctx.agent} (cwd ${ctx.cwd}): rows=${JSON.stringify(db.claimsFor(ctx.db, file).map(c => [c.agent, c.created_at]))} agents=${JSON.stringify(db.listAgents(ctx.db).map(a => [a.name, a.status, a.pid]))} others=${others.map(o => o.agent)} elsewhere=${elsewhere.map(o => o.agent)}`);
         const brief = (o: db.Claim) => ({ agent: o.agent, intent: o.intent, kind: o.kind, symbols: o.symbols });
         return {
           claimed: file,

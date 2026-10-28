@@ -138,6 +138,18 @@ test('pre-tool-use polices only the worktree and forbids other checkouts in the 
   if (process.platform === 'win32') assert.equal(write('C:\\elsewhere\\x.txt'), undefined); // another drive is not "inside" anything
 });
 
+test('pre-tool-use is not fooled by a change of case on macOS, whose file systems ignore it', { skip: process.platform !== 'darwin' }, () => {
+  const d = db.openDb(':memory:');
+  const cwd = '/P/chord/agents/a';
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: `${cwd}/repo`, project: '/P' };
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd, worktree: `${cwd}/repo` });
+  const write = (file_path: string) => handleHook(ctx, 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path } }) as any;
+  assert.match(write(`${cwd}/REPO/src/x.ts`).hookSpecificOutput.permissionDecisionReason, /not claimed/); // the own worktree still needs a claim
+  assert.match(write('/p/Repo/src/x.ts').hookSpecificOutput.permissionDecisionReason, /outside your workspace/); // still the main checkout
+  db.addClaim(d, { agent: 'a', file: 'repo/src/x.ts', intent: 'x', kind: 'add' });
+  assert.equal(write('/p/Chord/Agents/A/Repo/src/X.ts'), undefined); // the claimed file, however it is spelled
+});
+
 test('briefing lists only online peers and appends the repository instructions', () => {
   const { d } = setup();
   const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-brief-'));

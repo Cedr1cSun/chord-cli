@@ -10,9 +10,19 @@ import type { Tool } from './mcp.ts';
  *  when known, is the project folder that holds the main checkout and every agent's workspace, and is the tool's real cwd. */
 export interface Ctx { db: DatabaseSync; agent: string; cwd: string; worktree: string; project?: string }
 
+/** path.relative, except that on macOS directory names differing only in case match, as path.relative already has them
+ *  on Windows: both file systems ignore case, so /P/Repo is /P/repo, and a write must not slip past a check that way. */
+export function relativePath(from: string, to: string): string {
+  if (process.platform !== 'darwin') return path.relative(from, to);
+  const a = path.resolve(from).split('/').filter(Boolean), b = path.resolve(to).split('/').filter(Boolean);
+  let i = 0;
+  while (i < a.length && i < b.length && a[i].toLowerCase() === b[i].toLowerCase()) i++;
+  return [...a.slice(i).map(() => '..'), ...b.slice(i)].join('/');
+}
+
 /** Is `file` inside `dir`? False for paths on another drive or above it. */
 export function insideDir(dir: string, file: string): boolean {
-  const rel = path.relative(dir, path.resolve(dir, file));
+  const rel = relativePath(dir, path.resolve(dir, file));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
@@ -57,7 +67,7 @@ function req(args: Record<string, unknown>, key: string): string {
 
 /** Worktree-relative path with forward slashes, so the same file matches across worktrees. */
 export function normFile(ctx: Ctx, file: string): string {
-  return path.relative(ctx.cwd, path.resolve(ctx.cwd, file)).split(path.sep).join('/');
+  return relativePath(ctx.cwd, path.resolve(ctx.cwd, file)).split(path.sep).join('/');
 }
 
 export function peers(ctx: Ctx) {

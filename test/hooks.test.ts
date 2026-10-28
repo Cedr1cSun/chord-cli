@@ -150,6 +150,22 @@ test('pre-tool-use is not fooled by a change of case on macOS, whose file system
   assert.equal(write('/p/Chord/Agents/A/Repo/src/X.ts'), undefined); // the claimed file, however it is spelled
 });
 
+test('pre-tool-use sees through a link to the worktree or the main checkout', () => {
+  const d = db.openDb(':memory:');
+  const P = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-link-')));
+  const cwd = path.join(P, 'chord', 'agents', 'a'), wt = path.join(cwd, 'repo'), main = path.join(P, 'repo');
+  fs.mkdirSync(path.join(wt, 'src'), { recursive: true }); fs.mkdirSync(path.join(main, 'src'), { recursive: true });
+  const links = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-links-')); // outside the project, as /tmp or a user's shortcut would be
+  fs.symlinkSync(wt, path.join(links, 'mine'), 'junction'); fs.symlinkSync(main, path.join(links, 'theirs'), 'junction');
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: wt, project: P };
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd, worktree: wt });
+  const write = (file_path: string) => handleHook(ctx, 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path } }) as any;
+  assert.match(write(path.join(links, 'mine', 'src', 'x.ts')).hookSpecificOutput.permissionDecisionReason, /not claimed/); // the own worktree, however reached
+  assert.match(write(path.join(links, 'theirs', 'src', 'x.ts')).hookSpecificOutput.permissionDecisionReason, /outside your workspace/); // the main checkout, however reached
+  db.addClaim(d, { agent: 'a', file: 'repo/src/x.ts', intent: 'x', kind: 'add' });
+  assert.equal(write(path.join(links, 'mine', 'src', 'x.ts')), undefined); // a new file under the link: the claim matches
+});
+
 test('briefing lists only online peers and appends the repository instructions', () => {
   const { d } = setup();
   const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-brief-'));

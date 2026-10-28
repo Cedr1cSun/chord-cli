@@ -59,6 +59,15 @@ function ownCopy(ctx: Ctx, abs: string, tool: Tool): string {
   return tool === 'claude' ? path.join(ctx.worktree, ...tail) : `${repoDirOf(ctx)}/${tail.join('/')}`; // Claude's editor wants absolute paths
 }
 
+/** The path with links resolved, so a write through a junction or symlink is judged by where it lands. The file may
+ *  not exist yet: the nearest existing ancestor is resolved and the rest appended. */
+function realPath(p: string): string {
+  try { return fs.realpathSync.native(p); } catch {
+    const parent = path.dirname(p);
+    return parent === p ? p : path.join(realPath(parent), path.basename(p));
+  }
+}
+
 /** The repository's own agent instructions. The agent's cwd is the project folder, which is not a git repository, so
  *  Codex does not load the worktree's AGENTS.md and Claude only reads a nested CLAUDE.md once it opens a file there. */
 function projectInstructions(ctx: Ctx, repoDir: string): string[] {
@@ -143,7 +152,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       const base = ctx.project ?? ctx.cwd;
       const workdir = tool === 'codex' && typeof payload.tool_input?.workdir === 'string' ? path.resolve(base, payload.tool_input.workdir) : base;
       for (const f of files) {
-        const abs = path.resolve(workdir, f);
+        const abs = realPath(path.resolve(workdir, f));
         if (!insideDir(ctx.worktree, abs)) {
           // the main checkout and the other agents' workspaces are off limits; anything else is not ours to police
           if (ctx.project && insideDir(ctx.project, abs) && !insideDir(ctx.cwd, abs)) {

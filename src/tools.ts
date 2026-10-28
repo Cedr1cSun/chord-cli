@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { execFileSync, execSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as db from './db.ts';
@@ -133,9 +133,7 @@ export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
   return { ok: true };
 }
 
-// 64 MB of output: a project's post-merge hook may print a great deal, and the default 1 MB would turn a merge that
-// already happened into an exception
-const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }).trim();
+const { git } = db;
 const gitOk = (cwd: string, ...args: string[]) => { try { git(cwd, ...args); return true; } catch { return false; } };
 
 const stderrOf = (e: unknown) => ((e as { stderr?: string }).stderr ?? (e as Error).message).trim();

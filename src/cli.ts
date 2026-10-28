@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // The chord command line; see USAGE.
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -30,9 +29,7 @@ const USAGE = [
   '',
 ].join('\n');
 
-const gitOut = (cwd: string, ...args: string[]): string | undefined => {
-  try { return execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return undefined; }
-};
+const gitOut = (cwd: string, ...args: string[]): string | undefined => { try { return db.git(cwd, ...args); } catch { return undefined; } };
 
 /** "12s", "3m", "2h", "5d": how long ago. */
 export function ago(ms: number): string {

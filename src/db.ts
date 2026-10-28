@@ -49,7 +49,12 @@ export function gitEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-const commonDir = (cwd: string) => path.resolve(cwd, execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd, encoding: 'utf8', env: gitEnv() }).trim());
+/** git run in `cwd`, trimmed stdout; throws with git's stderr on a non-zero exit. 64 MB of output: a project's
+ *  post-merge hook may print a great deal, and the default 1 MB would turn a merge that already happened into an
+ *  exception. */
+export const git = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, encoding: 'utf8', env: gitEnv(), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }).trim();
+
+const commonDir = (cwd: string) => path.resolve(cwd, git(cwd, 'rev-parse', '--git-common-dir'));
 
 /** Root of the main checkout, even when run from inside a linked worktree. */
 export const mainRoot = (cwd: string) => path.dirname(commonDir(cwd));

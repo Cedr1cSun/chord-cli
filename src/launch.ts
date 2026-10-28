@@ -2,7 +2,7 @@
 // workspace with its repository worktree, and the per-launch hook/MCP configuration for each
 // tool. Hook command strings must stay identical across launches (Codex persists trust by
 // hashing them), so per-session values go in env.
-import { execFileSync, execSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +14,7 @@ import { readConfig } from './tools.ts';
 import { claudeMcpChoices, claudeTrusts } from './trust.ts';
 import type { Event, Tool } from './hooks.ts';
 
-const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const { git } = db;
 
 // realpath gives one canonical spelling (drive letter and directory case): Codex persists hook trust by hashing the command string
 // sibling modules by absolute path: .ts when run from src, .js from the built dist

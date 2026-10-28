@@ -1,5 +1,4 @@
 // chord clean: remove the workspaces, worktrees and branches of agents that are gone.
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -7,7 +6,7 @@ import * as db from './db.ts';
 import { setupMarker } from './launch.ts';
 import type { Project } from './project.ts';
 
-const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: db.gitEnv(), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const { git } = db;
 
 export interface CleanResult { removed: string[]; kept: { name: string; why: string }[] }
 

@@ -1,11 +1,10 @@
 // A chord project is the folder `chord` is run in. It contains the git repository as a child
 // directory and a `chord/` directory for agent workspaces; chord's own state lives under ~/.chord.
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { gitEnv } from './db.ts';
+import { git } from './db.ts';
 
 export interface Project {
   dir: string;      // the project folder, absolute
@@ -24,8 +23,6 @@ export class NeedsRestructure extends Error {
     this.suggestedName = suggestedName;
   }
 }
-
-const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: gitEnv(), stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 
 const same = (a: string, b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
 

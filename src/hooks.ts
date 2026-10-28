@@ -11,8 +11,8 @@ import { canWrite, dirtyTracked, insideDir, normFile, type Ctx } from './tools.t
 export type Event = 'session-start' | 'user-prompt-submit' | 'pre-tool-use' | 'post-tool-use' | 'stop' | 'session-end' | 'notification';
 export type Tool = 'claude' | 'codex';
 
-/** What the hook prints: plain text (context) or a JSON object; `undefined` prints nothing. */
-export type HookOut = string | object | undefined;
+/** What the hook prints: a JSON object, or nothing for `undefined`. */
+type HookOut = object | undefined;
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
@@ -311,8 +311,8 @@ async function main(): Promise<void> {
   }
   if (process.env.CHORD_DEBUG_HOOKS) db.log(`hook payload ${event}: keys=${Object.keys(payload).join(',')} agent_id=${payload.agent_id ?? '-'} agent_type=${payload.agent_type ?? '-'} source=${payload.source ?? '-'} reason=${payload.reason ?? '-'}`);
   const out = safeHandle(ctx, tool, event, payload);
-  db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `${typeof out === 'string' ? 'text' : 'json'} ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
-  if (out !== undefined) process.stdout.write(typeof out === 'string' ? out : JSON.stringify(out));
+  db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `json ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
+  if (out !== undefined) process.stdout.write(JSON.stringify(out));
 }
 
 const isMain = (() => { try { return fs.realpathSync.native(process.argv[1] ?? '') === fs.realpathSync.native(fileURLToPath(new URL(import.meta.url))); } catch { return false; } })();

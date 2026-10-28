@@ -176,7 +176,9 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       db.setStatus(ctx.db, ctx.agent, 'busy');
       const parts: string[] = [];
       if (isShell(payload.tool_name)) parts.push(...shellWarnings(ctx, payload));
-      const ms = db.takeUnread(ctx.db, ctx.agent);
+      // a Claude Code subagent's tool calls fire this hook too (with its agent_id); context given to it never reaches
+      // the main conversation, so the messages wait for a call of the agent's own
+      const ms = payload.agent_id ? [] : db.takeUnread(ctx.db, ctx.agent);
       if (ms.length) parts.push(`${formatMessages(ms)}\n\n[chord] ${ms.length} message(s) above arrived from other agents while you were working. Deal with them when convenient (reply with the chord send tool where a reply is asked for), then carry on with your task.`);
       return parts.length ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: parts.join('\n\n') } } : undefined;
     }

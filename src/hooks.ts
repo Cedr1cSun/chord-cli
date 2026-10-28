@@ -1,6 +1,7 @@
-// Hook entry point for Claude Code, Codex and OpenCode: `node hooks.ts <event>`, payload on stdin.
+// Hook entry point for Claude Code, Codex, OpenCode and pi: `node hooks.ts <event>`, payload on stdin.
 // Event names are chord's own; launch.ts maps each tool's hook config onto them (OpenCode's through the plugin in
-// opencode/plugins/chord.ts, which calls this with the same payload shape).
+// opencode/plugins/chord.ts and pi's through the extension in pi/extensions/chord.ts, which call this with the same
+// payload shape).
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,13 +11,14 @@ import { patchFiles } from './patch.ts';
 import { canWrite, dirtyTracked, insideDir, normFile, type Ctx } from './tools.ts';
 
 export type Event = 'session-start' | 'user-prompt-submit' | 'pre-tool-use' | 'post-tool-use' | 'stop' | 'session-end' | 'notification';
-export type Tool = 'claude' | 'codex' | 'opencode';
+export type Tool = 'claude' | 'codex' | 'opencode' | 'pi';
 
 /** What the hook prints: a JSON object, or nothing for `undefined`. */
 type HookOut = object | undefined;
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const OPENCODE_EDIT_TOOLS = new Set(['edit', 'write']); // absolute filePath; apply_patch carries a patch like Codex's
+const PI_EDIT_TOOLS = OPENCODE_EDIT_TOOLS; // path, relative to pi's cwd (the project folder) or absolute
 
 export function filesTouched(tool: Tool, payload: Record<string, any>): string[] {
   const name = String(payload.tool_name ?? '');
@@ -26,6 +28,7 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
     return typeof p === 'string' ? [p] : [];
   }
   if (tool === 'opencode' && OPENCODE_EDIT_TOOLS.has(name)) return typeof input.filePath === 'string' ? [input.filePath] : [];
+  if (tool === 'pi') return PI_EDIT_TOOLS.has(name) && typeof input.path === 'string' ? [input.path] : [];
   if (tool === 'codex' || tool === 'opencode') {
     // the patch has been seen under "command"; "patchText", "input", "patch" and a bare string cost nothing to accept as well
     const text = typeof input === 'string' ? input : [input.command, input.patchText, input.input, input.patch].find(v => typeof v === 'string');
@@ -36,7 +39,7 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
 }
 
 /** Tools that write files and must therefore name them: a call that names none is refused rather than let through. */
-const isEditTool = (tool: Tool, name: unknown) => (tool === 'claude' ? EDIT_TOOLS.has(String(name)) : tool === 'opencode' ? OPENCODE_EDIT_TOOLS.has(String(name)) || name === 'apply_patch' : name === 'apply_patch');
+const isEditTool = (tool: Tool, name: unknown) => (tool === 'claude' ? EDIT_TOOLS.has(String(name)) : tool === 'pi' ? PI_EDIT_TOOLS.has(String(name)) : tool === 'opencode' ? OPENCODE_EDIT_TOOLS.has(String(name)) || name === 'apply_patch' : name === 'apply_patch');
 
 const isShell = (name: unknown) => /^(bash|powershell|shell|exec|exec_command|local_shell)$/i.test(String(name ?? ''));
 
@@ -59,7 +62,7 @@ function ownCopy(ctx: Ctx, abs: string, tool: Tool): string {
   const parts = path.relative(ctx.project ?? ctx.cwd, abs).split(path.sep), repoName = path.basename(ctx.worktree);
   // P/<repoName>/... is the main checkout; P/chord/agents/<other>/<repoName>/... another agent's worktree
   const tail = parts[0] === repoName ? parts.slice(1) : parts[0] === 'chord' && parts[1] === 'agents' && parts[3] === repoName ? parts.slice(4) : [];
-  return tool === 'codex' ? `${repoDirOf(ctx)}/${tail.join('/')}` : path.join(ctx.worktree, ...tail); // Claude's and OpenCode's editors want absolute paths
+  return tool === 'codex' ? `${repoDirOf(ctx)}/${tail.join('/')}` : path.join(ctx.worktree, ...tail); // Claude's, OpenCode's and pi's editors want absolute paths
 }
 
 /** The path with links resolved, so a write through a junction or symlink is judged by where it lands. The file may

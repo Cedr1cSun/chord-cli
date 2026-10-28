@@ -125,7 +125,7 @@ test('nextAction: a stop request wins over unread messages and follows the same 
   assert.equal(nextAction(stopping, 107_000), null);
   assert.equal(nextAction({ ...stopping, echoed: false }, 107_000), null);
   assert.equal(nextAction(stopping, 131_000), 'stop'); // retyped only once the first attempt has expired
-  assert.deepEqual(EXIT_COMMAND, { claude: '/exit', codex: '/quit', opencode: '/exit' });
+  assert.deepEqual(EXIT_COMMAND, { claude: '/exit', codex: '/quit', opencode: '/exit', pi: '/quit' });
   assert.ok(exitDeclined('\x1b[1m Background work is running\x1b[0m\n The following will stop when you exit: shell\n 1. Exit and stop tasks\n 2. Stay'));
   assert.ok(exitDeclined('The following\x1b[2C will stop\nwhen you   exit'));
   assert.ok(!exitDeclined('Resume this session with:\nclaude --resume 398b26ab'));

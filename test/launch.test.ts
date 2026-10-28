@@ -302,6 +302,19 @@ test('the setup command from <project>/chord/config.json runs once per new workt
   assert.ok(prepare('codex', proj, 'three').worktree); // no setup configured: nothing runs
 });
 
+test('pi gets chord\'s extension on the command line and the hook and server paths in the environment', () => {
+  const proj = tempProject();
+  const l = prepare('pi', proj, 'p');
+  assert.equal(l.args[0], '-e');
+  assert.match(l.args[1], /[\\/]pi[\\/]extensions[\\/]chord\.(ts|js)$/);
+  assert.equal(fs.existsSync(l.args[1]), true);
+  assert.equal(l.args.length, 2); // the user's own arguments go through untouched
+  assert.match(l.env.CHORD_HOOKS, /hooks\.(ts|js)$/); // the extension spawns this for every event
+  assert.match(l.env.CHORD_SERVE, /serve\.(ts|js)$/); // and registers this as the MCP server
+  assert.equal(l.env.CHORD_TOOL, 'pi');
+  assert.equal(l.env.CHORD_AGENT_ID, 'p');
+});
+
 test('opencode gets chord through the environment: inline config with the MCP server and the plugin', () => {
   const proj = tempProject();
   const l = prepare('opencode', proj, 'oc');

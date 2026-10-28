@@ -274,6 +274,20 @@ test('the deny reason finds the own copy when another agent is named like the re
   assert.match(other.hookSpecificOutput.permissionDecisionReason, /edit your own copy chord\/agents\/a\/repo\/src\/y\.ts instead/);
 });
 
+test('pi: edit and write name their file as path, relative to the project folder or absolute', () => {
+  assert.deepEqual(filesTouched('pi', { tool_name: 'edit', tool_input: { path: 'chord/agents/a/repo/x.ts', edits: [] } }), ['chord/agents/a/repo/x.ts']);
+  assert.deepEqual(filesTouched('pi', { tool_name: 'write', tool_input: { path: '/P/chord/agents/a/repo/y.ts', content: '' } }), ['/P/chord/agents/a/repo/y.ts']);
+  assert.deepEqual(filesTouched('pi', { tool_name: 'bash', tool_input: { command: 'ls' } }), []);
+  const d = db.openDb(':memory:');
+  const P = process.platform === 'win32' ? 'D:\\P' : '/P';
+  const cwd = path.join(P, 'chord', 'agents', 'a');
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
+  db.addAgent(d, { name: 'a', tool: 'pi', pid: process.pid, cwd });
+  assert.equal((handleHook(ctx, 'pi', 'pre-tool-use', { tool_name: 'edit', tool_input: {} }) as any).hookSpecificOutput.permissionDecision, 'deny'); // names no file
+  const main = handleHook(ctx, 'pi', 'pre-tool-use', { tool_name: 'write', tool_input: { path: 'repo/src/y.ts', content: '' } }) as any;
+  assert.match(main.hookSpecificOutput.permissionDecisionReason, /edit your own copy .*chord[\\/]agents[\\/]a[\\/]repo[\\/]src[\\/]y\.ts instead/); // absolute, as pi's editor wants it
+});
+
 test('OpenCode: edit, write and apply_patch name their files; relative paths and workdir resolve against the project folder', () => {
   assert.deepEqual(filesTouched('opencode', { tool_name: 'edit', tool_input: { filePath: '/P/chord/agents/a/repo/x.ts', oldString: 'a', newString: 'b' } }), ['/P/chord/agents/a/repo/x.ts']);
   assert.deepEqual(filesTouched('opencode', { tool_name: 'write', tool_input: { filePath: '/P/chord/agents/a/repo/y.ts', content: '' } }), ['/P/chord/agents/a/repo/y.ts']);

@@ -296,6 +296,12 @@ export interface Launch {
 
 const fwd = (p: string) => p.split(path.sep).join('/');
 
+/** pi loads chord's extension beside this module from the command line, so the user's own ~/.pi is not touched. The
+ *  extension runs inside pi's process and spawns `node $CHORD_HOOKS <event>` for each event, and registers the MCP
+ *  server `$CHORD_SERVE` itself (pi's own MCP support), so it needs nothing from chord but those two paths and the
+ *  CHORD_* variables, which it inherits. */
+export const piArgs = () => ['-e', path.join(path.dirname(HOOKS_TS), 'pi', 'extensions', `chord${path.extname(HOOKS_TS)}`)];
+
 /** Resolve everything for `chord <tool> [--name x] [tool args...]` without spawning. Throws NeedsRestructure. */
 export function prepare(tool: Tool, cwd: string, override?: string): Launch {
   const project = resolveProject(cwd);
@@ -328,6 +334,7 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
       if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it or the project folder in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
     }
     if (tool === 'opencode') return { name, project, cwd: ws, worktree, dbFile, env: opencodeEnv(env), args: [] };
+    if (tool === 'pi') return { name, project, cwd: ws, worktree, dbFile, env: { ...env, CHORD_HOOKS: HOOKS_TS, CHORD_SERVE: SERVE_TS }, args: piArgs() };
     return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env, [path.join(project.repo, '.git')]) };
   } catch (e) {
     db.setStatus(d, name, 'offline'); // the launch failed: the name is free again

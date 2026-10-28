@@ -256,7 +256,9 @@ export function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] 
   const base = main && main !== 'HEAD' ? gitOut(ctx.worktree, 'merge-base', 'HEAD', main).trim() : '';
   const committed = base ? gitOut(ctx.worktree, 'diff', '--name-only', '-z', base, 'HEAD').split('\0').filter(Boolean) : [];
   const touched = [...new Set([...modified.filter(Boolean), ...untracked, ...renameSources(status), ...committed])];
-  const unclaimed = touched.map(f => normFile(ctx, path.join(ctx.worktree, f))).filter(f => !mine.has(f.toLowerCase()));
+  // a folded untracked directory counts as claimed when a claim names a file inside it
+  const claimed = (f: string) => mine.has(f) || [...mine].some(m => m.startsWith(f + '/'));
+  const unclaimed = touched.map(f => normFile(ctx, path.join(ctx.worktree, f))).filter(f => !claimed(f.toLowerCase()));
   const shown = unclaimed.slice(0, MAX_WARNED_FILES);
   if (unclaimed.length) out.push(`[chord] The shell command changed files you have not claimed: ${shown.join(', ')}${unclaimed.length > shown.length ? ` and ${unclaimed.length - shown.length} more` : ''}. Claim them now with claim(), or revert the change.`);
   const cmd = typeof payload.tool_input?.command === 'string' ? payload.tool_input.command : '';

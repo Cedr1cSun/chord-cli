@@ -1,16 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as db from '../src/db.ts';
 import { ensureWorktree } from '../src/launch.ts';
+import { git } from './helpers/git.ts';
 
 const helper = fileURLToPath(new URL('./helpers/finish-one.ts', import.meta.url));
 for (const [k, v] of Object.entries({ GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' })) process.env[k] ??= v;
-const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
 
 test('five agents finishing at the same moment all land on main', async () => {
   const proj = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-race-')));

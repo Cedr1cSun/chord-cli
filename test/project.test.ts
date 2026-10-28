@@ -1,16 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ensureWorktree } from '../src/launch.ts';
 import { NeedsRestructure, resolveProject, restructure, restructureBlocker, suggestedRepoName, validateRepoName } from '../src/project.ts';
+import { git, initRepo, tempProject, tmp } from './helpers/git.ts';
 
-const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
-const tmp = (p: string) => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), p)));
-function initRepo(dir: string) { fs.mkdirSync(dir, { recursive: true }); git(dir, 'init', '-q', '-b', 'main'); git(dir, 'commit', '-q', '--allow-empty', '-m', 'init'); }
-function tempProject() { const proj = tmp('chord-proj-'); initRepo(path.join(proj, 'repo')); return proj; }
 process.env.CHORD_HOME = tmp('chord-home-');
 
 test('resolveProject finds the enclosing project from the main checkout, a worktree and their subdirectories', () => {

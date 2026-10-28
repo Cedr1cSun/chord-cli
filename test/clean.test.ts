@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,8 +8,8 @@ import { clean } from '../src/clean.ts';
 import * as db from '../src/db.ts';
 import { ensureWorktree, workspacePath } from '../src/launch.ts';
 import { resolveProject } from '../src/project.ts';
+import { git } from './helpers/git.ts';
 
-const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
 process.env.CHORD_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-home-'));
 
 test('clean removes merged offline agents, keeps unmerged ones unless forced, never touches online ones', () => {

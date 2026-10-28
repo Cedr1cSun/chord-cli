@@ -17,6 +17,7 @@ const USAGE = [
   '',
   '  chord claude [--name <agent>] ...   start a Claude Code agent here',
   '  chord codex [--name <agent>] ...    start a Codex agent here',
+  '  chord opencode [--name <agent>] ... start an OpenCode agent here',
   "  chord resume <agent> ...            reopen an agent's conversation",
   '  chord ls [--all]                    agents and claims (--all: every project)',
   '  chord messages [agent] [-n N]       message history, latest N',
@@ -147,7 +148,8 @@ export function resumeArgv(d: ReturnType<typeof db.openDb>, name: string, more: 
   const a = db.getAgent(d, name);
   if (!a) throw new Error(`no such agent: ${name}`);
   if (!a.session_id) throw new Error(`no recorded conversation for ${name}; start it again with chord ${a.tool} --name ${name}`);
-  return [a.tool, '--name', a.name, ...(a.tool === 'codex' ? ['resume', a.session_id] : ['--resume', a.session_id]), ...more];
+  const reopen = ({ claude: ['--resume', a.session_id], codex: ['resume', a.session_id], opencode: ['-s', a.session_id] } as Record<Tool, string[]>)[a.tool as Tool];
+  return [a.tool, '--name', a.name, ...reopen, ...more];
 }
 
 /** [agent] and -n N for the history commands. */
@@ -183,6 +185,8 @@ export function takeSettings(rest: string[]): Record<string, any> | undefined {
 export function refuseHookKillers(tool: Tool, rest: string[]): void {
   if (tool === 'claude') {
     for (const flag of ['--bare', '--safe-mode', '--disable-all-hooks']) if (rest.includes(flag)) throw new Error(`${flag} switches off the hooks chord relies on; run plain claude for that`);
+  } else if (tool === 'opencode') {
+    if (rest.includes('--pure')) throw new Error('--pure switches off the plugin chord relies on; run plain opencode for that');
   } else {
     for (let i = 0; i < rest.length; i++) {
       const v = rest[i] === '-c' || rest[i] === '--config' ? rest[i + 1] ?? '' : rest[i].startsWith('--config=') ? rest[i].slice(9) : '';
@@ -261,7 +265,7 @@ async function main(argv: string[]): Promise<number> {
     if (rest.includes('--all')) { process.stdout.write(lsAll(cols)); return 0; }
     let project;
     try { project = resolveProject(process.cwd()); } catch (e) {
-      if (e instanceof NeedsRestructure) throw new Error(`${e.message}; run \`chord claude\` or \`chord codex\` here to set the project up, or \`chord ls --all\` for every project`);
+      if (e instanceof NeedsRestructure) throw new Error(`${e.message}; run \`chord claude\`, \`chord codex\` or \`chord opencode\` here to set the project up, or \`chord ls --all\` for every project`);
       throw new Error(`${(e as Error).message}; use \`chord ls --all\` for every project on this machine`);
     }
     const file = db.dbPath(project.stateDir);
@@ -288,7 +292,7 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(cleanReport(clean(project, db.openDb(file), names, force)));
     return 0;
   }
-  if (cmd !== 'claude' && cmd !== 'codex') { process.stderr.write(`chord: unknown command "${cmd}"\n${USAGE}`); return 2; }
+  if (cmd !== 'claude' && cmd !== 'codex' && cmd !== 'opencode') { process.stderr.write(`chord: unknown command "${cmd}"\n${USAGE}`); return 2; }
   const name = takeName(rest);
   const userSettings = cmd === 'claude' ? takeSettings(rest) : undefined;
   refuseHookKillers(cmd as Tool, rest);

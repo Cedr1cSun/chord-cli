@@ -139,7 +139,7 @@ const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd,
 const gitOk = (cwd: string, ...args: string[]) => { try { git(cwd, ...args); return true; } catch { return false; } };
 
 const stderrOf = (e: unknown) => ((e as { stderr?: string }).stderr ?? (e as Error).message).trim();
-const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const { sleepSync } = db;
 
 /** Tracked files with real changes, staged or not, ignoring line-ending differences and whatever happens inside
  *  submodules; '' when clean. */

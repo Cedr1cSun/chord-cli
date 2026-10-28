@@ -73,7 +73,7 @@ export function openDb(file: string): DatabaseSync {
     try { setup(db); break; }
     catch (e) {
       if (attempt >= 50 || !/database is locked/.test((e as Error).message)) throw e;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+      sleepSync(100);
     }
   }
   return db;

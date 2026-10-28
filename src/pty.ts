@@ -198,11 +198,15 @@ export function nextAction(s: { status: string | undefined; unread: boolean; sto
 /** Codex reports its state to the terminal as OSC 7501 ("state=idle" / "state=working", and "state=done" when a turn
  *  ends, as of 0.164); Claude Code does not. */
 export function oscState(chunk: string): 'idle' | 'busy' | null {
-  const m = /\x1b\]7501;state=(\w+)/g;
+  const m = /\x1b\]7501;state=(\w+)[^\x07\x1b]*(?:\x07|\x1b\\)/g; // complete reports only: "state=id" cut off by a chunk is not "busy"
   let last: 'idle' | 'busy' | null = null;
   for (const x of chunk.matchAll(m)) last = x[1] === 'idle' || x[1] === 'done' ? 'idle' : 'busy';
   return last;
 }
+
+/** An OSC sequence a chunk ends in the middle of, to prepend to the next chunk; '' when the chunk ends cleanly, so a
+ *  complete report is never read twice. */
+export const oscTail = (chunk: string): string => /\x1b\][^\x07\x1b]*$/.exec(chunk)?.[0] ?? '';
 
 /** A database call from the wrapper's own callbacks. One that fails (a lock held past busy_timeout while the disk
  *  stalls) is logged and dropped: thrown from a timer or a PTY callback it would end the wrapper and the agent in
@@ -235,7 +239,7 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
     if (tool === 'codex') { // the hooks set status too; the terminal report catches turns the hooks miss (Esc, untrusted hooks)
       const state = oscState(outTail + x);
       if (state) tolerant('terminal state report', () => db.setStatus(d, launch.name, state));
-      outTail = x.slice(-64);
+      outTail = oscTail(x);
     }
   });
   const gate = new InputGate();

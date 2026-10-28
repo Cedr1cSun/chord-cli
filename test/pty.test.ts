@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import pty from 'node-pty';
-import { EXIT_COMMAND, InputGate, NUDGE, TitleFilter, decodeKeys, ensureSpawnHelper, exitDeclined, nextAction, oscState, resolveCommand, stripAnsi, titleFor, titleSequence, typedEchoed, whereIs } from '../src/pty.ts';
+import { EXIT_COMMAND, InputGate, NUDGE, TitleFilter, decodeKeys, ensureSpawnHelper, exitDeclined, nextAction, oscState, oscTail, resolveCommand, stripAnsi, titleFor, titleSequence, typedEchoed, whereIs } from '../src/pty.ts';
 
 const key = (uc: number, down = 1, ctrl = 0) => `\x1b[${uc};0;${uc};${down};${ctrl};1_`;
 
@@ -157,11 +157,17 @@ test('typedEchoed sees the text through re-rendering, wrapping and escape sequen
   assert.equal(stripAnsi('a\x1b]7501;state=idle:app=codex\x1b\\b\x1b[31mc\x1b[0m\x1bPq..\x1b\\d\x1b(Be'), 'abcde');
 });
 
-test('oscState reads the last Codex state report in a chunk', () => {
+test('oscState reads the last complete Codex state report in a chunk; oscTail keeps only an unfinished one', () => {
   assert.equal(oscState('text\x1b]7501;state=working:app=codex\x1b\\more'), 'busy');
   assert.equal(oscState('\x1b]7501;state=working:app=codex\x1b\\..\x1b]7501;state=idle:app=codex\x1b\\'), 'idle');
   assert.equal(oscState('no report here'), null);
   assert.equal(oscState('\x1b]7501;state=working:app=codex\x07\x1b]7501;state=done:app=codex\x07'), 'idle'); // a finished turn, as Codex 0.164 reports it
+  assert.equal(oscState('\x1b]7501;state=id'), null); // cut off by the chunk boundary: not "busy" for a moment
+  // the tail carried into the next chunk holds an unfinished sequence only, so a complete report is read once
+  assert.equal(oscTail('abc\x1b]7501;state=id'), '\x1b]7501;state=id');
+  assert.equal(oscTail('..\x1b]7501;state=idle:app=codex\x1b\\xyz'), '');
+  assert.equal(oscState(oscTail('\x1b]7501;state=idle:app=codex\x07') + 'plain output'), null);
+  assert.equal(oscState(oscTail('\x1b]7501;state=id') + 'le:app=codex\x07'), 'idle');
 });
 
 test('whereIs scans PATH without where.exe', { skip: process.platform !== 'win32' }, () => {

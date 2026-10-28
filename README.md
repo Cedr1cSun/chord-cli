@@ -30,7 +30,7 @@ One repository, as many agents as you care to start. Each agent works in its own
 
 ## 📊 Benchmark
 
-On [CooperBench](https://github.com/cooperbench/CooperBench) two agents each take one feature in the same repository, and a pair passes when the merged result passes the tests of both features. The gpt-6-luna figures cover the pairs where both sides finished.
+On [CooperBench](https://github.com/cooperbench/CooperBench) two agents each take one feature in the same repository, and a pair passes when the merged result passes the tests of both features.
 
 | chord vs | gpt-6.1-sol | gpt-6-luna |
 |---|---|---|

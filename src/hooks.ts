@@ -33,13 +33,13 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
 }
 
 /** Tools that write files and must therefore name them: a call that names none is refused rather than let through. */
-export const isEditTool = (tool: Tool, name: unknown) => (tool === 'claude' ? EDIT_TOOLS.has(String(name)) : name === 'apply_patch');
+const isEditTool = (tool: Tool, name: unknown) => (tool === 'claude' ? EDIT_TOOLS.has(String(name)) : name === 'apply_patch');
 
 const isShell = (name: unknown) => /^(bash|powershell|shell|exec|exec_command|local_shell)$/i.test(String(name ?? ''));
 
 const hhmm = (t: number) => new Date(t).toTimeString().slice(0, 5); // local time
 
-export function formatMessages(ms: db.Message[]): string {
+function formatMessages(ms: db.Message[]): string {
   return ms.map(m => `[chord] message from ${m.sender} at ${hhmm(m.created_at)}:\n${m.body}`).join('\n\n');
 }
 
@@ -206,7 +206,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
 
 /** The old names of renames in NUL-separated status output: a rename changes that path too, and diff --name-only
  *  lists only the new one. */
-export function renameSources(statusZ: string): string[] {
+function renameSources(statusZ: string): string[] {
   const parts = statusZ.split('\0');
   const out: string[] = [];
   for (let i = 0; i < parts.length; i++) {
@@ -225,7 +225,7 @@ const gitOut = (cwd: string, ...args: string[]): string => {
 
 /** What a shell command may have done behind chord's back, according to git: edits or commits to unclaimed files,
  *  and changes to the main checkout. */
-export function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
+function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
   const out: string[] = [];
   const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
   // Everything the worktree differs in from where its branch left main, committed or not: a commit made from the

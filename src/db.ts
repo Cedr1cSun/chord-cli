@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export type Status = 'busy' | 'idle' | 'offline';
+type Status = 'busy' | 'idle' | 'offline';
 
 export interface Agent {
   name: string;
@@ -30,7 +30,7 @@ export interface Claim {
   created_at: number;
 }
 
-export type MessageKind = 'message' | 'notice';
+type MessageKind = 'message' | 'notice';
 
 export interface Message {
   id: number;
@@ -310,7 +310,7 @@ export function releaseAll(db: DatabaseSync, agent: string, why = 'released'): v
   for (const f of files) addEvent(db, agent, 'release', f, why);
 }
 
-export type EventKind = 'claim' | 'release' | 'merge' | 'conflict' | 'merge-failed';
+type EventKind = 'claim' | 'release' | 'merge' | 'conflict' | 'merge-failed';
 export interface Event { id: number; at: number; agent: string; kind: EventKind; file: string | null; detail: string | null }
 
 /** Append-only history of claims, releases and merges, for `chord events`. */
@@ -367,7 +367,7 @@ export function send(db: DatabaseSync, sender: string, recipients: string[], bod
 }
 
 /** Roughly what a hook may attach without the tool truncating it (Codex caps additionalContext near 2500 tokens). */
-export const DELIVERY_BUDGET_CHARS = 6000;
+const DELIVERY_BUDGET_CHARS = 6000;
 
 /** Unread messages for `recipient`, oldest first, marked read as they are returned. Stops after `budget`
  *  characters (always at least one message) so a flood is delivered in several rounds instead of truncated. */

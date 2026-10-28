@@ -42,7 +42,7 @@ export function encodeProjectPath(dir: string): string {
   return `${dir.replace(/[\\/:]/g, '-')}-${createHash('sha1').update(key).digest('hex').slice(0, 6)}`;
 }
 
-export const stateDirFor = (dir: string) => path.join(process.env.CHORD_HOME ?? path.join(os.homedir(), '.chord'), 'projects', encodeProjectPath(dir));
+const stateDirFor = (dir: string) => path.join(process.env.CHORD_HOME ?? path.join(os.homedir(), '.chord'), 'projects', encodeProjectPath(dir));
 
 /** A repository directory name chord can work with: a single path segment that is not chord's own directory. */
 export function validateRepoName(name: string): string | null {

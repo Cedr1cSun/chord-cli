@@ -30,7 +30,7 @@
 
 ## 📊 基准测试
 
-在 [CooperBench](https://github.com/cooperbench/CooperBench) 上，两个 agent 在同一个仓库里各做一个功能，合并后的结果通过两个功能的测试才算这一对通过。gpt-6-luna 的数字只算两边都做完的那些对。
+在 [CooperBench](https://github.com/cooperbench/CooperBench) 上，两个 agent 在同一个仓库里各做一个功能，合并后的结果通过两个功能的测试才算这一对通过。
 
 | chord 对比 | gpt-6.1-sol | gpt-6-luna |
 |---|---|---|

@@ -64,7 +64,7 @@ function req(args: Record<string, unknown>, key: string): string {
   return v;
 }
 
-/** Worktree-relative path with forward slashes, so the same file matches across worktrees. */
+/** Workspace-relative path with forward slashes (repo/src/x.ts), so the same file matches across agents' worktrees. */
 export function normFile(ctx: Ctx, file: string): string {
   return relativePath(ctx.cwd, path.resolve(ctx.cwd, file)).split(path.sep).join('/');
 }

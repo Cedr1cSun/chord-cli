@@ -94,7 +94,7 @@ test('sweep also kills agents whose heartbeat went stale, even when the pid is a
   const d = open();
   db.addAgent(d, { name: 'beating', tool: 'claude', pid: 1, cwd: '/', heartbeat: true });
   db.addAgent(d, { name: 'silent', tool: 'codex', pid: 2, cwd: '/', heartbeat: true });
-  db.addAgent(d, { name: 'nobeat', tool: 'codex', pid: 3, cwd: '/' }); // no heartbeat column: pid alone decides
+  db.addAgent(d, { name: 'nobeat', tool: 'codex', pid: 3, cwd: '/' }); // no heartbeat: pid alone decides
   const t = Date.now();
   d.prepare('update agents set heartbeat_at = ? where name = ?').run(t - db.HEARTBEAT_STALE_MS - 1, 'silent');
   assert.deepEqual(db.sweep(d, () => true, t), ['silent']);

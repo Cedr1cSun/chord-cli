@@ -65,6 +65,9 @@ test('post-tool-use handles renames and names with spaces or accents', () => {
   const text = out.hookSpecificOutput.additionalContext as string;
   assert.match(text, /renamed notes.txt/); assert.match(text, /(^|[ ,])notes.txt/); // both ends of a rename changed
   assert.match(text, /ünï cødé.txt/); assert.match(text, /, newdir[.,]/); assert.doesNotMatch(text, /inner\.md/); // an untracked directory is one entry, not every file in it
+  // a claim on a file inside a new directory covers that entry: the agent is not told to revert its own work
+  db.addClaim(ctx.db, { agent: 'a', file: 'newdir/inner.md', intent: 'x', kind: 'add' });
+  assert.doesNotMatch((handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Bash' }) as any).hookSpecificOutput.additionalContext, /newdir/);
 });
 
 test('post-tool-use names at most twenty unclaimed files and counts the rest', () => {

@@ -77,7 +77,8 @@ export function peers(ctx: Ctx) {
 
 // words that describe code rather than name it: "the parse function" and "parse tests" share only "parse"
 const NOT_SYMBOLS = new Set(['a', 'an', 'and', 'or', 'the', 'of', 'in', 'to', 'for', 'with', 'new', 'its', 'all', 'function', 'functions', 'method', 'methods', 'class', 'classes', 'test', 'tests', 'block', 'blocks', 'section', 'line', 'lines', 'file', 'helper', 'helpers', 'code', 'logic', 'docs', 'docstring']);
-const symbolSet = (s: string | null) => new Set((s ?? '').toLowerCase().match(/[a-z_$][\w$.]*/g)?.filter(w => !NOT_SYMBOLS.has(w)) ?? []);
+// "Parser.parse" names Parser and parse too: whoever holds either holds part of it
+const symbolSet = (s: string | null) => new Set((s ?? '').toLowerCase().match(/[a-z_$][\w$.]*/g)?.flatMap(w => [w, ...w.split('.')]).filter(w => w && !NOT_SYMBOLS.has(w)) ?? []);
 
 /** Two modify claims on one file that each name the functions or blocks they touch, with none in common, do not
  *  need to talk first. Anything less certain (no symbols on either side, or an add, delete or rename) does. */

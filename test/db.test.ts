@@ -215,6 +215,20 @@ console.log('ok');`);
   }
 });
 
+test('the wrapper takes over a reserved agent with its pid and first heartbeat, keeping messages and a stop request', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' }); // reserved by prepare, no heartbeat yet
+  db.send(d, 'peer', ['a'], 'arrived while the worktree was being set up');
+  db.requestStop(d, 'a');
+  db.setPid(d, 'a', 42);
+  db.heartbeat(d, 'a');
+  const a = db.getAgent(d, 'a')!;
+  assert.equal(a.pid, 42);
+  assert.ok(a.heartbeat_at! > 0);
+  assert.equal(db.hasUnread(d, 'a'), true);
+  assert.ok(a.stop_requested_at! > 0);
+});
+
 test('session id survives a relaunch and is replaced by the next session', () => {
   const d = open();
   db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });

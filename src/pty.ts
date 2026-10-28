@@ -219,7 +219,10 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
     name: 'xterm-256color', cols: process.stdout.columns || 120, rows: process.stdout.rows || 40, cwd: launch.project.dir, env, // the project folder: the tool then treats it as the project (same /resume list, CLAUDE.md, trust)
   });
   const d = db.openDb(launch.dbFile);
-  db.addAgent(d, { name: launch.name, tool, pid: term.pid, cwd: launch.cwd, worktree: launch.worktree, heartbeat: true });
+  // prepare registered the agent; the wrapper only takes it over (a fresh registration would drop messages that
+  // arrived during setup and a stop requested meanwhile)
+  db.setPid(d, launch.name, term.pid);
+  db.heartbeat(d, launch.name);
 
   let outTail = '', echoBuf = '', awaitingEcho = false, lastOutputAt = Date.now();
   const titles = new TitleFilter();

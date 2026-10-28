@@ -194,6 +194,17 @@ test('two modify claims naming disjoint symbols go ahead without talking; any sh
   assert.deepEqual(e.must_talk_to.map((o: any) => o.agent).sort(), ['a', 'b', 'c'], 'no symbols named: everyone earlier');
 });
 
+test('a dotted symbol overlaps with each of its parts: Parser.parse is not disjoint from Parser or parse', () => {
+  const { d, ctx, call } = setup();
+  db.addAgent(d, { name: 'c', tool: 'codex', pid: process.pid, cwd: '/wt/c' });
+  call('a', 'claim', { file: 'f.ts', intent: 'rework the class', kind: 'modify', symbols: 'Parser' });
+  d.prepare('update claims set created_at = created_at - 2000').run();
+  assert.deepEqual(call('b', 'claim', { file: 'f.ts', intent: 'fix one method', kind: 'modify', symbols: 'Parser.parse' }).must_talk_to.map((o: any) => o.agent), ['a']);
+  d.prepare('update claims set created_at = created_at - 1000 where agent != ?').run('c');
+  assert.deepEqual(call('c', 'claim', { file: 'f.ts', intent: 'rename parse', kind: 'modify', symbols: 'parse' }).must_talk_to.map((o: any) => o.agent), ['b']); // Parser alone is another name
+  assert.equal(canWrite(ctx('b'), 'f.ts').ok, false);
+});
+
 test('claimPath accepts the project-relative spelling of the own worktree', () => {
   const d = db.openDb(':memory:');
   const P = process.platform === 'win32' ? 'D:\\P' : '/P';

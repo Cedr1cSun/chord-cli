@@ -112,34 +112,28 @@ test('a peer who explained their scope before the latecomer claimed counts as ha
   assert.equal(canWrite(ctx('b'), 'f.ts').ok, true); // a's earlier note is the reply
 });
 
-test('claimPath accepts workspace-relative and repository-relative forms and refuses paths outside the workspace', async () => {
+test('claimPath takes absolute and repository-relative paths and refuses paths outside the workspace', async () => {
   const { claimPath } = await import('../src/tools.ts');
   const ctx: Ctx = { db: db.openDb(':memory:'), agent: 'a', cwd: '/P/chord/agents/a', worktree: '/P/chord/agents/a/repo' };
-  assert.equal(claimPath(ctx, 'repo/src/x.ts'), 'repo/src/x.ts');
   assert.equal(claimPath(ctx, 'src/x.ts'), 'repo/src/x.ts');
-  assert.equal(claimPath(ctx, 'repo'), 'repo');
   assert.equal(claimPath(ctx, '/P/chord/agents/a/repo/src/x.ts'), 'repo/src/x.ts');
   assert.equal(claimPath(ctx, 'notes.txt'), 'repo/notes.txt'); // bare names are repository files
   assert.throws(() => claimPath(ctx, '../verification/x.patch'), /outside your workspace/);
   assert.throws(() => claimPath(ctx, '/P/repo/src/x.ts'), /outside your workspace/);
-  // workspace == worktree (no repo subdirectory): everything is relative to it
-  const flat: Ctx = { db: ctx.db, agent: 'a', cwd: '/wt', worktree: '/wt' };
-  assert.equal(claimPath(flat, 'src/x.ts'), 'src/x.ts');
 });
 
-test('claimPath resolves a package named like the repository by what exists on disk', async () => {
+test('claimPath reads "<repo>/x" as a repository path, and says so when that spelling can only have meant the old one', async () => {
   const { claimPath } = await import('../src/tools.ts');
   const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
   const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-rich-')));
   const wt = path.join(ws, 'rich'); fs.mkdirSync(path.join(wt, 'rich'), { recursive: true });
   fs.writeFileSync(path.join(wt, 'rich', 'console.py'), ''); fs.writeFileSync(path.join(wt, 'README.md'), '');
   const ctx: Ctx = { db: db.openDb(':memory:'), agent: 'a', cwd: ws, worktree: wt };
-  assert.equal(claimPath(ctx, 'rich/console.py'), 'rich/rich/console.py'); // only the package file exists
-  assert.equal(claimPath(ctx, 'rich/README.md'), 'rich/README.md'); // only the workspace reading exists
-  assert.equal(claimPath(ctx, 'rich/new.py'), 'rich/new.py'); // neither exists: the workspace reading, as before
-  fs.writeFileSync(path.join(wt, 'console.py'), '');
-  assert.throws(() => claimPath(ctx, 'rich/console.py'), /ambiguous/); // both exist
-  assert.equal(claimPath(ctx, 'rich/rich/console.py'), 'rich/rich/console.py'); // the full path is never ambiguous
+  assert.equal(claimPath(ctx, 'rich/console.py'), 'rich/rich/console.py'); // the package file
+  assert.equal(claimPath(ctx, 'rich/new.py'), 'rich/rich/new.py'); // a new file in the package
+  // from the project folder "rich/README.md" is the main checkout's README; the repository has no rich/README.md but
+  // does have README.md, so the agent is told how to name its own copy instead of getting a claim on a phantom
+  assert.throws(() => claimPath(ctx, 'rich/README.md'), /no rich\/README\.md in the repository.*"README\.md".*chord\/agents\/<you>\/rich\/README\.md/);
 });
 
 test('a relaunched occupant must be told again: only both current sessions count', () => {
@@ -212,6 +206,6 @@ test('claimPath accepts the project-relative spelling of the own worktree', () =
   const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
   assert.equal(claimPath(ctx, 'chord/agents/a/repo/src/x.ts'), 'repo/src/x.ts');
   assert.equal(claimPath(ctx, 'src/x.ts'), 'repo/src/x.ts');
-  assert.equal(claimPath(ctx, 'repo/src/x.ts'), 'repo/src/x.ts'); // the workspace-relative spelling keeps working
+  assert.equal(claimPath(ctx, 'repo/src/x.ts'), 'repo/repo/src/x.ts'); // repository-relative like any other relative path: from the project folder "repo/" would be the main checkout
   assert.throws(() => claimPath(ctx, 'chord/agents/b/repo/src/x.ts'), /outside your workspace/);
 });

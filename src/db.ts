@@ -168,10 +168,11 @@ export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid:
   db.prepare('delete from messages where recipient = ? and read_at is null').run(a.name);
 }
 
-/** Forget an agent entirely: its claims and every message it sent or received. */
+/** Forget an agent: its claims, the messages to it and those it sent that have been read. What it said and nobody
+ *  has read yet stays: "f.ts is yours now" must still reach its recipient after the sender has been cleaned away. */
 export function removeAgent(db: DatabaseSync, name: string): void {
   db.prepare('delete from claims where agent = ?').run(name);
-  db.prepare('delete from messages where sender = ? or recipient = ?').run(name, name);
+  db.prepare('delete from messages where recipient = ? or (sender = ? and read_at is not null)').run(name, name);
   db.prepare('delete from agents where name = ?').run(name);
 }
 

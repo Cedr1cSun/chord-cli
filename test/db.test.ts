@@ -222,6 +222,19 @@ console.log('ok');`);
   }
 });
 
+test('removeAgent keeps what the agent said and nobody has read yet', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });
+  db.addAgent(d, { name: 'b', tool: 'codex', pid: 2, cwd: '/' });
+  db.send(d, 'a', ['b'], 'hello'); db.takeUnread(d, 'b', 1); // read
+  db.send(d, 'a', ['b'], 'f.ts is yours now, I am done'); // a's parting word, not yet read when a is cleaned away
+  db.send(d, 'b', ['a'], 'thanks');
+  db.removeAgent(d, 'a');
+  assert.equal(db.getAgent(d, 'a'), undefined);
+  assert.deepEqual(db.takeUnread(d, 'b').map(m => m.body), ['f.ts is yours now, I am done']);
+  assert.deepEqual(db.listMessages(d, 'a').map(m => m.body), ['f.ts is yours now, I am done']); // the read one and those to a are gone
+});
+
 test('heartbeatAll refreshes every online wrapper at once, so a machine waking up kills nobody', () => {
   const d = open();
   const t = Date.now();

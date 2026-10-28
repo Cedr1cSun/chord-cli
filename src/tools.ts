@@ -26,27 +26,27 @@ export function insideDir(dir: string, file: string): boolean {
 }
 
 /**
- * The claim key for a path an agent names: workspace-relative with forward slashes. Absolute paths and
- * paths starting with the repository directory are taken as given; a path from the project folder
- * (chord/agents/<name>/<repo>/...) is resolved there; any other relative path is read as
- * repository-relative (what agents working inside the repo naturally write). Paths outside the
+ * The claim key for a path an agent names: workspace-relative with forward slashes. Absolute paths are taken as
+ * given; a path from the project folder (chord/agents/<name>/<repo>/...) is resolved there; any other relative
+ * path is repository-relative (what agents working on the repository naturally write). Paths outside the
  * workspace are refused: chord cannot coordinate them.
  */
 export function claimPath(ctx: Ctx, file: string): string {
-  const repoDir = path.relative(ctx.cwd, ctx.worktree).split(path.sep).join('/');
   const asGiven = normFile(ctx, file);
   let abs: string;
   const fromProject = 'chord/agents/'; // the spelling from the tool's cwd, the project folder; another agent's folder then fails the check below
-  if (path.isAbsolute(file) || !repoDir || repoDir === '.' || /^\.\.(\/|$)/.test(asGiven)) abs = path.resolve(ctx.cwd, file);
+  if (path.isAbsolute(file) || /^\.\.(\/|$)/.test(asGiven)) abs = path.resolve(ctx.cwd, file);
   else if (ctx.project && asGiven.startsWith(fromProject)) abs = path.resolve(ctx.project, file);
-  else if (asGiven === repoDir || asGiven.startsWith(repoDir + '/')) {
-    // "rich/console.py" is the workspace path of the repository's console.py, or the repository path of a package
-    // named like the repository (rich/rich/console.py); whichever exists is meant, and both existing is ambiguous
-    const asWorkspace = path.resolve(ctx.cwd, file), asRepo = path.resolve(ctx.worktree, file);
-    const w = fs.existsSync(asWorkspace), r = fs.existsSync(asRepo);
-    if (w && r && asWorkspace !== asRepo) throw new Error(`${file} is ambiguous: it could be ${normFile(ctx, asWorkspace)} or ${normFile(ctx, asRepo)}; give the path from your workspace root`);
-    abs = r && !w ? asRepo : asWorkspace;
-  } else abs = path.resolve(ctx.worktree, file);
+  else {
+    abs = path.resolve(ctx.worktree, file);
+    // From the project folder "<repo>/x" is the main checkout's x. An agent naming its own copy that way, where the
+    // repository has no such path but x exists at its root, is told the spellings that reach it rather than given a
+    // claim on a file that is not there.
+    const repoName = path.basename(ctx.worktree), inner = asGiven.slice(repoName.length + 1);
+    if (asGiven.startsWith(`${repoName}/`) && !fs.existsSync(abs) && fs.existsSync(path.resolve(ctx.worktree, inner))) {
+      throw new Error(`there is no ${asGiven} in the repository, but it has ${inner}: name files relative to the repository root ("${inner}") or from the project folder ("chord/agents/<you>/${repoName}/${inner}")`);
+    }
+  }
   if (!insideDir(ctx.cwd, abs)) throw new Error(`${file} is outside your workspace; chord only coordinates files under ${ctx.cwd}`);
   return normFile(ctx, abs);
 }

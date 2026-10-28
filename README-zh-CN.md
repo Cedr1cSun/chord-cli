@@ -7,6 +7,7 @@
   <img alt="Node 24 or later" src="https://img.shields.io/badge/node-%E2%89%A5%2024-339933?logo=nodedotjs&logoColor=white">
   <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue">
   <a href="README.md"><img alt="English README" src="https://img.shields.io/badge/README-English-2F7CF6"></a>
+  <a href="https://www.bilibili.com/video/BV1Cns96REZ2/"><img alt="B 站视频" src="https://img.shields.io/badge/%E8%A7%86%E9%A2%91-B%E7%AB%99-00A1D6?logo=bilibili&logoColor=white"></a>
 </p>
 
 一个仓库，想开几个 agent 就开几个。每个 agent 在自己的 worktree 里干活；一块共享的看板记着谁占着哪个文件；想改别人占着的文件，先问，等对方回话；活干完提交了，一个调用把分支 rebase 到 main 并快进。空闲的 agent 一有消息就被叫醒，所以 agent 之间自己协商，你只管用大白话继续派活。

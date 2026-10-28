@@ -104,7 +104,9 @@ test('codexArgs is a list of -c TOML overrides', () => {
 test('prepare builds the workspace, the worktree inside it and the state dir', () => {
   const proj = tempProject();
   const l = prepare('codex', proj);
-  assert.equal(db.getAgent(db.openDb(l.dbFile), l.name)!.pid, process.pid); // reserved under chord's own pid until the tool starts
+  const row = db.getAgent(db.openDb(l.dbFile), l.name)!;
+  assert.equal(row.pid, process.pid); // reserved under chord's own pid until the tool starts
+  assert.equal(row.heartbeat_at, null); // nobody beats yet: setup or Codex's first start may take minutes, and a sweep must judge by pid alone
   assert.equal(l.cwd, path.join(proj, 'chord', 'agents', l.name));
   assert.equal(l.worktree, path.join(l.cwd, 'repo'));
   assert.ok(fs.existsSync(path.join(l.worktree, '.git')));

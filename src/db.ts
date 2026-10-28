@@ -174,6 +174,11 @@ export function removeAgent(db: DatabaseSync, name: string): void {
   db.prepare('delete from agents where name = ?').run(name);
 }
 
+/** The wrapper's take-over of the row prepare reserved: the tool's own pid replaces chord's. */
+export function setPid(db: DatabaseSync, name: string, pid: number): void {
+  db.prepare('update agents set pid = ? where name = ?').run(pid, name);
+}
+
 /** The tool's conversation id, from the hook payloads; a relaunch keeps the old one until the new session reports its own. */
 export function setSession(db: DatabaseSync, name: string, id: string): void {
   db.prepare('update agents set session_id = ? where name = ?').run(id, name);

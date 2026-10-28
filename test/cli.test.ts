@@ -84,8 +84,10 @@ test('resume relaunches an agent under its own tool, reopening its recorded conv
   db.addAgent(d, { name: 'a', tool: 'claude', pid: process.pid, cwd: '/' }); db.setSession(d, 'a', 'sid-a');
   db.addAgent(d, { name: 'b', tool: 'codex', pid: process.pid, cwd: '/' }); db.setSession(d, 'b', 'sid-b');
   db.addAgent(d, { name: 'c', tool: 'codex', pid: process.pid, cwd: '/' });
+  db.addAgent(d, { name: 'o', tool: 'opencode', pid: process.pid, cwd: '/' }); db.setSession(d, 'o', 'ses_o');
   assert.deepEqual(resumeArgv(d, 'a', ['go on']), ['claude', '--name', 'a', '--resume', 'sid-a', 'go on']);
   assert.deepEqual(resumeArgv(d, 'b', []), ['codex', '--name', 'b', 'resume', 'sid-b']);
+  assert.deepEqual(resumeArgv(d, 'o', []), ['opencode', '--name', 'o', '-s', 'ses_o']);
   assert.throws(() => resumeArgv(d, 'c', []), /no recorded conversation for c; start it again with chord codex --name c/);
   assert.throws(() => resumeArgv(d, 'zz', []), /no such agent: zz/);
 });
@@ -150,7 +152,8 @@ test('takeSettings lifts the user --settings out of the tool arguments; hook-kil
   assert.throws(() => refuseHookKillers('claude', ['--bare']), /switches off the hooks/);
   assert.throws(() => refuseHookKillers('codex', ['-c', 'hooks.PreToolUse=[]']), /replace chord's own hooks/);
   assert.throws(() => refuseHookKillers('codex', ['--config=mcp_servers.chord.command="x"']), /replace chord's own hooks/);
-  refuseHookKillers('claude', ['--model', 'opus']); refuseHookKillers('codex', ['-c', 'model="gpt-5"']); // fine
+  assert.throws(() => refuseHookKillers('opencode', ['--pure']), /switches off the plugin/);
+  refuseHookKillers('claude', ['--model', 'opus']); refuseHookKillers('codex', ['-c', 'model="gpt-5"']); refuseHookKillers('opencode', ['-m', 'anthropic/claude-sonnet-4-5']); // fine
   if (process.platform === 'win32') {
     assert.throws(() => refuseHookKillers('codex', ['-s', 'workspace-write']), /sandbox cannot run chord's hooks on Windows/);
     assert.throws(() => refuseHookKillers('codex', ['--sandbox=read-only']), /sandbox/);

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import * as db from '../src/db.ts';
 import { handle } from '../src/mcp.ts';
 import { tools } from '../src/tools.ts';
@@ -19,6 +20,7 @@ test('initialize, ping, tools/list, unknown method, notification', () => {
   const t = tools({ db: db.openDb(':memory:'), agent: 'a', cwd: '/a', worktree: '/a' });
   const init = handle(t, { jsonrpc: '2.0', id: 0, method: 'initialize', params: {} }) as any;
   assert.equal(init.result.serverInfo.name, 'chord');
+  assert.equal(init.result.serverInfo.version, JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
   assert.ok(init.result.capabilities.tools);
   assert.deepEqual((handle(t, { jsonrpc: '2.0', id: 1, method: 'ping' }) as any).result, {});
   const names = (handle(t, { jsonrpc: '2.0', id: 2, method: 'tools/list' }) as any).result.tools.map((x: any) => x.name);

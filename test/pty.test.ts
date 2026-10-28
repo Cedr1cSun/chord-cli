@@ -125,7 +125,7 @@ test('nextAction: a stop request wins over unread messages and follows the same 
   assert.equal(nextAction(stopping, 107_000), null);
   assert.equal(nextAction({ ...stopping, echoed: false }, 107_000), null);
   assert.equal(nextAction(stopping, 131_000), 'stop'); // retyped only once the first attempt has expired
-  assert.deepEqual(EXIT_COMMAND, { claude: '/exit', codex: '/quit' });
+  assert.deepEqual(EXIT_COMMAND, { claude: '/exit', codex: '/quit', opencode: '/exit' });
   assert.ok(exitDeclined('\x1b[1m Background work is running\x1b[0m\n The following will stop when you exit: shell\n 1. Exit and stop tasks\n 2. Stay'));
   assert.ok(exitDeclined('The following\x1b[2C will stop\nwhen you   exit'));
   assert.ok(!exitDeclined('Resume this session with:\nclaude --resume 398b26ab'));
@@ -185,6 +185,8 @@ test('resolveCommand unwraps npm, pnpm and yarn .cmd shims on windows', { skip: 
   const pnpm = '@SETLOCAL\r\nnode "%~dp0\\node_modules\\x\\bin\\x.js" %*\r\n';
   assert.deepEqual(resolveCommand('x', () => pnpm, () => 'C:\\p\\x.cmd').args, ['C:\\p\\node_modules\\x\\bin\\x.js']);
   assert.deepEqual(resolveCommand('claude', () => '', () => 'C:\\bin\\claude.exe'), { file: 'C:\\bin\\claude.exe', args: [] });
+  const exe = '@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n"%dp0%\\node_modules\\opencode-ai\\bin\\opencode.exe"   %*\r\n'; // opencode-ai wraps a native binary, not a script
+  assert.deepEqual(resolveCommand('opencode', () => exe, () => 'C:\\npm\\opencode.cmd'), { file: 'C:\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe', args: [] });
   assert.throws(() => resolveCommand('nope', () => '', () => undefined), /not found/);
 });
 

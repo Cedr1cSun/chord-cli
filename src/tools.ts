@@ -91,7 +91,9 @@ export function disjointEdits(a: db.Claim, b: db.Claim): boolean {
 /** Online agents who claimed `file` before `mine` did, split into those `mine` overlaps and must talk to and those
  *  editing other parts of it. */
 function earlierOccupants(ctx: Ctx, mine: db.Claim): { overlap: db.Claim[]; elsewhere: db.Claim[] } {
-  const before = (c: db.Claim) => c.created_at < mine.created_at || (c.created_at === mine.created_at && c.rid < mine.rid);
+  // by rowid, which the insert gets under the write lock, not by the timestamp read before waiting for it: two
+  // agents claiming at once would otherwise each see the other as later and neither would talk first
+  const before = (c: db.Claim) => c.rid < mine.rid;
   const all = db.claimsFor(ctx.db, mine.file).filter(c => c.agent !== ctx.agent && before(c) && db.getAgent(ctx.db, c.agent)?.status !== 'offline');
   return { overlap: all.filter(c => !disjointEdits(c, mine)), elsewhere: all.filter(c => disjointEdits(c, mine)) };
 }

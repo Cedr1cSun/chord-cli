@@ -8,7 +8,7 @@ import { EXIT_COMMAND, InputGate, NUDGE, TitleFilter, decodeKeys, ensureSpawnHel
 
 const key = (uc: number, down = 1, ctrl = 0) => `\x1b[${uc};0;${uc};${down};${ctrl};1_`;
 
-test('InputGate holds while a draft is being typed and releases only on Enter or Esc, however long the user takes', () => {
+test('InputGate holds while a draft is being typed and releases only on Enter or Ctrl+U, however long the user takes', () => {
   const g = new InputGate();
   assert.equal(g.clear(), true);
   g.onUserInput('hel');

@@ -17,7 +17,7 @@ function setup() {
   return { d, ctx, call };
 }
 
-test('normFile makes paths worktree-relative with forward slashes', () => {
+test('normFile makes paths workspace-relative with forward slashes', () => {
   const ctx: Ctx = { db: db.openDb(':memory:'), agent: 'a', cwd: '/wt/a', worktree: '/wt/a' };
   assert.equal(normFile(ctx, 'src/x.ts'), 'src/x.ts');
   assert.equal(normFile(ctx, '/wt/a/src/x.ts'), 'src/x.ts');

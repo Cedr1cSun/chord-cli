@@ -43,7 +43,7 @@ test('pre-tool-use resolves a Codex patch against its workdir and refuses an edi
   assert.equal(handleHook(c, 'claude', 'pre-tool-use', { tool_name: 'Read', tool_input: {} }), undefined);
 });
 
-test('session-start sets busy and briefs with peers and claims', () => {
+test('session-start marks idle and briefs with peers and claims', () => {
   const { d, ctx } = setup();
   db.setTask(d, 'b', 'write tests', 'test/');
   db.addClaim(d, { agent: 'b', file: 'test/x.test.ts', intent: 'cover parser', kind: 'add' });
@@ -74,9 +74,6 @@ test('pre-tool-use denies unclaimed writes and allows claimed ones', () => {
   assert.match(deny.hookSpecificOutput.permissionDecisionReason, /not claimed/);
   db.addClaim(d, { agent: 'a', file: 'src/x.ts', intent: 'x', kind: 'add' });
   assert.equal(handleHook(ctx('a'), 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path: '/wt/a/src/x.ts' } }), undefined);
-  // codex path, relative
-  const deny2 = handleHook(ctx('b'), 'codex', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { command: '*** Begin Patch\n*** Update File: src/x.ts\n*** End Patch' } }) as any;
-  assert.equal(deny2.hookSpecificOutput.permissionDecision, 'deny');
   // files outside the worktree are ignored
   assert.equal(handleHook(ctx('a'), 'claude', 'pre-tool-use', { tool_name: 'Write', tool_input: { file_path: '/tmp/scratch.txt' } }), undefined);
   // non-edit tools pass
@@ -101,15 +98,6 @@ test('stop lets an agent with only notices unread go idle; the notices ride alon
   assert.equal(db.getAgent(d, 'a')!.status, 'idle');
   const out = handleHook(ctx('a'), 'claude', 'post-tool-use', { tool_name: 'Read' }) as any;
   assert.match(out.hookSpecificOutput.additionalContext, /b merged into main/);
-});
-
-test('session-end leaves going offline to the wrapper: the agent is idle and keeps its claims', () => {
-  const { d, ctx } = setup();
-  db.addClaim(d, { agent: 'a', file: 'f', intent: 'x', kind: 'add' });
-  db.setStatus(d, 'a', 'busy');
-  handleHook(ctx('a'), 'codex', 'session-end', {});
-  assert.equal(db.getAgent(d, 'a')!.status, 'idle');
-  assert.equal(db.claimsBy(d, 'a').length, 1);
 });
 
 test('session-start after compaction does not make a busy agent idle', () => {

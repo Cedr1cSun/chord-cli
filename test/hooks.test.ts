@@ -217,9 +217,13 @@ test('a hook that throws denies the write instead of failing open', async () => 
   assert.equal(safeHandle(ctx, 'claude', 'stop', {}), undefined); // other events fail quietly
 });
 
-test('post-tool-use hands over messages that arrived mid-turn, after any tool', () => {
+test('post-tool-use hands over messages that arrived mid-turn, after any tool, but not to a subagent', () => {
   const { d, ctx } = setup();
   db.send(d, 'b', ['a'], 'heads up: I am touching the footer');
+  // a Claude Code subagent's tool calls fire the same hook with an agent_id; what it is told never reaches the main
+  // conversation, so the messages wait for a call of the agent's own
+  assert.equal(handleHook(ctx('a'), 'claude', 'post-tool-use', { tool_name: 'Read', agent_id: 'sub-1', agent_type: 'Explore' }), undefined);
+  assert.equal(db.hasUnread(d, 'a'), true);
   const out = handleHook(ctx('a'), 'claude', 'post-tool-use', { tool_name: 'Read' }) as any;
   assert.match(out.hookSpecificOutput.additionalContext, /message from b[\s\S]*heads up[\s\S]*arrived from other agents while you were working/);
   assert.equal(handleHook(ctx('a'), 'claude', 'post-tool-use', { tool_name: 'Read' }), undefined); // delivered once

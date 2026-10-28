@@ -378,11 +378,6 @@ export function hasUnread(db: DatabaseSync, recipient: string): boolean {
   return !!db.prepare(`select 1 from messages where recipient = ? and read_at is null and kind = 'message' limit 1`).get(recipient);
 }
 
-/** Has `sender` sent `recipient` a real message (not a notice) at or after `since`? */
-export function repliedSince(db: DatabaseSync, sender: string, recipient: string, since: number): boolean {
-  return firstMessageAt(db, sender, recipient, since) !== null;
-}
-
 /** When `sender` first messaged `recipient` at or after `since`; null if never. Notices do not count. */
 export function firstMessageAt(db: DatabaseSync, sender: string, recipient: string, since: number): number | null {
   const row = db.prepare("select min(created_at) t from messages where sender = ? and recipient = ? and kind = 'message' and created_at >= ?").get(sender, recipient, since) as { t: number | null };

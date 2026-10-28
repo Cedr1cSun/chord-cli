@@ -121,7 +121,7 @@ export function canWrite(ctx: Ctx, file: string, now = Date.now()): WriteCheck {
     const since = Math.max(myStart, db.getAgent(ctx.db, o.agent)?.started_at ?? 0);
     const askedAt = db.firstMessageAt(ctx.db, ctx.agent, o.agent, Math.max(since, mine.created_at - ASK_WINDOW_MS));
     if (askedAt === null) notAsked.push(o.agent);
-    else if (!db.repliedSince(ctx.db, o.agent, ctx.agent, since) && now - askedAt < REPLY_TIMEOUT_MS) waiting.push({ agent: o.agent, left: REPLY_TIMEOUT_MS - (now - askedAt) });
+    else if (db.firstMessageAt(ctx.db, o.agent, ctx.agent, since) === null && now - askedAt < REPLY_TIMEOUT_MS) waiting.push({ agent: o.agent, left: REPLY_TIMEOUT_MS - (now - askedAt) });
   }
   if (notAsked.length) {
     return { ok: false, reason: `${rel} is also claimed by ${notAsked.join(', ')}. Read their claim (claim tool output) and send each of them a message explaining what you intend to change before writing.` };

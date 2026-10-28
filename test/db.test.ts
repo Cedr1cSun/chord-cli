@@ -55,7 +55,7 @@ test('claims: multiple agents per file, release', () => {
   assert.deepEqual(db.allClaims(d).map(c => c.agent + ':' + c.file), ['a:f.ts']);
 });
 
-test('messages: send to many, take unread once, repliedSince', () => {
+test('messages: send to many, take unread once, firstMessageAt', () => {
   const d = open();
   db.send(d, 'a', ['b', 'c'], 'hello');
   assert.equal(db.hasUnread(d, 'b'), true);
@@ -63,9 +63,9 @@ test('messages: send to many, take unread once, repliedSince', () => {
   assert.deepEqual(got.map(m => [m.sender, m.body]), [['a', 'hello']]);
   assert.deepEqual(db.takeUnread(d, 'b'), []);
   assert.equal(db.hasUnread(d, 'c'), true);
-  assert.equal(db.repliedSince(d, 'a', 'b', got[0].created_at), true);
-  assert.equal(db.repliedSince(d, 'a', 'b', got[0].created_at + 1), false);
-  assert.equal(db.repliedSince(d, 'b', 'a', 0), false);
+  assert.equal(db.firstMessageAt(d, 'a', 'b', got[0].created_at), got[0].created_at);
+  assert.equal(db.firstMessageAt(d, 'a', 'b', got[0].created_at + 1), null);
+  assert.equal(db.firstMessageAt(d, 'b', 'a', 0), null);
 });
 
 test('claims on case-insensitive file systems ignore case', { skip: process.platform === 'linux' }, () => {

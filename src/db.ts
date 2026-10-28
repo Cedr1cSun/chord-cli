@@ -197,7 +197,7 @@ export function listAgents(db: DatabaseSync): Agent[] {
   return db.prepare('select * from agents order by started_at').all() as unknown as Agent[];
 }
 
-function pidAlive(pid: number): boolean {
+export function pidAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (e) {
     // EPERM: the process exists but we may not open it (e.g. from inside a sandbox). Only ESRCH means gone.
     const code = (e as NodeJS.ErrnoException).code;

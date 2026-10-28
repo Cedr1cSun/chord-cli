@@ -105,18 +105,24 @@ test('finish refuses when the main checkout is detached', () => {
   assert.throws(() => finish(ctx), /detached HEAD/);
 });
 
-test('withLock serialises callers and takes over a stale lock', async () => {
+test('withLock serialises callers and takes over a lock only from a dead or long-silent holder', async () => {
   const { withLock } = await import('../src/tools.ts');
   const lock = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-lock-')), 'l.lock');
   assert.equal(withLock(lock, () => 42), 42);
   assert.ok(!fs.existsSync(lock));
-  fs.writeFileSync(lock, '1'); // held by someone else, not stale
+  fs.writeFileSync(lock, String(process.pid)); // held by a live process (us), not stale
   assert.throws(() => withLock(lock, () => 0, 300, 60_000), /another agent has been finishing/);
   const old = new Date(Date.now() - 10 * 60_000);
-  fs.utimesSync(lock, old, old); // stale: taken over
-  assert.equal(withLock(lock, () => 'took over', 300, 60_000), 'took over');
+  fs.utimesSync(lock, old, old); // older than staleMs, holder alive: a long test run, still theirs
+  assert.throws(() => withLock(lock, () => 0, 300, 60_000 * 15), /another agent has been finishing/);
+  assert.equal(withLock(lock, () => 'took over', 300, 60_000), 'took over'); // older than staleMs: taken over
+  fs.writeFileSync(lock, '999999999'); // a holder whose process is gone: taken over at once, however fresh
+  assert.equal(withLock(lock, () => 'reclaimed', 300), 'reclaimed');
   assert.throws(() => withLock(lock, () => { throw new Error('boom'); }), /boom/);
   assert.ok(!fs.existsSync(lock)); // released even when fn throws
+  // a lock somebody else took over meanwhile is theirs: finishing must not unlink it
+  withLock(lock, () => fs.writeFileSync(lock, '999999999'));
+  assert.equal(fs.readFileSync(lock, 'utf8'), '999999999');
 });
 
 test('finish refuses a detached worktree and skips the merge when there is nothing new', () => {

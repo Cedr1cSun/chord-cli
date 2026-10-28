@@ -160,18 +160,24 @@ function gitRetry(cwd: string, ...args: string[]): string {
   }
 }
 
-/** Run fn holding an exclusive lock file. Waits up to `waitMs`; a lock older than `staleMs` is taken over. */
-export function withLock<T>(file: string, fn: () => T, waitMs = 240_000, staleMs = 180_000): T {
+/** Run fn holding an exclusive lock file that names its holder's pid. Waits up to `waitMs`. A lock whose holder is
+ *  gone is taken over at once; one older than `staleMs` as well, which must exceed the longest run of the project's
+ *  test command (ten minutes) so a live holder is never robbed of its lock. */
+export function withLock<T>(file: string, fn: () => T, waitMs = 240_000, staleMs = 15 * 60_000): T {
   const t0 = Date.now();
   for (;;) {
     try { fs.writeFileSync(file, String(process.pid), { flag: 'wx' }); break; } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      try { if (Date.now() - fs.statSync(file).mtimeMs > staleMs) { fs.unlinkSync(file); continue; } } catch { continue; }
+      try {
+        const holder = Number(fs.readFileSync(file, 'utf8'));
+        if ((holder > 0 && !db.pidAlive(holder)) || Date.now() - fs.statSync(file).mtimeMs > staleMs) { fs.unlinkSync(file); continue; }
+      } catch { continue; }
       if (Date.now() - t0 > waitMs) throw new Error(`another agent has been finishing for over ${waitMs / 1000}s; try again later`);
       sleepSync(150 + Math.random() * 200);
     }
   }
-  try { return fn(); } finally { try { fs.unlinkSync(file); } catch { /* already gone */ } }
+  // only our own lock is removed: one taken over meanwhile belongs to whoever holds it now
+  try { return fn(); } finally { try { if (fs.readFileSync(file, 'utf8') === String(process.pid)) fs.unlinkSync(file); } catch { /* already gone */ } }
 }
 
 /** Rebase the agent's branch onto main and fast-forward main to it. Atomic from the agent's point of view.

@@ -84,6 +84,7 @@ export function openDb(file: string): DatabaseSync {
 function setup(db: DatabaseSync): void {
   db.exec(`
     pragma journal_mode = wal;
+    pragma synchronous = normal;
     pragma busy_timeout = 5000;
     pragma foreign_keys = on;
     create table if not exists agents (

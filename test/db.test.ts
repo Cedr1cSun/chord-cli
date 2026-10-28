@@ -22,6 +22,13 @@ test('agents: add, task, status, list', () => {
   assert.equal(db.listAgents(d).length, 1);
 });
 
+test('the database runs in WAL mode without an fsync per write', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-pragma-')), 'chord.db');
+  const d = db.openDb(file);
+  assert.equal(d.prepare('pragma journal_mode').get()!.journal_mode, 'wal');
+  assert.equal(d.prepare('pragma synchronous').get()!.synchronous, 1); // normal: a heartbeat a second from every wrapper must not wait for the disk
+});
+
 test('sweep marks dead agents offline and drops their claims', () => {
   const d = open();
   db.addAgent(d, { name: 'live', tool: 'claude', pid: 10, cwd: '/' });

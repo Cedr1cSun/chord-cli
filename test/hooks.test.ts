@@ -237,6 +237,18 @@ test('a hook that cannot open the database still refuses the write', async () =>
   assert.equal(quiet, '');
 });
 
+test('the hook and the MCP server refuse to run without the workspace variables rather than guess a base directory', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const env: NodeJS.ProcessEnv = { ...process.env, CHORD_AGENT_ID: 'a', CHORD_DB: ':memory:', CHORD_TOOL: 'claude' };
+  delete env.CHORD_WORKSPACE; delete env.CHORD_WORKTREE;
+  const hook = spawnSync(process.execPath, [path.join(import.meta.dirname, '..', 'src', 'hooks.ts'), 'stop'], { input: '{}', env, encoding: 'utf8' });
+  assert.equal(hook.stdout, '');
+  assert.match(hook.stderr, /CHORD_WORKSPACE/);
+  const server = spawnSync(process.execPath, [path.join(import.meta.dirname, '..', 'src', 'serve.ts')], { input: '', env, encoding: 'utf8' });
+  assert.equal(server.status, 2);
+  assert.match(server.stderr, /CHORD_WORKSPACE/);
+});
+
 test('session-start and user-prompt-submit record the tool session id', () => {
   const { d, ctx } = setup();
   handleHook(ctx('a'), 'claude', 'session-start', { session_id: 's1', source: 'startup' });

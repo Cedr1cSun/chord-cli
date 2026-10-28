@@ -24,7 +24,9 @@ export class NeedsRestructure extends Error {
   }
 }
 
-const same = (a: string, b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+// Windows and macOS file systems ignore case: two spellings are one folder
+const CASE_INSENSITIVE = process.platform !== 'linux';
+const same = (a: string, b: string) => (CASE_INSENSITIVE ? a.toLowerCase() === b.toLowerCase() : a === b);
 
 function repoRootOf(dir: string): string | null {
   try { return fs.realpathSync.native(git(dir, 'rev-parse', '--show-toplevel')); } catch { return null; }
@@ -36,7 +38,7 @@ const isRepoDir = (dir: string) => { try { return fs.statSync(path.join(dir, '.g
 /** Readable like Claude Code's projects directory (separators and colons become dashes), plus a short hash so
  *  that D:\a-b and D:\a\b do not share one state directory. */
 export function encodeProjectPath(dir: string): string {
-  const key = process.platform === 'win32' ? dir.toLowerCase() : dir;
+  const key = CASE_INSENSITIVE ? dir.toLowerCase() : dir;
   return `${dir.replace(/[\\/:]/g, '-')}-${createHash('sha1').update(key).digest('hex').slice(0, 6)}`;
 }
 

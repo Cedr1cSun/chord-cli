@@ -196,9 +196,9 @@ export function setTask(db: DatabaseSync, name: string, task: string, scope: str
 }
 
 /** Offline is sticky here: a hook that outlives its killed agent must not revive it. Only the wrapper does, through
- *  addAgent (relaunch) or heartbeat. */
-export function setStatus(db: DatabaseSync, name: string, status: Status): void {
-  db.prepare(`update agents set status = ?, updated_at = ? where name = ? and status != 'offline'`).run(status, Date.now(), name);
+ *  addAgent (relaunch) or heartbeat. Returns whether a row changed. */
+export function setStatus(db: DatabaseSync, name: string, status: Status): boolean {
+  return db.prepare(`update agents set status = ?, updated_at = ? where name = ? and status != 'offline'`).run(status, Date.now(), name).changes > 0;
 }
 
 export function getAgent(db: DatabaseSync, name: string): Agent | undefined {
@@ -272,8 +272,9 @@ export function sweep(db: DatabaseSync, alive: (pid: number) => boolean = pidAli
     dead = online.filter(a => !alive(a.pid) || (!slept && stale(a))).map(a => a.name);
   }
   for (const name of dead) {
+    // several hooks sweep at once; the one whose update took the agent offline releases the claims, so each file gets one release event
+    if (!setStatus(db, name, 'offline')) continue;
     log(`sweep: ${name} marked offline, claims released`);
-    setStatus(db, name, 'offline');
     releaseAll(db, name, 'swept');
   }
   return dead;

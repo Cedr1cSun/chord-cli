@@ -233,7 +233,7 @@ test('the log rotates once it grows past its limit, keeping one old copy', () =>
     assert.match(fs.readFileSync(`${file}.log`, 'utf8'), /^[^\n]*after the limit\n$/); // the new file starts with this line
     db.log('and another'); // well under the limit: appended
     assert.equal(fs.readFileSync(`${file}.log`, 'utf8').split('\n').length, 3);
-  } finally { process.env.CHORD_DB = saved; }
+  } finally { if (saved === undefined) delete process.env.CHORD_DB; else process.env.CHORD_DB = saved; } // assigning undefined would store the string "undefined"
 });
 
 test('removeAgent keeps what the agent said and nobody has read yet', () => {

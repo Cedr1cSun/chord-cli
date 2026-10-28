@@ -94,6 +94,15 @@ test('stop feeds unread messages back, otherwise marks idle', () => {
   assert.equal(db.getAgent(d, 'a')!.status, 'idle');
 });
 
+test('stop lets an agent with only notices unread go idle; the notices ride along with its next hook', () => {
+  const { d, ctx } = setup();
+  db.send(d, 'b', ['a'], 'b merged into main', 'notice');
+  assert.equal(handleHook(ctx('a'), 'claude', 'stop', {}), undefined); // a notice is not worth another turn
+  assert.equal(db.getAgent(d, 'a')!.status, 'idle');
+  const out = handleHook(ctx('a'), 'claude', 'post-tool-use', { tool_name: 'Read' }) as any;
+  assert.match(out.hookSpecificOutput.additionalContext, /b merged into main/);
+});
+
 test('session-end leaves going offline to the wrapper: the agent is idle and keeps its claims', () => {
   const { d, ctx } = setup();
   db.addClaim(d, { agent: 'a', file: 'f', intent: 'x', kind: 'add' });

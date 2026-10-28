@@ -182,10 +182,9 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
     }
 
     case 'stop': {
-      const ms = db.takeUnread(ctx.db, ctx.agent);
-      if (ms.length) return { decision: 'block', reason: formatMessages(ms) + '\n\nHandle these messages before stopping.' };
-      db.setStatus(ctx.db, ctx.agent, 'idle');
-      return undefined;
+      // only a message is worth another turn; a notice (a merge broadcast) waits for the next hook, as it does for the wake-up
+      if (!db.hasUnread(ctx.db, ctx.agent)) { db.setStatus(ctx.db, ctx.agent, 'idle'); return undefined; }
+      return { decision: 'block', reason: formatMessages(db.takeUnread(ctx.db, ctx.agent)) + '\n\nHandle these messages before stopping.' };
     }
 
     case 'notification':

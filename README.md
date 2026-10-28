@@ -7,6 +7,7 @@
   <img alt="Node 24 or later" src="https://img.shields.io/badge/node-%E2%89%A5%2024-339933?logo=nodedotjs&logoColor=white">
   <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue">
   <a href="README-zh-CN.md"><img alt="中文说明" src="https://img.shields.io/badge/README-%E4%B8%AD%E6%96%87-2F7CF6"></a>
+  <a href="https://www.bilibili.com/video/BV1Cns96REZ2/"><img alt="Video on Bilibili" src="https://img.shields.io/badge/video-Bilibili-00A1D6?logo=bilibili&logoColor=white"></a>
 </p>
 
 One repository, as many agents as you care to start. Each agent works in its own worktree; a shared board records who holds which file; an agent that wants a file another agent holds asks first and waits for the answer; when the work is committed, one call rebases the branch and fast-forwards main. Idle agents are woken the moment a message arrives, so the agents negotiate among themselves while you keep handing out work in plain language.

@@ -211,15 +211,14 @@ function finishLocked(ctx: Ctx) {
   const wt = ctx.worktree;
   // A rebase in progress is only ours to clean up when finish itself started it (a finish killed mid-rebase leaves
   // the marker behind). Anyone else's rebase, perhaps with conflicts already resolved, is left alone.
-  const marker = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'chord-finish'));
-  for (const dir of ['rebase-merge', 'rebase-apply']) {
-    if (!fs.existsSync(path.resolve(wt, git(wt, 'rev-parse', '--git-path', dir)))) continue;
+  const [marker, rebaseMerge, rebaseApply, indexLock] = git(wt, 'rev-parse', '--git-path', 'chord-finish', '--git-path', 'rebase-merge', '--git-path', 'rebase-apply', '--git-path', 'index.lock').split('\n').map(p => path.resolve(wt, p));
+  for (const dir of [rebaseMerge, rebaseApply]) {
+    if (!fs.existsSync(dir)) continue;
     if (!fs.existsSync(marker)) throw new Error('a rebase is in progress in your worktree that finish did not start; run `git rebase --continue` (after resolving conflicts) or `git rebase --abort` first');
     git(wt, 'rebase', '--abort'); break;
   }
   fs.rmSync(marker, { force: true });
   // a finish killed mid-operation can leave the worktree's own index.lock behind; one older than a minute is debris
-  const indexLock = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'index.lock'));
   try { if (Date.now() - fs.statSync(indexLock).mtimeMs > 60_000) { fs.unlinkSync(indexLock); db.log('finish: removed a stale index.lock in the worktree'); } } catch { /* none */ }
   // Untracked files (build output, a venv) are not in the way of a rebase and must not be forced into a commit.
   // Line-ending-only differences are ignored: a repository with CRLF files and a "* text" attribute shows every

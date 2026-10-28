@@ -162,7 +162,6 @@ export function listArgs(rest: string[]): { agent?: string; limit: number } {
   return { agent, limit };
 }
 
-/** `--name <x>` or `--name=<x>` anywhere before the tool's own arguments. */
 /** The user's own `--settings <json|file>` for Claude, removed from the tool arguments: passed through as is it would
  *  replace chord's --settings wholesale and switch the hooks off, so chord folds it under its own instead. */
 export function takeSettings(rest: string[]): Record<string, any> | undefined {
@@ -208,6 +207,7 @@ export function cleanArgs(rest: string[]): { names: string[]; force: boolean } {
   return { names, force };
 }
 
+/** `--name <x>` or `--name=<x>` anywhere before the tool's own arguments. */
 export function takeName(rest: string[]): string | undefined {
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];

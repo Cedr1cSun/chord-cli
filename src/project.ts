@@ -64,7 +64,6 @@ export function suggestedRepoName(repo: string): string {
   return validateRepoName(own) ? 'repo' : own;
 }
 
-/** The nearest ancestor that already is a chord project, if any. */
 /** Child directories of `dir` that are repository roots. Looked up with stat, so a junction or symlink to a repository
  *  counts (a Dirent reports those as links, not directories). */
 const repoChildren = (dir: string) => fs.readdirSync(dir).filter(n => { const p = path.join(dir, n); try { return fs.statSync(p).isDirectory() && isRepoDir(p); } catch { return false; } });

@@ -141,14 +141,12 @@ export function withNodeOnPath(env: Record<string, string>): Record<string, stri
   return { ...env, [key]: current ? `${dir}${path.delimiter}${current}` : dir };
 }
 
-/** CLI arguments that inject chord's hooks and MCP server into Claude Code. */
-/** `projectConfig`: also load the repository's own .claude settings and .mcp.json. Only when the user has trusted the
- *  repository in Claude Code, because Claude's trust dialogue is what normally stands between a cloned repository's
- *  hooks and MCP servers and running them. */
+/** The repository whose own .claude settings and .mcp.json ride along, and the claude.json holding the user's
+ *  approvals (the tests point it at a file of their own). */
 interface ProjectConfigSource { repo: string; claudeConfig?: string }
 
 /** `$CLAUDE_PROJECT_DIR` in a repository's hook commands and MCP definitions means the repository, which for an agent
- *  is its worktree; Claude would point it at the workspace. */
+ *  is its worktree; Claude would point it at the project folder. */
 function substituteProjectDir<T>(value: T, worktree: string): T {
   const dir = worktree.split(path.sep).join('/');
   const walk = (v: unknown): unknown => {
@@ -175,6 +173,10 @@ function projectMcpConfig(worktree: string, source: ProjectConfigSource): string
   return Object.keys(keep).length ? JSON.stringify({ mcpServers: substituteProjectDir(keep, worktree) }) : null;
 }
 
+/** CLI arguments that inject chord's hooks and MCP server into Claude Code. `projectConfig`: also load the repository's
+ *  own .claude settings and .mcp.json, only when the user has trusted the repository (or the project folder) in Claude
+ *  Code, because Claude's trust dialogue is what normally stands between a cloned repository's hooks and MCP servers
+ *  and running them. */
 export function claudeArgs(env: Record<string, string>, projectConfig: ProjectConfigSource | false = false): string[] {
   const hooks: Record<string, unknown[]> = {};
   for (const e of EVENTS) {
@@ -213,8 +215,6 @@ export function mergeUserSettings(args: string[], user: Record<string, any>): st
 const PROJECT_CONFIG_FILES = ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json'];
 const hasProjectConfig = (worktree: string) => PROJECT_CONFIG_FILES.some(f => fs.existsSync(path.join(worktree, f)));
 
-/** chord's settings plus the repository's .claude/settings.json and settings.local.json (later files win,
- *  hook lists are concatenated so both chord's and the project's hooks run). */
 /** Hook lists of `b` appended to those of `a`, so both sets run. */
 function concatHooks(a: Record<string, any>, b: Record<string, any>): Record<string, unknown[]> {
   const hooks: Record<string, unknown[]> = { ...(a.hooks ?? {}) };
@@ -236,6 +236,8 @@ function mergeSettings(ours: Record<string, any>, theirs: Record<string, any>): 
   return out;
 }
 
+/** chord's settings plus the repository's .claude/settings.json and settings.local.json (later files win, hook lists
+ *  are concatenated so both chord's and the project's hooks run). */
 export function mergeProjectSettings(ours: Record<string, any>, worktree: string): Record<string, any> {
   let theirs: Record<string, any> = {};
   for (const name of ['settings.json', 'settings.local.json']) { // settings.local.json wins, as in Claude Code itself
@@ -251,10 +253,10 @@ export function mergeProjectSettings(ours: Record<string, any>, worktree: string
 /** A JSON string literal is also a valid TOML basic string, quotes, backslashes and non-ASCII included. */
 const toml = (s: string) => JSON.stringify(s);
 
-/** CLI arguments that inject chord's hooks and MCP server into Codex. Values are TOML. */
-/** `writableRoots`: directories Codex's workspace-write sandbox must also be allowed to write. A linked worktree keeps
- *  its index and refs under the main checkout's .git, outside the agent's workspace, so without this every git commit
- *  fails inside the sandbox. */
+/** CLI arguments that inject chord's hooks and MCP server into Codex. Values are TOML. `writableRoots`: directories
+ *  Codex's workspace-write sandbox must also be allowed to write: a linked worktree keeps its index and refs under the
+ *  main checkout's .git. shortcut: the tool now runs in the project folder, which holds that .git, so this may be
+ *  redundant; drop it once a sandboxed Codex has committed from a worktree without it on Linux or macOS. */
 export function codexArgs(env: Record<string, string>, writableRoots: string[] = []): string[] {
   const args: string[] = [];
   if (writableRoots.length) args.push('-c', `sandbox_workspace_write.writable_roots=[${writableRoots.map(toml).join(',')}]`);
@@ -311,7 +313,7 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
     let projectConfig: ProjectConfigSource | false = false;
     if (tool === 'claude' && hasProjectConfig(worktree)) {
       projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir) ? { repo: project.repo } : false;
-      if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
+      if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it or the project folder in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
     }
     return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env, [path.join(project.repo, '.git')]) };
   } catch (e) {

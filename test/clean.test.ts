@@ -68,7 +68,7 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
       assert.notEqual(git(repo, 'branch', '--list', 'chord/busy'), ''); // branch and row survive with the directory
       assert.ok(db.getAgent(d, 'busy'));
     } else {
-      assert.deepEqual(r.removed, ['busy', 'other']); // Linux lets a directory in use go
+      assert.deepEqual(r.removed, ['busy', 'other']); // Linux and macOS let a directory in use go
     }
   } finally { holder.kill(); }
   // a junction inside the worktree is unlinked, not followed

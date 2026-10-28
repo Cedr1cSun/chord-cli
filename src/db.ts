@@ -9,7 +9,7 @@ export interface Agent {
   name: string;
   tool: string;
   pid: number;
-  cwd: string;      // the agent's working directory (its workspace W)
+  cwd: string;      // the agent's workspace W, chord/agents/<name>; the tool itself runs in the project folder
   task: string | null;
   scope: string | null;
   status: Status;

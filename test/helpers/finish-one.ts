@@ -1,4 +1,4 @@
-// Run finish() for one agent in its own process: node finish-one.ts <dbFile> <agent> <worktree>
+// Run finish() for one agent in its own process: node finish-one.ts <dbFile> <agent> <workspace> <worktree>
 import * as db from '../../src/db.ts';
 import { finish } from '../../src/tools.ts';
 const [file, agent, cwd, worktree] = process.argv.slice(2);

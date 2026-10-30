@@ -3,6 +3,8 @@
 **把编码 agent 当成一个集群来跑。**
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/chord-cli"><img alt="npm 版本" src="https://img.shields.io/npm/v/chord-cli?logo=npm&logoColor=white"></a>
+  <a href="https://www.npmjs.com/package/chord-cli"><img alt="npm 月下载量" src="https://img.shields.io/npm/dm/chord-cli"></a>
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
   <img alt="Node 24 or later" src="https://img.shields.io/badge/node-%E2%89%A5%2024-339933?logo=nodedotjs&logoColor=white">
   <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue">

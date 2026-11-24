@@ -25,11 +25,13 @@ export function resolveCommand(tool: string, readFile = (f: string) => fs.readFi
   if (!hit) throw new Error(`${tool} not found on PATH`);
   if (!/\.cmd$/i.test(hit)) return { file: hit, args: [] };
   const text = readFile(hit);
-  const exe = /"%~?dp0%?\\([^"]+\.exe)"/i.exec(text); // a shim around a native binary (opencode-ai): run the binary itself
-  if (exe) return { file: path.join(path.dirname(hit), exe[1]), args: [] };
   const m = /"%~?dp0%?\\([^"]+\.(?:js|mjs|cjs))"/.exec(text); // npm writes %dp0%\, pnpm and yarn %~dp0\
-  if (!m) throw new Error(`cannot read the script path from ${hit}`);
-  return { file: process.execPath, args: [path.join(path.dirname(hit), m[1])] };
+  if (m) return { file: process.execPath, args: [path.join(path.dirname(hit), m[1])] };
+  // no script: a shim around a native binary (opencode-ai), so run the binary itself. Looked for second, because a
+  // script shim names an .exe too: the node.exe it probes for beside itself
+  const exe = /"%~?dp0%?\\([^"]+\.exe)"/i.exec(text);
+  if (!exe) throw new Error(`cannot read the script path from ${hit}`);
+  return { file: path.join(path.dirname(hit), exe[1]), args: [] };
 }
 
 /** On macOS node-pty starts the tool through its `spawn-helper` binary, which the prebuilt package ships without the

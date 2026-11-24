@@ -178,7 +178,8 @@ test('whereIs scans PATH without where.exe', { skip: process.platform !== 'win32
 });
 
 test('resolveCommand unwraps npm, pnpm and yarn .cmd shims on windows', { skip: process.platform !== 'win32' }, () => {
-  const npm = '@ECHO off\r\n"%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n';
+  // the whole shim as npm writes it: the node.exe it probes for beside itself is not the program to run
+  const npm = '@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n';
   const r = resolveCommand('codex', () => npm, () => 'C:\\npm\\codex.cmd');
   assert.equal(r.file, process.execPath);
   assert.deepEqual(r.args, ['C:\\npm\\node_modules\\@openai\\codex\\bin\\codex.js']);

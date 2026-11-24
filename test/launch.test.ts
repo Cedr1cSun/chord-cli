@@ -298,6 +298,19 @@ test('settings.local.json comes from the main checkout: it is not tracked, so a 
   assert.equal(s.hooks.Stop[1].hooks[0].command, `node "${wt.replace(/\\/g, '/')}/guard.js"`); // still the worktree
 });
 
+test('a repository whose only Claude config is its untracked settings.local.json still has it passed along', () => {
+  const proj = tempProject(); const repo = path.join(proj, 'repo');
+  fs.mkdirSync(path.join(repo, '.claude')); fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus' }));
+  const home = tmp('chord-userhome-'); // the user has trusted the repository in Claude Code
+  fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ projects: { [repo.replace(/\\/g, '/')]: { hasTrustDialogAccepted: true } } }));
+  const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  process.env.HOME = home; process.env.USERPROFILE = home;
+  try {
+    const l = prepare('claude', proj, 'loc');
+    assert.equal(JSON.parse(l.args[l.args.indexOf('--settings') + 1]).model, 'opus');
+  } finally { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+});
+
 test('the user\'s own --settings win over the repository\'s settings, and chord\'s hooks and tools stay', () => {
   const wt = tmp('chord-wt-');
   fs.mkdirSync(path.join(wt, '.claude'));

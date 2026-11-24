@@ -219,20 +219,6 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
   }
 }
 
-/** The old names of renames in NUL-separated status output: a rename changes that path too, and diff --name-only
- *  lists only the new one. */
-function renameSources(statusZ: string): string[] {
-  const parts = statusZ.split('\0');
-  const out: string[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const entry = parts[i];
-    if (!entry) continue;
-    if (/R/.test(entry.slice(0, 2))) { i++; if (parts[i]) out.push(parts[i]); }
-    else if (/C/.test(entry.slice(0, 2))) i++;
-  }
-  return out;
-}
-
 /** git output, or '' when the command fails; optional locks off so this read-only look never fights the agent's own git. */
 const gitOut = (cwd: string, ...args: string[]): string => {
   try { return execFileSync('git', ['--no-optional-locks', ...args], { cwd, encoding: 'utf8', env: db.gitEnv(), maxBuffer: 64 * 1024 * 1024 }); } catch { return ''; }
@@ -249,10 +235,10 @@ function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
   // checked out does not make every shell command cry wolf); untracked files from status, directories folded.
   const status = gitOut(ctx.worktree, 'status', '--porcelain=v1', '-z', '-unormal');
   const untracked = status.split('\0').filter(e => e.startsWith('?? ')).map(e => e.slice(3));
-  const modified = gitOut(ctx.worktree, 'diff', '--name-only', '-z', '--ignore-cr-at-eol', '--merge-base', 'main-worktree/HEAD').split('\0');
+  const modified = gitOut(ctx.worktree, 'diff', '--name-only', '-z', '--no-renames', '--ignore-cr-at-eol', '--merge-base', 'main-worktree/HEAD').split('\0');
   // the main checkout is <project>/<repoName>; asking git costs a subprocess on every shell command
   const root = ctx.project ? path.join(ctx.project, path.basename(ctx.worktree)) : db.mainRoot(ctx.worktree);
-  const touched = [...new Set([...modified.filter(Boolean), ...untracked, ...renameSources(status)])];
+  const touched = [...new Set([...modified.filter(Boolean), ...untracked])];
   // a folded untracked directory counts as claimed when a claim names a file inside it
   const claimed = (f: string) => mine.has(f) || [...mine].some(m => m.startsWith(f + '/'));
   const unclaimed = touched.map(f => normFile(ctx, path.join(ctx.worktree, f))).filter(f => !claimed(f.toLowerCase()));

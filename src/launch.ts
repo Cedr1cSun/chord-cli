@@ -6,7 +6,7 @@ import { execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import * as db from './db.ts';
 import { ensureStateDir, resolveProject, type Project } from './project.ts';
@@ -288,14 +288,14 @@ export function codexArgs(env: Record<string, string>, writableRoots: string[] =
 }
 
 /** OpenCode takes its configuration from the environment: `OPENCODE_CONFIG_CONTENT` carries chord's MCP server and
- *  the plugin beside this module, named by file URL so that OpenCode imports it where it is (a plugin directory it
- *  would fill with a package.json and node_modules). The plugin runs inside OpenCode's own process and spawns
- *  `node $CHORD_HOOKS <event>` for each hook, so it needs nothing from chord but that path and the CHORD_* variables,
- *  which it inherits. */
+ *  the plugin directory beside this module (OpenCode 2 loads its `index`, and skips a plugin named as a single file).
+ *  The plugin runs inside the server of a `--standalone` launch and spawns `node $CHORD_HOOKS <event>` for each hook,
+ *  so it needs nothing from chord but that path and the CHORD_* variables, which it inherits. */
 export function opencodeEnv(env: Record<string, string>): Record<string, string> {
-  const plugin = pathToFileURL(path.join(path.dirname(HOOKS_TS), 'opencode', 'plugins', `chord${path.extname(HOOKS_TS)}`)).href;
-  // finish may wait 240 s for the merge lock and then run the test command for up to 600 s; OpenCode's default MCP timeout is 30 s
-  const config = { plugin: [plugin], mcp: { chord: { type: 'local', command: [NODE, SERVE_TS], environment: env, timeout: 1_200_000 } } };
+  const plugin = `${path.dirname(HOOKS_TS)}/opencode/plugin`;
+  // finish may wait 240 s for the merge lock and then run the test command for up to 600 s; OpenCode's default MCP
+  // timeout is 30 s. Without codemode: false the model reaches chord's tools only from inside Code Mode scripts.
+  const config = { plugins: [plugin], mcp: { chord: { type: 'local', command: [NODE, SERVE_TS], environment: env, timeout: 1_200_000, codemode: false } } };
   return { ...env, CHORD_HOOKS: HOOKS_TS, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) };
 }
 
@@ -354,7 +354,9 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
     // Claude Code 2.1.33x asks about each --add-dir folder until the user has trusted its repository (trusting the
     // project folder is not enough), and its default answer exits before any chord hook has run
     if (tool === 'claude' && !claudeTrusts(project.repo)) process.stderr.write(`chord: Claude Code will ask whether to add ${worktree}: choose "Yes, add it" (Enter alone picks "No, exit"). Run claude once in ${project.repo} and trust it there to stop the question.\n`);
-    if (tool === 'opencode') return { name, project, cwd: ws, worktree, dbFile, env: opencodeEnv(env), args: [] };
+    // --standalone: a private server with this launch's environment, which dies with the TUI. Without it the TUI
+    // attaches to a background service shared by every TUI and started with the first launcher's environment.
+    if (tool === 'opencode') return { name, project, cwd: ws, worktree, dbFile, env: opencodeEnv(env), args: ['--standalone'] };
     // PI_PROGRAM_STATUS: pi reports its state over OSC 7501 only when the terminal asks for it or this is set, and the
     // wrapper reads that report as a second source of idle and busy
     if (tool === 'pi') return { name, project, cwd: ws, worktree, dbFile, env: { ...env, CHORD_HOOKS: HOOKS_TS, CHORD_SERVE: SERVE_TS, PI_PROGRAM_STATUS: '1' }, args: piArgs() };

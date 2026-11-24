@@ -4,7 +4,6 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import * as db from '../src/db.ts';
 import { NODE, ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeProjectSettings, mergeUserSettings, withNodeOnPath } from '../src/launch.ts';
 import { NeedsRestructure, resolveProject, restructure, encodeProjectPath, knownProjects } from '../src/project.ts';
@@ -422,16 +421,20 @@ test('pi gets chord\'s extension on the command line and the hook and server pat
 test('opencode gets chord through the environment: inline config with the MCP server and the plugin', () => {
   const proj = tempProject();
   const l = prepare('opencode', proj, 'oc');
-  assert.deepEqual(l.args, []); // nothing on the command line: the user's own arguments go through untouched
+  // a private server for this launch, with this launch's environment; without it the TUI attaches to a background
+  // service shared by every TUI and started with the first launcher's environment
+  assert.deepEqual(l.args, ['--standalone']);
   const cfg = JSON.parse(l.env.OPENCODE_CONFIG_CONTENT);
+  assert.equal(cfg.mcp.chord.codemode, false); // chord's tools reach the model directly, not only inside Code Mode scripts
   assert.equal(cfg.mcp.chord.type, 'local');
   assert.equal(cfg.mcp.chord.command[0], NODE);
   assert.match(cfg.mcp.chord.command[1], /serve\.(ts|js)$/);
   assert.equal(cfg.mcp.chord.environment.CHORD_AGENT_ID, 'oc');
   assert.equal(cfg.mcp.chord.environment.CHORD_WORKTREE, l.env.CHORD_WORKTREE);
   assert.ok(cfg.mcp.chord.timeout >= (240 + 600) * 1000); // finish may wait 240 s for the merge lock, then run the test command for up to 600 s
-  assert.match(cfg.plugin[0], /^file:\/\/\/.*\/opencode\/plugins\/chord\.(ts|js)$/); // OpenCode imports the plugin from there
-  assert.equal(fs.existsSync(fileURLToPath(cfg.plugin[0])), true);
+  assert.equal(cfg.plugin, undefined);
+  assert.match(cfg.plugins[0], /[\\/]opencode[\\/]plugin$/); // OpenCode 2 loads a plugin directory, skipping a single file
+  assert.ok(fs.existsSync(path.join(cfg.plugins[0], 'index.ts')) || fs.existsSync(path.join(cfg.plugins[0], 'index.js')));
   assert.equal(l.env.OPENCODE_CONFIG_DIR, undefined); // the user's own stays in force
   assert.match(l.env.CHORD_HOOKS, /hooks\.(ts|js)$/); // the plugin spawns this for every event
   assert.equal(l.env.CHORD_TOOL, 'opencode');

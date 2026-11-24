@@ -365,3 +365,24 @@ test('OpenCode: edit, write and patch name their files; relative paths and workd
   assert.equal(write(path.join(cwd, 'repo', 'src', 'x.ts')), undefined);
   assert.equal(patch('src/x.ts', 'chord/agents/a/repo'), undefined);
 });
+
+test('agy: write_file and edit_file name their file as an absolute Path; run_command is its shell', () => {
+  const P = process.platform === 'win32' ? 'D:\\P' : '/P';
+  const cwd = path.join(P, 'chord', 'agents', 'a'), wt = path.join(cwd, 'repo');
+  assert.deepEqual(filesTouched('agy', { tool_name: 'write_file', tool_input: { Content: 'x\n', Path: path.join(wt, 'notes.txt'), Append: true } }), [path.join(wt, 'notes.txt')]);
+  assert.deepEqual(filesTouched('agy', { tool_name: 'edit_file', tool_input: { Path: path.join(wt, 'a.txt'), Target: 'line 2', Replacement: 'line 2 modified' } }), [path.join(wt, 'a.txt')]);
+  // documented but not seen in agy 1.5.16: the older editing tools name their file as TargetFile
+  for (const name of ['write_to_file', 'replace_file_content', 'multi_replace_file_content']) assert.deepEqual(filesTouched('agy', { tool_name: name, tool_input: { TargetFile: path.join(wt, 'b.txt') } }), [path.join(wt, 'b.txt')]);
+  for (const name of ['run_command', 'call_mcp_tool', 'update_steps', 'invoke_subagent', 'send_message']) assert.deepEqual(filesTouched('agy', { tool_name: name, tool_input: { CommandLine: 'git status' } }), []);
+  const d = db.openDb(':memory:');
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: wt, project: P };
+  db.addAgent(d, { name: 'a', tool: 'agy', pid: process.pid, cwd });
+  const write = (p: string) => (handleHook(ctx, 'agy', 'pre-tool-use', { tool_name: 'write_file', tool_input: { Path: p, Content: '' } }) as any)?.hookSpecificOutput.permissionDecisionReason;
+  assert.match(write(path.join(wt, 'notes.txt')), /not claimed/);
+  assert.match(write(`${wt.split(path.sep).join('/')}/notes.txt`), /not claimed/); // a sub-agent writes forward slashes
+  assert.match(write(path.join(P, 'repo', 'notes.txt')), new RegExp(`outside your workspace.*edit your own copy ${path.join(wt, 'notes.txt').replace(/[\\/]/g, '[\\\\/]')}`)); // absolute, as agy's editor wants it
+  assert.equal((handleHook(ctx, 'agy', 'pre-tool-use', { tool_name: 'edit_file', tool_input: { Target: 'a' } }) as any).hookSpecificOutput.permissionDecision, 'deny'); // names no file
+  db.addClaim(d, { agent: 'a', file: 'repo/notes.txt', intent: 'x', kind: 'modify' });
+  assert.equal(write(path.join(wt, 'notes.txt')), undefined);
+  assert.equal(handleHook(ctx, 'agy', 'pre-tool-use', { tool_name: 'run_command', tool_input: { CommandLine: 'git status' } }), undefined);
+});

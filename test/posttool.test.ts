@@ -35,6 +35,7 @@ test('post-tool-use warns about shell edits to unclaimed files, for Bash and Pow
   }
   // Codex reports its shell as Bash
   assert.ok(handleHook(ctx, 'codex', 'post-tool-use', { tool_name: 'Bash' }));
+  assert.ok(handleHook(ctx, 'agy', 'post-tool-use', { tool_name: 'run_command' })); // agy's shell
   // once claimed, no warning
   db.addClaim(d, { agent: 'a', file: 'notes.txt', intent: 'x', kind: 'modify' });
   db.addClaim(d, { agent: 'a', file: 'new.txt', intent: 'x', kind: 'add' });

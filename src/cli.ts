@@ -7,10 +7,10 @@ import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { clean, type CleanResult } from './clean.ts';
 import * as db from './db.ts';
-import { mergeUserSettings, prepare } from './launch.ts';
+import { mergeAgySettings, mergeUserSettings, prepare } from './launch.ts';
 import { NeedsRestructure, knownProjects, resolveProject, restructure, restructureBlocker, validateRepoName } from './project.ts';
 import { ensureSpawnHelper, resolveCommand, run } from './pty.ts';
-import { codexFirstStart, disabledCodexHooks } from './trust.ts';
+import { agyHasChordServer, codexFirstStart, disabledCodexHooks } from './trust.ts';
 import type { Tool } from './hooks.ts';
 
 const USAGE = [
@@ -20,6 +20,7 @@ const USAGE = [
   '  chord codex [--name <agent>] ...    start a Codex agent here',
   '  chord opencode [--name <agent>] ... start an OpenCode agent here',
   '  chord pi [--name <agent>] ...       start a pi agent here',
+  '  chord agy [--name <agent>] ...      start an Antigravity CLI agent here',
   "  chord resume <agent> ...            reopen an agent's conversation",
   '  chord ls [--all]                    agents and claims (--all: every project)',
   '  chord messages [agent] [-n N]       message history, latest N',
@@ -150,7 +151,7 @@ export function resumeArgv(d: ReturnType<typeof db.openDb>, name: string, more: 
   const a = db.getAgent(d, name);
   if (!a) throw new Error(`no such agent: ${name}`);
   if (!a.session_id) throw new Error(`no recorded conversation for ${name}; start it again with chord ${a.tool} --name ${name}`);
-  const reopen = ({ claude: ['--resume', a.session_id], codex: ['resume', a.session_id], opencode: ['-s', a.session_id], pi: ['--session', a.session_id] } as Record<Tool, string[]>)[a.tool as Tool];
+  const reopen = ({ claude: ['--resume', a.session_id], codex: ['resume', a.session_id], opencode: ['-s', a.session_id], pi: ['--session', a.session_id], agy: ['--conversation', a.session_id] } as Record<Tool, string[]>)[a.tool as Tool];
   return [a.tool, '--name', a.name, ...reopen, ...more];
 }
 
@@ -166,8 +167,9 @@ export function listArgs(rest: string[]): { agent?: string; limit: number } {
   return { agent, limit };
 }
 
-/** The user's own `--settings <json|file>` for Claude, removed from the tool arguments: passed through as is it would
- *  replace chord's --settings wholesale and switch the hooks off, so chord folds it under its own instead. */
+/** The user's own `--settings <json|file>` for Claude or agy, removed from the tool arguments: passed through as is it
+ *  would replace chord's --settings wholesale (Claude's hooks, agy's permission for chord's tools), so chord folds it
+ *  into its own instead. */
 export function takeSettings(rest: string[]): Record<string, any> | undefined {
   let raw: string | undefined;
   for (let i = 0; i < rest.length; i++) {
@@ -183,14 +185,18 @@ export function takeSettings(rest: string[]): Record<string, any> | undefined {
   return parsed as Record<string, any>;
 }
 
-/** Tool flags that would silently disable chord's hooks or MCP server: refused rather than launched half-working. */
-export function refuseHookKillers(tool: Tool, rest: string[]): void {
+/** Tool flags that would silently disable chord's hooks or MCP server: refused rather than launched half-working.
+ *  `agyMcpConfig`: the user's global agy MCP configuration (the tests point it at a file of their own). */
+export function refuseHookKillers(tool: Tool, rest: string[], agyMcpConfig?: string): void {
   if (tool === 'claude') {
     for (const flag of ['--bare', '--safe-mode', '--disable-all-hooks']) if (rest.includes(flag)) throw new Error(`${flag} switches off the hooks chord relies on; run plain claude for that`);
     // claude reads these as --bare and --safe-mode, with its own truthy test: 1, true, yes or on, trimmed, any case
     for (const v of ['CLAUDE_CODE_SIMPLE', 'CLAUDE_CODE_SAFE_MODE']) if (/^(1|true|yes|on)$/i.test((process.env[v] ?? '').trim())) throw new Error(`${v} switches off the hooks chord relies on; unset it for chord`);
   } else if (tool === 'opencode') {
     if (rest.some(a => a === '--server' || a.startsWith('--server='))) throw new Error("--server attaches to an OpenCode server that runs without chord's plugin; chord starts its own with --standalone");
+  } else if (tool === 'agy') {
+    if (rest.some(a => /^--?remote-agent(=|$)/.test(a))) throw new Error('--remote-agent runs the session on a remote agent, away from the hooks and the worktree chord sets up on this machine; run plain agy for that');
+    if (agyHasChordServer(agyMcpConfig)) throw new Error('your agy MCP configuration (~/.gemini/config/mcp_config.json) already defines an MCP server named "chord"; agy would keep that one and silently drop chord\'s own, leaving the agent without its chord tools. Rename or remove that entry to run chord agy');
   } else if (tool === 'pi') {
     if (rest.includes('--no-mcp')) throw new Error("--no-mcp switches off the MCP support chord's tools rely on; run plain pi for that");
   } else {
@@ -281,7 +287,7 @@ async function main(argv: string[]): Promise<number> {
     if (rest.includes('--all')) { process.stdout.write(lsAll(cols)); return 0; }
     let project;
     try { project = resolveProject(process.cwd()); } catch (e) {
-      if (e instanceof NeedsRestructure) throw new Error(`${e.message}; run \`chord claude\`, \`chord codex\`, \`chord opencode\` or \`chord pi\` here to set the project up, or \`chord ls --all\` for every project`);
+      if (e instanceof NeedsRestructure) throw new Error(`${e.message}; run \`chord claude\`, \`chord codex\`, \`chord opencode\`, \`chord pi\` or \`chord agy\` here to set the project up, or \`chord ls --all\` for every project`);
       throw new Error(`${(e as Error).message}; use \`chord ls --all\` for every project on this machine`);
     }
     const file = db.dbPath(project.stateDir);
@@ -308,9 +314,9 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(cleanReport(clean(project, db.openDb(fs.existsSync(file) ? file : ':memory:'), names, force)));
     return 0;
   }
-  if (cmd !== 'claude' && cmd !== 'codex' && cmd !== 'opencode' && cmd !== 'pi') { process.stderr.write(`chord: unknown command "${cmd}"\n${USAGE}`); return 2; }
+  if (cmd !== 'claude' && cmd !== 'codex' && cmd !== 'opencode' && cmd !== 'pi' && cmd !== 'agy') { process.stderr.write(`chord: unknown command "${cmd}"\n${USAGE}`); return 2; }
   const name = takeName(rest);
-  const userSettings = cmd === 'claude' ? takeSettings(rest) : undefined;
+  const userSettings = cmd === 'claude' || cmd === 'agy' ? takeSettings(rest) : undefined;
   refuseHookKillers(cmd as Tool, rest);
   const command = resolveCommand(cmd); // fail before creating a workspace when the tool is not installed
   if (cmd === 'opencode') refuseOpencodeVersion(execFileSync(command.file, [...command.args, '--version'], { encoding: 'utf8', timeout: 60_000, windowsHide: true }));
@@ -324,7 +330,7 @@ async function main(argv: string[]): Promise<number> {
     launch = prepare(cmd as Tool, process.cwd(), name);
   }
   process.stderr.write(`chord: agent ${launch.name}; worktree ${launch.worktree}\n`);
-  if (userSettings) launch.args = mergeUserSettings(launch.args, userSettings);
+  if (userSettings) launch.args = cmd === 'agy' ? mergeAgySettings(launch.args, userSettings) : mergeUserSettings(launch.args, userSettings);
   if (cmd === 'opencode' && rest.includes('--standalone')) launch.args = launch.args.filter(a => a !== '--standalone'); // OpenCode rejects it twice
   if (cmd === 'codex') {
     const off = disabledCodexHooks();

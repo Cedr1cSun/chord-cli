@@ -175,6 +175,9 @@ test('oscState reads the last complete Codex state report in a chunk; oscTail ke
   assert.equal(oscState('\x1b]7501;state=working:app=codex\x1b\\..\x1b]7501;state=idle:app=codex\x1b\\'), 'idle');
   assert.equal(oscState('no report here'), null);
   assert.equal(oscState('\x1b]7501;state=working:app=codex\x07\x1b]7501;state=done:app=codex\x07'), 'idle'); // a finished turn, as Codex 0.164 reports it
+  assert.equal(oscState('\x1b]7501;state=working:app=codex\x1b\\\x1b]7501;state=error:app=codex\x1b\\'), 'idle'); // a turn that ended in an error (rate limit, overload) waits for input
+  assert.equal(oscState('\x1b]7501;state=working:app=pi\x07\x1b]7501;state=error:app=pi\x07'), 'idle'); // pi after a failed run
+  assert.equal(oscState('\x1b]7501;state=blocked:app=codex:kind=permission\x1b\\'), 'busy'); // a dialog: never type into it
   assert.equal(oscState('\x1b]7501;state=id'), null); // cut off by the chunk boundary: not "busy" for a moment
   // the tail carried into the next chunk holds an unfinished sequence only, so a complete report is read once
   assert.equal(oscTail('abc\x1b]7501;state=id'), '\x1b]7501;state=id');

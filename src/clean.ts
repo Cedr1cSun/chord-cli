@@ -34,11 +34,13 @@ export function clean(project: Project, d: DatabaseSync, names: string[] = [], f
         if (!merged) { kept(a.name, `unmerged commits on ${branch}`); return; }
       }
       // work that was never committed (an agent stopped half-way) is just as much work as an unmerged commit
-      if (!force && fs.existsSync(path.join(wt, '.git'))) {
-        const rel = path.relative(project.dir, wt).split(path.sep).join('/');
+      // every checkout under dir, not just dir/<repoName>: a renamed repository folder leaves the worktree under its old name
+      const wts = fs.existsSync(dir) ? fs.readdirSync(dir).map(n => path.join(dir, n)).filter(p => fs.existsSync(path.join(p, '.git'))) : [];
+      if (!force) for (const w of wts) {
+        const rel = path.relative(project.dir, w).split(path.sep).join('/');
         let dirty = '';
         // a worktree git cannot read (its link broken by a move) may still hold work: not knowing is not clean
-        try { dirty = git(wt, 'status', '--porcelain'); } catch { kept(a.name, `uncommitted changes unknown: git status failed in ${rel}`); return; }
+        try { dirty = git(w, 'status', '--porcelain'); } catch { kept(a.name, `uncommitted changes unknown: git status failed in ${rel}`); return; }
         if (dirty) { kept(a.name, `uncommitted changes in ${rel}`); return; }
       }
       // The directory goes first. On Windows a directory some process is using (a shell left open in it) cannot be

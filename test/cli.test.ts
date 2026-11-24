@@ -166,6 +166,13 @@ test('takeSettings lifts the user --settings out of the tool arguments; hook-kil
   }
   assert.throws(() => refuseHookKillers('codex', ['-c', 'hooks.PreToolUse=[]']), /replace chord's own hooks/);
   assert.throws(() => refuseHookKillers('codex', ['--config=mcp_servers.chord.command="x"']), /replace chord's own hooks/);
+  // other spellings codex accepts for the same thing: the feature switch, a whole mcp_servers table, -cVALUE
+  assert.throws(() => refuseHookKillers('codex', ['--disable', 'hooks']), /switches off the hooks/);
+  assert.throws(() => refuseHookKillers('codex', ['--disable=codex_hooks']), /switches off the hooks/);
+  assert.throws(() => refuseHookKillers('codex', ['-c', 'features.hooks=false']), /replace chord's own hooks/);
+  assert.throws(() => refuseHookKillers('codex', ['-c', 'mcp_servers={x={command="n"}}']), /replace chord's own hooks/);
+  assert.throws(() => refuseHookKillers('codex', ['-cmcp_servers.chord.enabled=false']), /replace chord's own hooks/);
+  refuseHookKillers('codex', ['-c', 'features={apps=true}']); refuseHookKillers('codex', ['--disable', 'apps']); // fine
   assert.throws(() => refuseHookKillers('opencode', ['--pure']), /switches off the plugin/);
   assert.throws(() => refuseHookKillers('pi', ['--no-mcp']), /switches off the MCP support/);
   refuseHookKillers('pi', ['--model', 'sonnet', '-ne']); // -ne keeps explicit -e extensions
@@ -173,6 +180,7 @@ test('takeSettings lifts the user --settings out of the tool arguments; hook-kil
   if (process.platform === 'win32') {
     assert.throws(() => refuseHookKillers('codex', ['-s', 'workspace-write']), /sandbox cannot run chord's hooks on Windows/);
     assert.throws(() => refuseHookKillers('codex', ['--sandbox=read-only']), /sandbox/);
+    assert.throws(() => refuseHookKillers('codex', ['-sworkspace-write']), /sandbox/);
     assert.throws(() => refuseHookKillers('codex', ['-c', 'sandbox_mode="workspace-write"']), /sandbox/);
     refuseHookKillers('codex', ['-s', 'danger-full-access']); // fine
   }

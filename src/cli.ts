@@ -194,11 +194,14 @@ export function refuseHookKillers(tool: Tool, rest: string[]): void {
     if (rest.includes('--no-mcp')) throw new Error("--no-mcp switches off the MCP support chord's tools rely on; run plain pi for that");
   } else {
     for (let i = 0; i < rest.length; i++) {
-      const v = rest[i] === '-c' || rest[i] === '--config' ? rest[i + 1] ?? '' : rest[i].startsWith('--config=') ? rest[i].slice(9) : '';
-      if (/^(hooks\b|mcp_servers\.chord\b)/.test(v)) throw new Error(`"-c ${v}" would replace chord's own hooks or MCP server; chord sets these itself`);
+      const v = rest[i] === '-c' || rest[i] === '--config' ? rest[i + 1] ?? '' : rest[i].startsWith('--config=') ? rest[i].slice(9) : /^-c./.test(rest[i]) ? rest[i].slice(2) : '';
+      // a whole mcp_servers table drops chord's entry; features.hooks (old name codex_hooks) is the hooks switch
+      if (/^(hooks\b|mcp_servers\s*(=|\.chord\b)|features\.(codex_)?hooks\b|features\s*=.*hooks)/.test(v)) throw new Error(`"-c ${v}" would replace chord's own hooks or MCP server; chord sets these itself`);
+      const off = rest[i] === '--disable' ? rest[i + 1] ?? '' : rest[i].startsWith('--disable=') ? rest[i].slice(10) : '';
+      if (/^(codex_)?hooks$/.test(off)) throw new Error(`--disable ${off} switches off the hooks chord relies on; run plain codex for that`);
       // Codex's Windows sandbox runs commands as a restricted user that cannot start chord's hooks (nor reach the
       // state under the user's profile), so claims would go unchecked; refused rather than run half-working
-      const sandbox = rest[i] === '-s' || rest[i] === '--sandbox' ? rest[i + 1] ?? '' : rest[i].startsWith('--sandbox=') ? rest[i].slice(10) : /^sandbox_mode\s*=\s*"?([\w-]+)/.exec(v)?.[1] ?? '';
+      const sandbox = rest[i] === '-s' || rest[i] === '--sandbox' ? rest[i + 1] ?? '' : rest[i].startsWith('--sandbox=') ? rest[i].slice(10) : /^-s./.test(rest[i]) ? rest[i].slice(2) : /^sandbox_mode\s*=\s*"?([\w-]+)/.exec(v)?.[1] ?? '';
       if (process.platform === 'win32' && sandbox && sandbox !== 'danger-full-access') throw new Error(`Codex's "${sandbox}" sandbox cannot run chord's hooks on Windows (the sandboxed user cannot start them), so file claims would not be checked; run without -s, or with -s danger-full-access`);
     }
   }

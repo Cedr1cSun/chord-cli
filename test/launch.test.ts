@@ -243,17 +243,19 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-wt-'));
   fs.mkdirSync(path.join(wt, '.claude'));
   fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'], deny: ['Read(./.env)'] }, env: { A: 'json', B: 'json' }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo theirs' }] }], PreCompact: [{ hooks: [{ type: 'command', command: 'echo pc' }] }] } }));
-  fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', env: { A: 'local' }, permissions: { allow: ['Bash(npm run lint)'] }, disableAllHooks: true, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo local' }] }] } }));
-  // three repository MCP servers: the user approved a, rejected b and never saw c; $CLAUDE_PROJECT_DIR means the worktree
+  // three repository MCP servers: the user approved a, rejected b and never saw c (Claude Code keeps the answers in
+  // settings.local.json); $CLAUDE_PROJECT_DIR means the worktree
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', env: { A: 'local' }, permissions: { allow: ['Bash(npm run lint)'] }, enabledMcpjsonServers: ['a'], disabledMcpjsonServers: ['b'], disableAllHooks: true, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo local' }] }] } }));
   fs.writeFileSync(path.join(wt, '.mcp.json'), JSON.stringify({ mcpServers: { a: { command: 'node', args: ['$CLAUDE_PROJECT_DIR/srv.js'] }, b: { command: 'x' }, c: { command: 'y' } } }));
   const claudeJson = path.join(wt, 'claude.json');
-  fs.writeFileSync(claudeJson, JSON.stringify({ projects: { [wt.replace(/\\/g, '/')]: { hasTrustDialogAccepted: true, enabledMcpjsonServers: ['a'], disabledMcpjsonServers: ['b'] } } }));
+  fs.writeFileSync(claudeJson, JSON.stringify({ projects: { [wt.replace(/\\/g, '/')]: { hasTrustDialogAccepted: true } } }));
+  const claudeSettings = path.join(wt, 'user-settings.json'); // none: the user's real ~/.claude/settings.json stays out of it
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: wt };
   // without the user's trust in the repository nothing of its own rides along
   const bare = claudeArgs(env);
   assert.equal(JSON.parse(bare[bare.indexOf('--settings') + 1]).model, undefined);
   assert.equal(bare.filter(a => a.includes('mcpServers')).length, 1); // chord's own server only
-  const args = claudeArgs(env, { repo: wt, claudeConfig: claudeJson });
+  const args = claudeArgs(env, { repo: wt, claudeConfig: claudeJson, claudeSettings });
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
   // chord's own tools stay pre-approved; the repository's lists add to it, and settings.local.json's allow does not wipe settings.json's deny
   assert.deepEqual(settings.permissions, { allow: ['mcp__chord', 'Bash(npm run lint)', 'Bash(npm test)'], deny: ['Read(./.env)'] });
@@ -276,9 +278,9 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   assert.equal(mergeProjectSettings({ hooks: {} }, wt).hooks.PreCompact, undefined);
   // a broken .mcp.json is skipped too, and without one nothing extra is passed
   fs.writeFileSync(path.join(wt, '.mcp.json'), '{oops');
-  assert.equal(claudeArgs(env, { repo: wt, claudeConfig: claudeJson }).filter(a => a.includes('mcpServers')).length, 1);
+  assert.equal(claudeArgs(env, { repo: wt, claudeConfig: claudeJson, claudeSettings }).filter(a => a.includes('mcpServers')).length, 1);
   fs.rmSync(path.join(wt, '.mcp.json'));
-  assert.equal(claudeArgs(env, { repo: wt, claudeConfig: claudeJson }).filter(a => a.includes('mcpServers')).length, 1);
+  assert.equal(claudeArgs(env, { repo: wt, claudeConfig: claudeJson, claudeSettings }).filter(a => a.includes('mcpServers')).length, 1);
   assert.ok(!codexArgs(env).some(a => a.includes('Notification')));
 });
 

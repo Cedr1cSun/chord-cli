@@ -59,6 +59,18 @@ test('a failed Claude tool call (PostToolUseFailure) is checked like a successfu
   assert.equal((handleHook(ctx, 'claude', 'post-tool-use', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'git stash' } }) as any).hookSpecificOutput.hookEventName, 'PostToolUse');
 });
 
+test('a tool call the user interrupts leaves the unread messages for the next ordinary call', () => {
+  const { d, ctx } = repo();
+  db.addAgent(d, { name: 'b', tool: 'claude', pid: process.pid, cwd: ctx.cwd });
+  db.send(d, 'b', ['a'], 'ping');
+  // Claude Code discards the output of an interrupted call, so taking the messages there would lose them
+  assert.equal(handleHook(ctx, 'claude', 'post-tool-use', { hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', is_interrupt: true }), undefined);
+  assert.equal(db.hasUnread(d, 'a'), true);
+  const out = handleHook(ctx, 'claude', 'post-tool-use', { hook_event_name: 'PostToolUse', tool_name: 'Read' }) as any;
+  assert.match(out.hookSpecificOutput.additionalContext, /ping/);
+  assert.equal(db.hasUnread(d, 'a'), false);
+});
+
 test('post-tool-use reports paths relative to the workspace when the repo is a subdirectory', () => {
   const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-ws-')));
   const wt = path.join(ws, 'repo'); fs.mkdirSync(wt);

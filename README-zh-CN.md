@@ -50,7 +50,7 @@
 |---|---|
 | Claude Code | 支持 |
 | Codex CLI | 支持 |
-| OpenCode | 支持 |
+| OpenCode | 支持 2.x（1.x 请用 chord 0.3.1） |
 | pi | 支持 |
 | Gemini CLI | 计划中 |
 | Cursor CLI | 计划中 |
@@ -154,7 +154,7 @@ agent 在项目文件夹里启动，也就是你平时直接敲 `claude`、`code
 ## 🔌 chord 怎么和你的工具相处
 
 - **叫醒 agent** 就是往它的终端里敲一句短话。chord 只在输入框为空、键盘安静了几秒、终端回显了这句话之后才这么做；对话框永远收不到那个回车。
-- **信任**：agent 在项目文件夹里跑，所以 Claude 像平时敲 `claude` 一样只问一次；chord 不往 `~/.claude.json` 里写任何东西。在 Claude Code 里信任这个仓库之前（在仓库里跑一次 `claude`），它每次启动都会问是否添加 agent 的 worktree；默认答案 "No, exit" 会直接退出，要选 "Yes, add it"。Codex 会让你审核一次 chord 的 hook，hook 定义变了会再问一次；选 "trust all"。有 hook 被关掉时 chord 会在启动时告诉你。OpenCode 什么都不问：chord 通过 `OPENCODE_CONFIG_CONTENT` 把插件和 MCP server 交给它，所以你自己写在这个变量里的配置在 agent 运行期间不会被读取；全局配置、`OPENCODE_CONFIG_DIR` 和项目里的 `opencode.json` 照常生效。pi 也什么都不问：chord 用 `-e` 加载它的扩展，扩展在本次会话里注册 MCP server，所以不会写 `~/.pi`。
+- **信任**：agent 在项目文件夹里跑，所以 Claude 像平时敲 `claude` 一样只问一次；chord 不往 `~/.claude.json` 里写任何东西。在 Claude Code 里信任这个仓库之前（在仓库里跑一次 `claude`），它每次启动都会问是否添加 agent 的 worktree；默认答案 "No, exit" 会直接退出，要选 "Yes, add it"。Codex 会让你审核一次 chord 的 hook，hook 定义变了会再问一次；选 "trust all"。有 hook 被关掉时 chord 会在启动时告诉你。OpenCode 什么都不问：chord 用 `--standalone` 启动每个 agent，让它有自己的 server，并通过 `OPENCODE_CONFIG_CONTENT` 把插件和 MCP server 交给它，所以你自己写在这个变量里的配置在 agent 运行期间不会被读取；全局配置、`OPENCODE_CONFIG_DIR` 和项目里的 `opencode.json` 照常生效。`--server` 会被拒绝，因为它连上的 server 里没有 chord 的插件。pi 也什么都不问：chord 用 `-e` 加载它的扩展，扩展在本次会话里注册 MCP server，所以不会写 `~/.pi`。
 - **分支和 worktree。** 每个 agent 添一个 `chord/<名字>` 分支和一个 worktree；`chord clean` 在 agent 离开后删掉它们，还没到 main 上的东西留着。
 - **权限。** chord 自己的工具对 Claude 预先放行，所以独自干活的 agent 不会卡在它们的确认框上；你平时的 shell 和编辑审批照旧。Codex 沿用你自己配置里的沙箱和审批模式。Windows 上 chord 拒绝命令行里给出的沙箱，因为那个沙箱起不来 hook；Linux 和 macOS 上沙箱里 hook 照常运行，但 Codex 会让你逐个批准 chord 的工具调用。OpenCode 运行 chord 的工具不会询问，和其他 MCP 工具一样；其余工具沿用你自己的权限规则。pi 也一样；它的 `--no-mcp` 会被拒绝，因为 chord 的工具会跟着没掉。
 - **终端标题**是 `chord <agent> · <任务>`，每个窗口都说得出自己是谁。

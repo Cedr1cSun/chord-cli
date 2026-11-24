@@ -279,8 +279,8 @@ export function codexArgs(env: Record<string, string>, writableRoots: string[] =
     args.push('-c', `hooks.${e.codex}=[{${matcher}hooks=[{type="command",command=${toml(hookCommand(e.event))}${limit}}]}]`);
   }
   const envToml = Object.entries(env).map(([k, v]) => `${k}=${toml(v)}`).join(',');
-  // finish may wait minutes for the merge lock; Codex's default tool timeout is 60s
-  args.push('-c', `mcp_servers.chord={command=${toml(NODE)},args=[${toml(SERVE_TS)}],env={${envToml}},tool_timeout_sec=600}`);
+  // finish may wait 240 s for the merge lock and then run the test command for up to 600 s; Codex's default tool timeout is 60s
+  args.push('-c', `mcp_servers.chord={command=${toml(NODE)},args=[${toml(SERVE_TS)}],env={${envToml}},tool_timeout_sec=1200}`);
   return args;
 }
 
@@ -291,8 +291,8 @@ export function codexArgs(env: Record<string, string>, writableRoots: string[] =
  *  which it inherits. */
 export function opencodeEnv(env: Record<string, string>): Record<string, string> {
   const plugin = pathToFileURL(path.join(path.dirname(HOOKS_TS), 'opencode', 'plugins', `chord${path.extname(HOOKS_TS)}`)).href;
-  // finish may wait minutes for the merge lock; OpenCode's default MCP timeout is 30 s
-  const config = { plugin: [plugin], mcp: { chord: { type: 'local', command: [NODE, SERVE_TS], environment: env, timeout: 600_000 } } };
+  // finish may wait 240 s for the merge lock and then run the test command for up to 600 s; OpenCode's default MCP timeout is 30 s
+  const config = { plugin: [plugin], mcp: { chord: { type: 'local', command: [NODE, SERVE_TS], environment: env, timeout: 1_200_000 } } };
   return { ...env, CHORD_HOOKS: HOOKS_TS, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) };
 }
 

@@ -131,7 +131,7 @@ test('claude gets --add-dir for the worktree and codex a long tool timeout', () 
   assert.equal(ms.model, 'opus'); assert.equal(ms.disableAllHooks, undefined);
   assert.deepEqual(ms.hooks.Stop.map((h: any) => h.hooks[0].command), [hookCommand('stop'), 'echo mine']); // chord's hooks stay
   assert.equal(ms.hooks.PreToolUse[0].matcher, 'Edit|Write|MultiEdit|NotebookEdit');
-  assert.ok(codexArgs(env).find(a => a.startsWith('mcp_servers.chord='))!.includes('tool_timeout_sec=600'));
+  assert.ok(codexArgs(env).find(a => a.startsWith('mcp_servers.chord='))!.includes('tool_timeout_sec=1200')); // more than finish's 240 s lock wait plus its 600 s test run
   // default permission mode: chord's tools need no prompt; Codex's sandbox may write the main checkout's .git
   const settings = JSON.parse(c[c.indexOf('--settings') + 1]);
   assert.deepEqual(settings.permissions, { allow: ['mcp__chord'] });
@@ -372,7 +372,7 @@ test('opencode gets chord through the environment: inline config with the MCP se
   assert.match(cfg.mcp.chord.command[1], /serve\.(ts|js)$/);
   assert.equal(cfg.mcp.chord.environment.CHORD_AGENT_ID, 'oc');
   assert.equal(cfg.mcp.chord.environment.CHORD_WORKTREE, l.env.CHORD_WORKTREE);
-  assert.ok(cfg.mcp.chord.timeout >= 600_000); // finish may wait minutes for the merge lock
+  assert.ok(cfg.mcp.chord.timeout >= (240 + 600) * 1000); // finish may wait 240 s for the merge lock, then run the test command for up to 600 s
   assert.match(cfg.plugin[0], /^file:\/\/\/.*\/opencode\/plugins\/chord\.(ts|js)$/); // OpenCode imports the plugin from there
   assert.equal(fs.existsSync(fileURLToPath(cfg.plugin[0])), true);
   assert.equal(l.env.OPENCODE_CONFIG_DIR, undefined); // the user's own stays in force

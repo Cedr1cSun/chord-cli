@@ -47,7 +47,7 @@ test('the extension registers chord\'s MCP server with the agent\'s environment,
     assert.equal(s.env.CHORD_AGENT_ID, 'a');
     assert.equal(s.env.CHORD_WORKTREE, env.CHORD_WORKTREE);
     assert.equal(s.exposure, 'direct'); // pi's default, codemode, hides the tools from the model
-    assert.ok(s.timeout >= 600); // seconds; finish may wait minutes for the merge lock
+    assert.ok(s.timeout >= 240 + 600); // seconds; finish may wait 240 s for the merge lock, then run the test command for up to 600 s
   });
 });
 

@@ -209,12 +209,18 @@ export function claudeArgs(env: Record<string, string>, projectConfig: ProjectCo
   return [...addDir, '--mcp-config', JSON.stringify(mcp), ...mcpFiles, '--settings', JSON.stringify(settings)];
 }
 
-/** The user's own --settings folded under chord's (chord's hooks stay, theirs are added), in place in `args`. */
+/** The user's own --settings folded into chord's (chord's hooks and tools stay, theirs are added; their other keys win
+ *  over the repository's), in place in `args`. */
 export function mergeUserSettings(args: string[], user: Record<string, any>): string[] {
   const i = args.indexOf('--settings');
   if (i < 0 || i + 1 >= args.length) return args;
   const out = [...args];
-  out[i + 1] = JSON.stringify(mergeSettings(JSON.parse(args[i + 1]), user));
+  const m = mergeSettings(JSON.parse(args[i + 1]), user);
+  // chord only owns hooks and the permission lists; every other key came from the repository, and the command line beats
+  // the repository's settings files in Claude Code too
+  for (const k of Object.keys(user)) if (!['hooks', 'permissions', 'disableAllHooks'].includes(k)) m[k] = user[k];
+  for (const k of Object.keys(user.permissions ?? {})) if (!['allow', 'deny', 'ask'].includes(k)) m.permissions[k] = user.permissions[k];
+  out[i + 1] = JSON.stringify(m);
   return out;
 }
 

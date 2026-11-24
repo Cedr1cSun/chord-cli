@@ -282,6 +282,19 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   assert.ok(!codexArgs(env).some(a => a.includes('Notification')));
 });
 
+test('the user\'s own --settings win over the repository\'s settings, and chord\'s hooks and tools stay', () => {
+  const wt = tmp('chord-wt-');
+  fs.mkdirSync(path.join(wt, '.claude'));
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', permissions: { defaultMode: 'acceptEdits' } }));
+  const ours = { hooks: { Stop: [{ hooks: [{ type: 'command', command: hookCommand('stop') }] }] }, permissions: { allow: ['mcp__chord'] } };
+  const out = mergeUserSettings(['--settings', JSON.stringify(mergeProjectSettings(ours, wt))], { model: 'sonnet', permissions: { defaultMode: 'plan' } });
+  const s = JSON.parse(out[1]);
+  assert.equal(s.model, 'sonnet');
+  assert.equal(s.permissions.defaultMode, 'plan');
+  assert.ok(s.permissions.allow.includes('mcp__chord'));
+  assert.equal(s.hooks.Stop[0].hooks[0].command, hookCommand('stop'));
+});
+
 test('the setup command from <project>/chord/config.json runs once per new worktree; a failure aborts and removes the worktree', () => {
   const proj = tempProject();
   fs.mkdirSync(path.join(proj, 'chord'), { recursive: true });

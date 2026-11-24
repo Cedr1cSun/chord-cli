@@ -177,7 +177,7 @@ test('takeSettings lifts the user --settings out of the tool arguments; hook-kil
   refuseHookKillers('codex', ['-c', 'features={apps=true}']); refuseHookKillers('codex', ['--disable', 'apps']); // fine
   assert.throws(() => refuseHookKillers('opencode', ['--pure']), /switches off the plugin/);
   assert.throws(() => refuseHookKillers('pi', ['--no-mcp']), /switches off the MCP support/);
-  refuseHookKillers('pi', ['--model', 'sonnet', '-ne']); // -ne keeps explicit -e extensions
+  refuseHookKillers('pi', ['--model', 'sonnet', '-ne']); // -ne keeps explicit -e extensions, and chord names builtin:mcp with -e too
   refuseHookKillers('claude', ['--model', 'opus']); refuseHookKillers('codex', ['-c', 'model="gpt-5"']); refuseHookKillers('opencode', ['-m', 'anthropic/claude-sonnet-4-5']); // fine
   if (process.platform === 'win32') {
     assert.throws(() => refuseHookKillers('codex', ['-s', 'workspace-write']), /sandbox cannot run chord's hooks on Windows/);

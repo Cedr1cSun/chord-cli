@@ -381,10 +381,12 @@ test('a setup that fails for an agent that already worked keeps its branch, comm
 test('pi gets chord\'s extension on the command line and the hook and server paths in the environment', () => {
   const proj = tempProject();
   const l = prepare('pi', proj, 'p');
-  assert.equal(l.args[0], '-e');
-  assert.match(l.args[1], /[\\/]pi[\\/]extensions[\\/]chord\.(ts|js)$/);
-  assert.equal(fs.existsSync(l.args[1]), true);
-  assert.equal(l.args.length, 2); // the user's own arguments go through untouched
+  // pi's own MCP extension by name too: -ne or "-builtin:mcp" in the user's settings would otherwise leave chord's
+  // server registered with nothing to connect it
+  assert.deepEqual(l.args.slice(0, 3), ['-e', 'builtin:mcp', '-e']);
+  assert.match(l.args[3], /[\\/]pi[\\/]extensions[\\/]chord\.(ts|js)$/);
+  assert.equal(fs.existsSync(l.args[3]), true);
+  assert.equal(l.args.length, 4); // the user's own arguments go through untouched
   assert.match(l.env.CHORD_HOOKS, /hooks\.(ts|js)$/); // the extension spawns this for every event
   assert.match(l.env.CHORD_SERVE, /serve\.(ts|js)$/); // and registers this as the MCP server
   assert.equal(l.env.CHORD_TOOL, 'pi');

@@ -245,7 +245,7 @@ export function mergeProjectSettings(ours: Record<string, any>, worktree: string
     try { one = JSON.parse(fs.readFileSync(path.join(worktree, '.claude', name), 'utf8')); } catch { continue; }
     if (typeof one !== 'object' || one === null) continue;
     one = substituteProjectDir(one, worktree);
-    theirs = { ...theirs, ...one, hooks: concatHooks(theirs, one) };
+    theirs = { ...mergeSettings(one, theirs), hooks: concatHooks(theirs, one) }; // permission lists add up across the two files
   }
   return mergeSettings(ours, theirs);
 }

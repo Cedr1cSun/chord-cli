@@ -229,8 +229,8 @@ test('post-tool-use runs for every tool and codex hooks that attach context get 
 test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets no Notification hook', () => {
   const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-wt-'));
   fs.mkdirSync(path.join(wt, '.claude'));
-  fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'] }, env: { A: 'json', B: 'json' }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo theirs' }] }], PreCompact: [{ hooks: [{ type: 'command', command: 'echo pc' }] }] } }));
-  fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', env: { A: 'local' }, disableAllHooks: true, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo local' }] }] } }));
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'], deny: ['Read(./.env)'] }, env: { A: 'json', B: 'json' }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo theirs' }] }], PreCompact: [{ hooks: [{ type: 'command', command: 'echo pc' }] }] } }));
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', env: { A: 'local' }, permissions: { allow: ['Bash(npm run lint)'] }, disableAllHooks: true, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo local' }] }] } }));
   // three repository MCP servers: the user approved a, rejected b and never saw c; $CLAUDE_PROJECT_DIR means the worktree
   fs.writeFileSync(path.join(wt, '.mcp.json'), JSON.stringify({ mcpServers: { a: { command: 'node', args: ['$CLAUDE_PROJECT_DIR/srv.js'] }, b: { command: 'x' }, c: { command: 'y' } } }));
   const claudeJson = path.join(wt, 'claude.json');
@@ -242,7 +242,8 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   assert.equal(bare.filter(a => a.includes('mcpServers')).length, 1); // chord's own server only
   const args = claudeArgs(env, { repo: wt, claudeConfig: claudeJson });
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
-  assert.deepEqual(settings.permissions, { allow: ['mcp__chord', 'Bash(npm test)'] }); // chord's own tools stay pre-approved; the repository's list adds to it
+  // chord's own tools stay pre-approved; the repository's lists add to it, and settings.local.json's allow does not wipe settings.json's deny
+  assert.deepEqual(settings.permissions, { allow: ['mcp__chord', 'Bash(npm run lint)', 'Bash(npm test)'], deny: ['Read(./.env)'] });
   assert.equal(settings.model, 'opus');
   assert.deepEqual(settings.env, { A: 'local' }); // settings.local.json wins over settings.json, as in Claude Code (whole key, not a deep merge)
   assert.equal(settings.disableAllHooks, undefined); // would switch chord off

@@ -91,10 +91,11 @@ export class InputGate {
   private lastEscAt = -Infinity;
   onUserInput(data: string, now = Date.now()): void {
     // bracketed paste: its newlines are content, not submits, and a long paste arrives in several chunks
-    const pasted = this.inPaste || data.includes('\x1b[200~');
-    const open = data.lastIndexOf('\x1b[200~'), close = data.lastIndexOf('\x1b[201~');
+    const raw = this.pending + data; // a marker may be split across chunks, its first half held in pending
+    const pasted = this.inPaste || raw.includes('\x1b[200~');
+    const open = raw.lastIndexOf('\x1b[200~'), close = raw.lastIndexOf('\x1b[201~');
     if (open >= 0 || close >= 0) this.inPaste = open > close;
-    const text = decodeKeys(this.pending + data, rest => { this.pending = rest; });
+    const text = decodeKeys(raw, rest => { this.pending = rest; });
     if (!text) return;
     this.lastKeyAt = now;
     if (text.includes('\x1b')) this.lastEscAt = now;

@@ -351,7 +351,9 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
       if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it or the project folder in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
     }
     if (tool === 'opencode') return { name, project, cwd: ws, worktree, dbFile, env: opencodeEnv(env), args: [] };
-    if (tool === 'pi') return { name, project, cwd: ws, worktree, dbFile, env: { ...env, CHORD_HOOKS: HOOKS_TS, CHORD_SERVE: SERVE_TS }, args: piArgs() };
+    // PI_PROGRAM_STATUS: pi reports its state over OSC 7501 only when the terminal asks for it or this is set, and the
+    // wrapper reads that report as a second source of idle and busy
+    if (tool === 'pi') return { name, project, cwd: ws, worktree, dbFile, env: { ...env, CHORD_HOOKS: HOOKS_TS, CHORD_SERVE: SERVE_TS, PI_PROGRAM_STATUS: '1' }, args: piArgs() };
     return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env, [path.join(project.repo, '.git')]) };
   } catch (e) {
     db.setStatus(d, name, 'offline'); // the launch failed: the name is free again

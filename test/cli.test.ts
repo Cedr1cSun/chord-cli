@@ -93,10 +93,12 @@ test('resume relaunches an agent under its own tool, reopening its recorded conv
   db.addAgent(d, { name: 'c', tool: 'codex', pid: process.pid, cwd: '/' });
   db.addAgent(d, { name: 'o', tool: 'opencode', pid: process.pid, cwd: '/' }); db.setSession(d, 'o', 'ses_o');
   db.addAgent(d, { name: 'p', tool: 'pi', pid: process.pid, cwd: '/' }); db.setSession(d, 'p', 'sid-p');
+  db.addAgent(d, { name: 'g', tool: 'agy', pid: process.pid, cwd: '/' }); db.setSession(d, 'g', '67b9bc4f-084a-4318-b963-240bc2005b8d');
   assert.deepEqual(resumeArgv(d, 'a', ['go on']), ['claude', '--name', 'a', '--resume', 'sid-a', 'go on']);
   assert.deepEqual(resumeArgv(d, 'b', []), ['codex', '--name', 'b', 'resume', 'sid-b']);
   assert.deepEqual(resumeArgv(d, 'o', []), ['opencode', '--name', 'o', '-s', 'ses_o']);
   assert.deepEqual(resumeArgv(d, 'p', []), ['pi', '--name', 'p', '--session', 'sid-p']);
+  assert.deepEqual(resumeArgv(d, 'g', []), ['agy', '--name', 'g', '--conversation', '67b9bc4f-084a-4318-b963-240bc2005b8d']);
   assert.throws(() => resumeArgv(d, 'c', []), /no recorded conversation for c; start it again with chord codex --name c/);
   assert.throws(() => resumeArgv(d, 'zz', []), /no such agent: zz/);
 });
@@ -185,6 +187,15 @@ test('takeSettings lifts the user --settings out of the tool arguments; hook-kil
   assert.throws(() => refuseHookKillers('opencode', ['--server=http://127.0.0.1:4096']), /--server/);
   refuseHookKillers('opencode', ['--pure']); refuseHookKillers('opencode', ['--standalone']); // --pure is gone in OpenCode 2: OpenCode refuses it itself
   assert.throws(() => refuseHookKillers('pi', ['--no-mcp']), /switches off the MCP support/);
+  // agy: a remote agent's session would not run on this machine, where chord's hooks and worktree are
+  assert.throws(() => refuseHookKillers('agy', ['--remote-agent']), /--remote-agent runs the session on a remote agent/);
+  assert.throws(() => refuseHookKillers('agy', ['--model', 'x', '--remote-agent=true']), /--remote-agent/);
+  // a server named chord in the user's global agy MCP configuration would replace chord's own
+  const mcp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-agy-mcp-')), 'mcp_config.json');
+  fs.writeFileSync(mcp, JSON.stringify({ mcpServers: { chord: { command: 'node', args: ['old-chord.js'] } } }));
+  assert.throws(() => refuseHookKillers('agy', [], mcp), /already defines an MCP server named "chord"/);
+  fs.writeFileSync(mcp, JSON.stringify({ mcpServers: { playwright: { command: 'npx' } } }));
+  refuseHookKillers('agy', ['--model', 'gemini-3.8-flash-low', '--add-dir', 'docs'], mcp); // fine
   refuseHookKillers('pi', ['--model', 'sonnet', '-ne']); // -ne keeps explicit -e extensions, and chord names builtin:mcp with -e too
   refuseHookKillers('claude', ['--model', 'opus']); refuseHookKillers('codex', ['-c', 'model="gpt-5"']); refuseHookKillers('opencode', ['-m', 'anthropic/claude-sonnet-4-5']); // fine
   if (process.platform === 'win32') {
@@ -225,7 +236,7 @@ test('help and version go to stdout; unknown commands and bad arguments to stder
   for (const a of [[], ['help'], ['-h'], ['--help']]) {
     const r = run(...a);
     assert.equal(r.code, 0, a.join(' '));
-    assert.match(r.out, /chord ls \[--all\]/); assert.match(r.out, /chord resume <agent>/); assert.match(r.out, /chord clean/);
+    assert.match(r.out, /chord ls \[--all\]/); assert.match(r.out, /chord agy \[--name <agent>\]/); assert.match(r.out, /chord resume <agent>/); assert.match(r.out, /chord clean/);
     for (const l of r.out.split('\n')) assert.ok(l.length < 80, l);
   }
   const v = run('--version');

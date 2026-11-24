@@ -65,3 +65,11 @@ test('send refuses offline recipients; a relaunch drops stale unread messages', 
   assert.equal(db.hasUnread(d, 'b'), false);
   assert.equal(call('a', 'send', { to: 'b', message: 'fresh' }).isError, false);
 });
+
+test('send refuses a message too long to reach the recipient whole', () => {
+  const { d, call } = setup();
+  // a hook hands messages over as context; Claude Code shows only a preview of context over 10,000 characters
+  assert.match(call('a', 'send', { to: 'b', message: 'x'.repeat(8001) }).text, /8001 characters.*split it/);
+  assert.equal(db.hasUnread(d, 'b'), false);
+  assert.equal(call('a', 'send', { to: 'b', message: 'x'.repeat(8000) }).isError, false);
+});

@@ -225,7 +225,8 @@ export function mergeUserSettings(args: string[], user: Record<string, any>): st
 }
 
 const PROJECT_CONFIG_FILES = ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json'];
-const hasProjectConfig = (worktree: string) => PROJECT_CONFIG_FILES.some(f => fs.existsSync(path.join(worktree, f)));
+// settings.local.json is not tracked: only the main checkout has it (see mergeProjectSettings)
+const hasProjectConfig = (worktree: string, repo: string) => PROJECT_CONFIG_FILES.some(f => fs.existsSync(path.join(f === '.claude/settings.local.json' ? repo : worktree, f)));
 
 /** Hook lists of `b` appended to those of `a`, so both sets run. */
 function concatHooks(a: Record<string, any>, b: Record<string, any>): Record<string, unknown[]> {
@@ -344,7 +345,7 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
       fs.writeFileSync(marker, `${Date.now()}\n`);
     }
     let projectConfig: ProjectConfigSource | false = false;
-    if (tool === 'claude' && hasProjectConfig(worktree)) {
+    if (tool === 'claude' && hasProjectConfig(worktree, project.repo)) {
       projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir) ? { repo: project.repo } : false;
       if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it or the project folder in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
     }

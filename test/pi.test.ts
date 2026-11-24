@@ -128,6 +128,22 @@ test('the extension appends messages that arrived mid-turn to the tool result, h
   });
 });
 
+test('a nested tool call from a codemode script leaves messages for the outer call, whose result reaches the model', async () => {
+  const { d, env } = setup();
+  await withEnv(env, async () => {
+    const { pi, handlers, ctx } = fakePi();
+    await chord(pi as any);
+    db.send(d, 'b', ['a'], 'leave footer.ts to me');
+    const content = [{ type: 'text', text: 'a\nb' }];
+    const nested = await handlers.tool_result({ type: 'tool_result', toolName: 'bash', toolCallId: 'p1/1', parentToolCallId: 'p1', input: {}, content, structuredContent: { stdout: 'a\nb', exitCode: 0 }, isError: false }, ctx());
+    assert.equal(nested, undefined); // only the script sees a nested result
+    assert.equal(db.hasUnread(d, 'a'), true);
+    const outer = await handlers.tool_result({ type: 'tool_result', toolName: 'codemode', toolCallId: 'p1', input: {}, content, isError: false }, ctx());
+    assert.match(outer.content[1].text, /message from b[\s\S]*leave footer\.ts to me/);
+    assert.equal(db.hasUnread(d, 'a'), false);
+  });
+});
+
 test('without chord\'s environment the extension does nothing', async () => {
   const { pi, handlers, servers } = fakePi();
   await chord(pi as any);

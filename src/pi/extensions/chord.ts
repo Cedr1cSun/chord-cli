@@ -39,7 +39,8 @@ export default function chord(pi: Pi): void {
     if (d?.permissionDecision === 'deny') return { block: true, reason: d.permissionDecisionReason ?? 'refused by chord' }; // the model reads the reason
   });
   pi.on('tool_result', (e, ctx) => {
-    const r = context(hook('post-tool-use', { session_id: ctx.sessionManager.getSessionId(), tool_name: e.toolName, tool_input: e.input }));
+    // a call nested in a codemode script reaches only the script, not the model: like a subagent's, it leaves the messages
+    const r = context(hook('post-tool-use', { session_id: ctx.sessionManager.getSessionId(), tool_name: e.toolName, tool_input: e.input, ...(e.parentToolCallId ? { agent_id: e.parentToolCallId } : {}) }));
     if (r) return { content: [...e.content, { type: 'text', text: r }], structuredContent: e.structuredContent };
   });
   pi.on('agent_before_settle', (e, ctx) => {

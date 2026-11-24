@@ -311,3 +311,12 @@ test('a watch over stale heartbeats tells a sleeping machine from dead wrappers'
   assert.deepEqual(db.sweep(d, () => false, t, 10).sort(), ['z']); // but a dead pid is dead, starting or not
   assert.equal(db.getAgent(d, 'x')!.status, 'offline');
 });
+
+test('a relaunch under the same name drops claims the previous session left behind', () => {
+  const d = open();
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 1, cwd: '/' });
+  db.addClaim(d, { agent: 'a', file: 'f.ts', intent: 'x', kind: 'edit' });
+  db.setStatus(d, 'a', 'offline'); // the release on the way out never ran
+  db.addAgent(d, { name: 'a', tool: 'claude', pid: 2, cwd: '/' });
+  assert.deepEqual(db.claimsBy(d, 'a'), []);
+});

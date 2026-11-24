@@ -171,6 +171,7 @@ export function addAgent(db: DatabaseSync, a: { name: string; tool: string; pid:
   ).run(a.name, a.tool, a.pid, a.cwd, now, now, a.heartbeat ? now : null);
   // a relaunch under the same name must not inherit messages meant for the previous session
   db.prepare('delete from messages where recipient = ? and read_at is null').run(a.name);
+  releaseAll(db, a.name, 'swept'); // nor claims it left behind if the release on its way out never ran
 }
 
 /** Forget an agent: its claims, the messages to it and those it sent that have been read. What it said and nobody

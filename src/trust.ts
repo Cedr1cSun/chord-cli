@@ -19,14 +19,16 @@ export function claudeTrusts(dir: string, file = claudeConfigPath()): boolean {
 
 /** Which of a repository's .mcp.json servers the user has approved or rejected in Claude Code, and whether they
  *  approved them all at once. Claude asks per server when it runs in the repository; chord has no prompt, so it only
- *  starts what the user has already approved there. */
-export function claudeMcpChoices(dir: string, file = claudeConfigPath()): { all: boolean; enabled: string[]; disabled: string[] } {
-  try {
-    const projects = JSON.parse(fs.readFileSync(file, 'utf8')).projects ?? {};
-    const key = Object.keys(projects).find(k => norm(k) === norm(dir));
-    const p = key ? projects[key] : {};
-    return { all: p.enableAllProjectMcpServers === true, enabled: p.enabledMcpjsonServers ?? [], disabled: p.disabledMcpjsonServers ?? [] };
-  } catch { return { all: false, enabled: [], disabled: [] }; }
+ *  starts what the user has already approved there. Claude Code 2.1.323 and later keep the answers in the folder's
+ *  .claude/settings.local.json (the user's ~/.claude/settings.json may hold some too); older ones kept them in
+ *  ~/.claude.json, still read for whoever has not migrated. A server disabled in any of them stays off. */
+export function claudeMcpChoices(dir: string, file = claudeConfigPath(), userSettings = path.join(os.homedir(), '.claude', 'settings.json')): { all: boolean; enabled: string[]; disabled: string[] } {
+  const read = (f: string) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) ?? {}; } catch { return {}; } };
+  const projects = read(file).projects ?? {};
+  const key = Object.keys(projects).find(k => norm(k) === norm(dir));
+  const sources = [read(path.join(dir, '.claude', 'settings.local.json')), read(userSettings), key ? projects[key] : {}];
+  const list = (k: string) => [...new Set(sources.flatMap(s => Array.isArray(s?.[k]) ? s[k] as string[] : []))];
+  return { all: sources.some(s => s?.enableAllProjectMcpServers === true), enabled: list('enabledMcpjsonServers'), disabled: list('disabledMcpjsonServers') };
 }
 
 const codexConfigPath = () => path.join(os.homedir(), '.codex', 'config.toml');

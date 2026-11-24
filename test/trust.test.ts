@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { claudeTrusts, codexFirstStart, disabledCodexHooks } from '../src/trust.ts';
+import { claudeMcpChoices, claudeTrusts, codexFirstStart, disabledCodexHooks } from '../src/trust.ts';
 
 test('disabledCodexHooks names the chord hooks switched off in Codex\'s config', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-codex-')), 'config.toml');
@@ -42,6 +42,27 @@ test('claudeTrusts reads the trust answer for a folder in either path form', () 
   assert.equal(claudeTrusts('D:/p/other', file), false);
   assert.equal(claudeTrusts('D:/p/unknown', file), false);
   assert.equal(claudeTrusts('D:/p/repo', path.join(path.dirname(file), 'missing.json')), false);
+});
+
+test('claudeMcpChoices reads .mcp.json approvals from the repository\'s settings.local.json, the user\'s settings.json and, as before, ~/.claude.json', () => {
+  const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-mcp-')));
+  const repo = path.join(home, 'repo'); fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+  const claudeJson = path.join(home, 'claude.json'), userSettings = path.join(home, 'settings.json');
+  const none = { all: false, enabled: [], disabled: [] };
+  assert.deepEqual(claudeMcpChoices(repo, claudeJson, userSettings), none); // nothing anywhere
+  // Claude Code 2.1.323 and later write the approval dialogue's answers into the folder's settings.local.json
+  fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ enabledMcpjsonServers: ['a', 'x'], disabledMcpjsonServers: ['b'] }));
+  assert.deepEqual(claudeMcpChoices(repo, claudeJson, userSettings), { all: false, enabled: ['a', 'x'], disabled: ['b'] });
+  // the user's own settings add to that; a server disabled anywhere stays disabled, whoever enabled it
+  fs.writeFileSync(userSettings, JSON.stringify({ enabledMcpjsonServers: ['c'], disabledMcpjsonServers: ['x'] }));
+  // older versions kept them in ~/.claude.json under the project, still read for whoever has not migrated
+  fs.writeFileSync(claudeJson, JSON.stringify({ projects: { [repo.replace(/\\/g, '/')]: { enabledMcpjsonServers: ['d'] } } }));
+  const c = claudeMcpChoices(repo, claudeJson, userSettings);
+  assert.deepEqual([c.all, c.enabled.sort(), c.disabled.sort()], [false, ['a', 'c', 'd', 'x'], ['b', 'x']]);
+  fs.writeFileSync(userSettings, JSON.stringify({ enableAllProjectMcpServers: true }));
+  assert.equal(claudeMcpChoices(repo, claudeJson, userSettings).all, true);
+  fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), '{oops'); fs.writeFileSync(userSettings, 'null');
+  assert.deepEqual(claudeMcpChoices(repo, claudeJson, userSettings), { all: false, enabled: ['d'], disabled: [] }); // broken files count as empty
 });
 
 test('codexFirstStart: without a Codex state database, a second launch waits until the first one\'s Codex has made it', async () => {

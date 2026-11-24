@@ -147,9 +147,9 @@ export function withNodeOnPath(env: Record<string, string>): Record<string, stri
   return { ...env, [key]: current ? `${dir}${path.delimiter}${current}` : dir };
 }
 
-/** The repository whose own .claude settings and .mcp.json ride along, and the claude.json holding the user's
- *  approvals (the tests point it at a file of their own). */
-interface ProjectConfigSource { repo: string; claudeConfig?: string }
+/** The repository whose own .claude settings and .mcp.json ride along, and the user's claude.json and settings.json
+ *  that may hold their approvals (the tests point them at files of their own). */
+interface ProjectConfigSource { repo: string; claudeConfig?: string; claudeSettings?: string }
 
 /** `$CLAUDE_PROJECT_DIR` in a repository's hook commands and MCP definitions means the repository, which for an agent
  *  is its worktree; Claude would point it at the project folder. */
@@ -172,7 +172,7 @@ function projectMcpConfig(worktree: string, source: ProjectConfigSource): string
   let parsed: { mcpServers?: Record<string, unknown> };
   try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { process.stderr.write(`chord: ${file} is not valid JSON (${(e as Error).message}); its servers are not loaded\n`); return null; }
   const servers = parsed?.mcpServers ?? {};
-  const choice = claudeMcpChoices(source.repo, source.claudeConfig);
+  const choice = claudeMcpChoices(source.repo, source.claudeConfig, source.claudeSettings);
   const keep = Object.fromEntries(Object.entries(servers).filter(([name]) => !choice.disabled.includes(name) && (choice.all || choice.enabled.includes(name))));
   const skipped = Object.keys(servers).filter(n => !(n in keep));
   if (skipped.length) process.stderr.write(`chord: not starting the repository's MCP server(s) ${skipped.join(', ')}: run claude in ${source.repo} once and approve them there first\n`);

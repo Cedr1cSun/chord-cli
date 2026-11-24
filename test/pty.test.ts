@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import pty from 'node-pty';
-import { EXIT_COMMAND, InputGate, NUDGE, TitleFilter, decodeKeys, ensureSpawnHelper, exitDeclined, nextAction, oscState, oscTail, resolveCommand, stripAnsi, titleFor, titleSequence, typedEchoed, whereIs } from '../src/pty.ts';
+import { EXIT_COMMAND, InputGate, NUDGE, PARENT_SESSION_ENV, TitleFilter, decodeKeys, ensureSpawnHelper, exitDeclined, nextAction, oscState, oscTail, resolveCommand, stripAnsi, titleFor, titleSequence, typedEchoed, whereIs } from '../src/pty.ts';
 
 const key = (uc: number, down = 1, ctrl = 0) => `\x1b[${uc};0;${uc};${down};${ctrl};1_`;
 
@@ -181,6 +181,13 @@ test('oscState reads the last complete Codex state report in a chunk; oscTail ke
   assert.equal(oscTail('..\x1b]7501;state=idle:app=codex\x1b\\xyz'), '');
   assert.equal(oscState(oscTail('\x1b]7501;state=idle:app=codex\x07') + 'plain output'), null);
   assert.equal(oscState(oscTail('\x1b]7501;state=id') + 'le:app=codex\x07'), 'idle');
+});
+
+test('the agent does not inherit the variables that mark a Claude Code child session', () => {
+  // what Claude Code sets for the processes its shell tool starts, and removes itself before starting an independent session
+  for (const k of ['CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_SESSION_ATTENDED', 'CLAUDE_CODE_LAUNCHED_BY_SESSION_IDS', 'CLAUDE_CODE_CHILD_NOTES_DIR', 'CLAUDE_CODE_BRIDGE_SESSION_ID', 'CLAUDE_CODE_BRIDGE_CHILD_HELD_TO_AUTO', 'CLAUDE_CODE_HOST_WORKTREE', 'CLAUDE_CODE_HOST_WORKTREE_FENCE', 'CLAUDE_CODE_CHROME_MCP_ORG_DENIED', 'CLAUDE_CODE_EVAL_INTERVIEW_SESSION']) assert.ok(PARENT_SESSION_ENV.test(k), k);
+  // the user's own settings pass through
+  for (const k of ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_DISABLE_NESTED_SESSION_ID', 'ANTHROPIC_API_KEY']) assert.ok(!PARENT_SESSION_ENV.test(k), k);
 });
 
 test('whereIs scans PATH without where.exe', { skip: process.platform !== 'win32' }, () => {

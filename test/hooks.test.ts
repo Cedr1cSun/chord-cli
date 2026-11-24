@@ -276,7 +276,7 @@ test('the deny reason finds the own copy when another agent is named like the re
 
 test('pi: edit and write name their file as path, relative to the project folder or absolute', () => {
   assert.deepEqual(filesTouched('pi', { tool_name: 'edit', tool_input: { path: 'chord/agents/a/repo/x.ts', edits: [] } }), ['chord/agents/a/repo/x.ts']);
-  assert.deepEqual(filesTouched('pi', { tool_name: 'write', tool_input: { path: '/P/chord/agents/a/repo/y.ts', content: '' } }), ['/P/chord/agents/a/repo/y.ts']);
+  assert.deepEqual(filesTouched('pi', { tool_name: 'write', tool_input: { path: '/P/chord/agents/a/repo/y.ts', content: '' } }), [process.platform === 'win32' ? 'P:\\chord\\agents\\a\\repo\\y.ts' : '/P/chord/agents/a/repo/y.ts']); // pi reads /P/ as drive P: on Windows
   assert.deepEqual(filesTouched('pi', { tool_name: 'bash', tool_input: { command: 'ls' } }), []);
   const d = db.openDb(':memory:');
   const P = process.platform === 'win32' ? 'D:\\P' : '/P';
@@ -286,6 +286,14 @@ test('pi: edit and write name their file as path, relative to the project folder
   assert.equal((handleHook(ctx, 'pi', 'pre-tool-use', { tool_name: 'edit', tool_input: {} }) as any).hookSpecificOutput.permissionDecision, 'deny'); // names no file
   const main = handleHook(ctx, 'pi', 'pre-tool-use', { tool_name: 'write', tool_input: { path: 'repo/src/y.ts', content: '' } }) as any;
   assert.match(main.hookSpecificOutput.permissionDecisionReason, /edit your own copy .*chord[\\/]agents[\\/]a[\\/]repo[\\/]src[\\/]y\.ts instead/); // absolute, as pi's editor wants it
+  // pi strips a leading @ and, on Windows, reads Git Bash paths (/d/..., /mnt/d/...) as drive paths
+  assert.deepEqual(filesTouched('pi', { tool_name: 'edit', tool_input: { path: '@chord/agents/a/repo/x.ts', edits: [] } }), ['chord/agents/a/repo/x.ts']);
+  if (process.platform === 'win32') {
+    const write = (p: string) => (handleHook(ctx, 'pi', 'pre-tool-use', { tool_name: 'write', tool_input: { path: p, content: '' } }) as any)?.hookSpecificOutput.permissionDecisionReason;
+    assert.match(write('/d/P/chord/agents/a/repo/src/x.ts'), /not claimed/);
+    assert.match(write('/d/P/repo/src/x.ts'), /outside your workspace/);
+    assert.match(write('/mnt/d/P/repo/src/x.ts'), /outside your workspace/);
+  }
 });
 
 test('OpenCode: edit, write and apply_patch name their files; relative paths and workdir resolve against the project folder', () => {

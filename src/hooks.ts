@@ -4,6 +4,7 @@
 // payload shape).
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as db from './db.ts';
@@ -19,6 +20,14 @@ type HookOut = object | undefined;
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const OPENCODE_EDIT_TOOLS = new Set(['edit', 'write']); // absolute filePath; apply_patch carries a patch like Codex's
 const PI_EDIT_TOOLS = OPENCODE_EDIT_TOOLS; // path, relative to pi's cwd (the project folder) or absolute
+/** The path as pi's own normalizePath reads it (pi 1.6 utils/paths.js): a leading @ dropped, Git Bash's /c/..., /mnt/c/...
+ *  and /cygdrive/c/... as C:\... on Windows, ~ and file:// expanded. Checked as given, they would land outside the project. */
+const piPath = (p: string): string => {
+  p = p.startsWith('@') ? p.slice(1) : p;
+  if (process.platform === 'win32' && !p.includes('\\')) p = p.replace(/^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i, (_, d: string, r = '') => `${d.toUpperCase()}:\\${r.replaceAll('/', '\\')}`);
+  if (p === '~' || p.startsWith('~/') || (process.platform === 'win32' && p.startsWith('~\\'))) return path.join(os.homedir(), p.slice(2));
+  return p.startsWith('file://') ? fileURLToPath(p) : p;
+};
 
 export function filesTouched(tool: Tool, payload: Record<string, any>): string[] {
   const name = String(payload.tool_name ?? '');
@@ -28,7 +37,7 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
     return typeof p === 'string' ? [p] : [];
   }
   if (tool === 'opencode' && OPENCODE_EDIT_TOOLS.has(name)) return typeof input.filePath === 'string' ? [input.filePath] : [];
-  if (tool === 'pi') return PI_EDIT_TOOLS.has(name) && typeof input.path === 'string' ? [input.path] : [];
+  if (tool === 'pi') return PI_EDIT_TOOLS.has(name) && typeof input.path === 'string' ? [piPath(input.path)] : [];
   if (tool === 'codex' || tool === 'opencode') {
     // the patch has been seen under "command"; "patchText", "input", "patch" and a bare string cost nothing to accept as well
     const text = typeof input === 'string' ? input : [input.command, input.patchText, input.input, input.patch].find(v => typeof v === 'string');

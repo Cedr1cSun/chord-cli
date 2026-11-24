@@ -54,6 +54,9 @@ test('InputGate: backspace empties a draft, Ctrl+U/Ctrl+C clear it, a paste with
   g.onUserInput('\r'); assert.equal(g.clear(), true);
   g.onUserInput('\x1b[200~line one\rline two\r'); g.onUserInput('line three\r\x1b[201~'); assert.equal(g.clear(), false); // a paste split across chunks
   g.onUserInput('\r'); assert.equal(g.clear(), true);
+  g.onUserInput('\x1b[200~x\x1b[20'); g.onUserInput('1~'); g.onUserInput('\r'); assert.equal(g.clear(), true); // end marker split across chunks
+  g.onUserInput('\x1b[20'); g.onUserInput('0~a\nb\n\x1b[201~'); assert.equal(g.clear(), false); // start marker split across chunks
+  g.onUserInput('\x15');
   g.onUserInput(key(97) + key(13, 1, 0x10)); assert.equal(g.clear(), false); // 'a' then Shift+Enter: still a draft
   g.onUserInput(key(13)); assert.equal(g.clear(), true);
 });

@@ -225,10 +225,14 @@ function tolerant(what: string, f: () => void): void {
   try { f(); } catch (e) { db.log(`${what}: ${(e as Error).message}; skipped`); }
 }
 
+/** What Claude Code sets for the processes its shell tool starts, as removed by Claude Code itself (2.1.331) before it
+ *  starts an independent session. Left in, an agent started by chord from such a shell runs as a child of that session. */
+export const PARENT_SESSION_ENV = /^(CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_(SESSION_ID|LAUNCHED_BY_SESSION_IDS|CHILD_NOTES_DIR|CHILD_SESSION|SESSION_ATTENDED|BRIDGE_SESSION_ID|BRIDGE_CHILD_HELD_TO_AUTO|HOST_WORKTREE|HOST_WORKTREE_FENCE|CHROME_MCP_ORG_DENIED|EVAL_INTERVIEW_SESSION))$/;
+
 export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<number> {
   const { file, args } = resolveCommand(tool);
   const env: Record<string, string> = withNodeOnPath({ ...process.env as Record<string, string>, ...launch.env });
-  for (const k of Object.keys(env)) if (/^CLAUDECODE/.test(k)) delete env[k]; // allow launching from inside a Claude session
+  for (const k of Object.keys(env)) if (PARENT_SESSION_ENV.test(k)) delete env[k]; // so the agent is an independent session, not a child of the Claude session chord was started from
   const term = pty.spawn(file, [...args, ...launch.args, ...extraArgs], {
     name: 'xterm-256color', cols: process.stdout.columns || 120, rows: process.stdout.rows || 40, cwd: launch.project.dir, env, // the project folder: the tool then treats it as the project (same /resume list, CLAUDE.md, trust)
   });

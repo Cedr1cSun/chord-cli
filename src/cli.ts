@@ -284,8 +284,8 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === 'messages' || cmd === 'events' || cmd === 'stop' || cmd === 'resume') {
     const project = resolveProject(process.cwd());
     const file = db.dbPath(project.stateDir);
-    if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
-    const d = db.openDb(file);
+    if (!fs.existsSync(file) && (cmd === 'messages' || cmd === 'events')) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
+    const d = db.openDb(fs.existsSync(file) ? file : ':memory:'); // stop and resume then fail with "no such agent"
     if (cmd === 'stop') { process.stdout.write(stop(d, rest[0])); return 0; }
     if (cmd === 'resume') return main(resumeArgv(d, rest[0], rest.slice(1)));
     const { agent, limit } = listArgs(rest);
@@ -295,9 +295,9 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === 'clean') {
     const project = resolveProject(process.cwd());
     const file = db.dbPath(project.stateDir);
-    if (!fs.existsSync(file)) { process.stdout.write(`no agents have run in ${project.dir} yet\n`); return 0; }
     const { names, force } = cleanArgs(rest);
-    process.stdout.write(cleanReport(clean(project, db.openDb(file), names, force)));
+    // a deleted database still leaves chord/agents/* to clean
+    process.stdout.write(cleanReport(clean(project, db.openDb(fs.existsSync(file) ? file : ':memory:'), names, force)));
     return 0;
   }
   if (cmd !== 'claude' && cmd !== 'codex' && cmd !== 'opencode' && cmd !== 'pi') { process.stderr.write(`chord: unknown command "${cmd}"\n${USAGE}`); return 2; }

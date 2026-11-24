@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
 import { ago, cleanArgs, cleanReport, events, fit, listArgs, ls, messages, quitHint, refuseHookKillers, resumeArgv, stop, takeSettings, when, width } from '../src/cli.ts';
+import { ensureWorktree } from '../src/launch.ts';
+import { git, tempProject, tmp } from './helpers/git.ts';
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -229,6 +231,22 @@ test('help and version go to stdout; unknown commands and bad arguments to stder
   assert.equal(resume.code, 2); assert.equal(resume.err, 'usage: chord resume <agent> [tool args...]\n');
   const ls = run('ls', '-a');
   assert.equal(ls.code, 1); assert.match(ls.err, /unknown argument -a; usage: chord ls \[--all\]/);
+});
+
+test('with the database deleted, stop and resume fail and clean still removes leftover worktrees', () => {
+  const cli = path.join(import.meta.dirname, '..', 'src', 'cli.ts');
+  const home = tmp('chord-home-'); const proj = tempProject();
+  ensureWorktree(path.join(proj, 'repo'), path.join(proj, 'chord', 'agents', 'ghost', 'repo'), 'ghost');
+  const run = (...a: string[]) => {
+    try { return { code: 0, out: execFileSync(process.execPath, [cli, ...a], { cwd: proj, env: { ...process.env, CHORD_HOME: home }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), err: '' }; }
+    catch (e: any) { return { code: e.status as number, out: e.stdout as string, err: e.stderr as string }; }
+  };
+  for (const c of ['stop', 'resume']) { const r = run(c, 'ghost'); assert.equal(r.code, 1, c); assert.match(r.err, /no such agent: ghost/); }
+  const r = run('clean');
+  assert.equal(r.code, 0); assert.equal(r.out, 'removed ghost\n');
+  assert.ok(!fs.existsSync(path.join(proj, 'chord', 'agents', 'ghost')));
+  assert.equal(git(path.join(proj, 'repo'), 'branch', '--list', 'chord/ghost'), '');
+  assert.deepEqual(fs.readdirSync(home), []); // nothing written under CHORD_HOME
 });
 
 test('cleanReport lists removals, kept agents and names those a --force would hit', () => {

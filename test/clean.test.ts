@@ -113,3 +113,19 @@ test('clean removes merged offline agents, keeps unmerged ones unless forced, ne
   assert.ok(!fs.existsSync(unmerged.ws));
   assert.equal(git(repo, 'worktree', 'list', '--porcelain').split('\n').filter(l => l.startsWith('worktree ')).length, 2); // main + online
 });
+
+test('clean keeps uncommitted work after the repository folder is renamed', () => {
+  const proj = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-clean-')));
+  const repo = path.join(proj, 'repo'); fs.mkdirSync(repo);
+  git(repo, 'init', '-q', '-b', 'main'); git(repo, 'commit', '-q', '--allow-empty', '-m', 'init');
+  const d = db.openDb(':memory:');
+  const ws = workspacePath(resolveProject(proj), 'x'); const wt = ensureWorktree(repo, path.join(ws, 'repo'), 'x');
+  db.addAgent(d, { name: 'x', tool: 'claude', pid: process.pid, cwd: ws });
+  fs.writeFileSync(path.join(wt, 'wip.txt'), 'half done');
+  db.setStatus(d, 'x', 'offline');
+  fs.renameSync(repo, path.join(proj, 'app')); // the worktree still sits at chord/agents/x/repo
+  const r = clean(resolveProject(proj), d);
+  assert.deepEqual(r.removed, []);
+  assert.match(r.kept[0].why, /uncommitted changes unknown/);
+  assert.ok(fs.existsSync(path.join(wt, 'wip.txt')));
+});

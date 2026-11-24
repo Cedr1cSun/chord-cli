@@ -56,6 +56,8 @@ export const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 /** How long before its claim a latecomer's message to an occupant still counts as asking about that file. */
 const ASK_WINDOW_MS = 2 * 60 * 1000;
 
+const MAX_MESSAGE_CHARS = 8000;
+
 const str = (desc: string) => ({ type: 'string', description: desc });
 
 function req(args: Record<string, unknown>, key: string): string {
@@ -371,7 +373,7 @@ export function tools(ctx: Ctx): Tool[] {
         type: 'object',
         properties: {
           to: { description: 'Agent name, or array of names', anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
-          message: str('The message'),
+          message: str(`The message, at most ${MAX_MESSAGE_CHARS} characters`),
         },
         required: ['to', 'message'],
       },
@@ -381,7 +383,10 @@ export function tools(ctx: Ctx): Tool[] {
         if (unknown.length) throw new Error(`unknown agent(s): ${unknown.join(', ')}`);
         const offline = to.filter(n => db.getAgent(ctx.db, n)!.status === 'offline');
         if (offline.length) throw new Error(`${offline.join(', ')} is offline; nobody would read the message`);
-        db.send(ctx.db, ctx.agent, to, req(a, 'message'));
+        // hooks deliver messages as context, which Claude Code cuts to a 2,000-character preview past 10,000 characters
+        const message = req(a, 'message');
+        if (message.length > MAX_MESSAGE_CHARS) throw new Error(`the message is ${message.length} characters; the most one message may be is ${MAX_MESSAGE_CHARS}: split it into several send() calls`);
+        db.send(ctx.db, ctx.agent, to, message);
         return { sent_to: to };
       },
     },

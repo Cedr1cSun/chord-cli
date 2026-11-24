@@ -351,6 +351,9 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
       projectConfig = claudeTrusts(project.repo) || claudeTrusts(project.dir) ? { repo: project.repo } : false;
       if (!projectConfig) process.stderr.write(`chord: ${project.repo} has its own .claude settings or .mcp.json, but you have not trusted it or the project folder in Claude Code, so they are not loaded for this agent. Run claude in ${project.repo} once and accept the trust prompt to change that.\n`);
     }
+    // Claude Code 2.1.33x asks about each --add-dir folder until the user has trusted its repository (trusting the
+    // project folder is not enough), and its default answer exits before any chord hook has run
+    if (tool === 'claude' && !claudeTrusts(project.repo)) process.stderr.write(`chord: Claude Code will ask whether to add ${worktree}: choose "Yes, add it" (Enter alone picks "No, exit"). Run claude once in ${project.repo} and trust it there to stop the question.\n`);
     if (tool === 'opencode') return { name, project, cwd: ws, worktree, dbFile, env: opencodeEnv(env), args: [] };
     // PI_PROGRAM_STATUS: pi reports its state over OSC 7501 only when the terminal asks for it or this is set, and the
     // wrapper reads that report as a second source of idle and busy

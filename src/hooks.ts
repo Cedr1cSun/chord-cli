@@ -211,7 +211,9 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       // the main conversation, so the messages wait for a call of the agent's own
       const ms = payload.agent_id ? [] : db.takeUnread(ctx.db, ctx.agent);
       if (ms.length) parts.push(`${formatMessages(ms)}\n\n[chord] ${ms.length} message(s) above arrived from other agents while you were working. Deal with them when convenient (reply with the chord send tool where a reply is asked for), then carry on with your task.`);
-      return parts.length ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: parts.join('\n\n') } } : undefined;
+      // Claude Code fires PostToolUseFailure for a failed call (a shell command that exited non-zero) and drops output
+      // that names another event
+      return parts.length ? { hookSpecificOutput: { hookEventName: payload.hook_event_name === 'PostToolUseFailure' ? 'PostToolUseFailure' : 'PostToolUse', additionalContext: parts.join('\n\n') } } : undefined;
     }
 
     case 'stop': {

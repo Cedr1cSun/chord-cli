@@ -50,6 +50,15 @@ test('post-tool-use compares claims case-sensitively on Linux, as the claims tab
   assert.match((handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Bash' }) as any).hookSpecificOutput.additionalContext, /have not claimed: notes.txt/);
 });
 
+test('a failed Claude tool call (PostToolUseFailure) is checked like a successful one and answered under its own name', () => {
+  const { ctx } = repo();
+  // Claude Code drops hook output whose hookEventName is not the event that fired
+  const out = handleHook(ctx, 'claude', 'post-tool-use', { hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: 'git stash pop' }, error: 'Exit code 1' }) as any;
+  assert.equal(out.hookSpecificOutput.hookEventName, 'PostToolUseFailure');
+  assert.match(out.hookSpecificOutput.additionalContext, /git stash is shared/);
+  assert.equal((handleHook(ctx, 'claude', 'post-tool-use', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'git stash' } }) as any).hookSpecificOutput.hookEventName, 'PostToolUse');
+});
+
 test('post-tool-use reports paths relative to the workspace when the repo is a subdirectory', () => {
   const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-ws-')));
   const wt = path.join(ws, 'repo'); fs.mkdirSync(wt);

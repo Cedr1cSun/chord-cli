@@ -70,7 +70,7 @@ test('claudeArgs carries hooks in --settings and the server in --mcp-config', ()
   const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: '/w/repo' };
   const args = claudeArgs(env);
   const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
-  assert.deepEqual(Object.keys(settings.hooks).sort(), ['Notification', 'PostToolUse', 'PreToolUse', 'SessionEnd', 'SessionStart', 'Stop', 'UserPromptSubmit']);
+  assert.deepEqual(Object.keys(settings.hooks).sort(), ['Notification', 'PostToolUse', 'PostToolUseFailure', 'PreToolUse', 'SessionEnd', 'SessionStart', 'Stop', 'UserPromptSubmit']);
   assert.equal(settings.hooks.PreToolUse[0].matcher, 'Edit|Write|MultiEdit|NotebookEdit');
   assert.equal(settings.hooks.PreToolUse[0].hooks[0].command, hookCommand('pre-tool-use'));
   assert.equal(settings.hooks.SessionEnd[0].hooks[0].timeout, 10);

@@ -43,6 +43,13 @@ test('post-tool-use warns about shell edits to unclaimed files, for Bash and Pow
   assert.equal(handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Read' }), undefined);
 });
 
+test('post-tool-use compares claims case-sensitively on Linux, as the claims table does', { skip: process.platform !== 'linux' }, () => {
+  const { root, d, ctx } = repo();
+  db.addClaim(d, { agent: 'a', file: 'Notes.txt', intent: 'x', kind: 'modify' });
+  fs.appendFileSync(path.join(root, 'notes.txt'), 'b\n');
+  assert.match((handleHook(ctx, 'claude', 'post-tool-use', { tool_name: 'Bash' }) as any).hookSpecificOutput.additionalContext, /have not claimed: notes.txt/);
+});
+
 test('post-tool-use reports paths relative to the workspace when the repo is a subdirectory', () => {
   const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-ws-')));
   const wt = path.join(ws, 'repo'); fs.mkdirSync(wt);

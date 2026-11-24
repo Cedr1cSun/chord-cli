@@ -228,7 +228,8 @@ const gitOut = (cwd: string, ...args: string[]): string => {
  *  and changes to the main checkout. */
 function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
   const out: string[] = [];
-  const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => c.file.toLowerCase()));
+  const fold = (s: string) => process.platform === 'linux' ? s : s.toLowerCase(); // the claims table's rule (db.ts FILE_COLLATION)
+  const mine = new Set(db.claimsBy(ctx.db, ctx.agent).map(c => fold(c.file)));
   // Everything the worktree differs in from where its branch left main, committed or not: a commit made from the
   // shell is no more a claim than an edit is. Tracked files by one diff against the merge base with the main
   // checkout's HEAD (real changes only, so a repository whose files differ in line endings from the moment they are
@@ -241,7 +242,7 @@ function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
   const touched = [...new Set([...modified.filter(Boolean), ...untracked])];
   // a folded untracked directory counts as claimed when a claim names a file inside it
   const claimed = (f: string) => mine.has(f) || [...mine].some(m => m.startsWith(f + '/'));
-  const unclaimed = touched.map(f => normFile(ctx, path.join(ctx.worktree, f))).filter(f => !claimed(f.toLowerCase()));
+  const unclaimed = touched.map(f => normFile(ctx, path.join(ctx.worktree, f))).filter(f => !claimed(fold(f)));
   const shown = unclaimed.slice(0, MAX_WARNED_FILES);
   if (unclaimed.length) out.push(`[chord] The shell command changed files you have not claimed: ${shown.join(', ')}${unclaimed.length > shown.length ? ` and ${unclaimed.length - shown.length} more` : ''}. Claim them now with claim(), or revert the change.`);
   if (path.resolve(root) !== path.resolve(ctx.worktree)) {

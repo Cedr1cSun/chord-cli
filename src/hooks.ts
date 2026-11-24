@@ -124,7 +124,7 @@ export function briefing(ctx: Ctx): string {
     '9. Do not use git stash: every worktree of this repository shares one stash list, so a stash pop can hand you another agent\'s changes. Make a work-in-progress commit instead.',
     '',
     peers.length ? 'Agents online:' : 'No other agents are online yet.',
-    ...peers.map(a => `- ${a.name} (${a.tool}, ${a.status}): ${a.task ?? 'not registered yet'}${a.scope ? ` [${a.scope}]` : ''}`),
+    ...peers.map(a => `- ${a.name} (${a.tool}, ${a.status}): ${a.task ? (a.task.length > 200 ? a.task.slice(0, 199) + '…' : a.task) : 'not registered yet'}${a.scope ? ` [${a.scope}]` : ''}`),
     '',
     claims.length ? 'Current file claims:' : 'No files are claimed yet.',
   ];

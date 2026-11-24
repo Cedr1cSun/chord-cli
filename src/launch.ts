@@ -11,8 +11,8 @@ import type { DatabaseSync } from 'node:sqlite';
 import * as db from './db.ts';
 import { ensureStateDir, resolveProject, type Project } from './project.ts';
 import { readConfig } from './tools.ts';
-import { claudeMcpChoices, claudeTrusts } from './trust.ts';
-import type { Event, Tool } from './hooks.ts';
+import { agyAllowList, claudeMcpChoices, claudeTrusts } from './trust.ts';
+import { agyBriefingDue, agyWarnings, type Event, type Tool } from './hooks.ts';
 
 const { git } = db;
 
@@ -119,15 +119,16 @@ function onBranch(wt: string, branch: string): string {
   return wt;
 }
 
-// ctxLimit: Codex caps a hook's additionalContext (default about 2,500 tokens); the briefing and message batches need more
-const EVENTS: { event: Event; claude: string; codex?: string; matcher?: { claude: string; codex?: string }; timeout?: number; ctxLimit?: number }[] = [
-  { event: 'session-start', claude: 'SessionStart', codex: 'SessionStart', ctxLimit: 16000 },
+// ctxLimit: Codex caps a hook's additionalContext (default about 2,500 tokens); the briefing and message batches need more.
+// agy: its PreInvocation runs before every model call and plays user-prompt-submit or post-tool-use (see hooks.ts agyHandle)
+const EVENTS: { event: Event; claude: string; codex?: string; agy?: string; matcher?: { claude: string; codex?: string }; timeout?: number; ctxLimit?: number }[] = [
+  { event: 'session-start', claude: 'SessionStart', codex: 'SessionStart', agy: 'SessionStart', ctxLimit: 16000 },
   { event: 'notification', claude: 'Notification', matcher: { claude: 'idle_prompt' } }, // Claude only: Codex reports idle through OSC 7501
-  { event: 'user-prompt-submit', claude: 'UserPromptSubmit', codex: 'UserPromptSubmit', ctxLimit: 16000 },
-  { event: 'pre-tool-use', claude: 'PreToolUse', codex: 'PreToolUse', matcher: { claude: 'Edit|Write|MultiEdit|NotebookEdit' } }, // Codex: every tool, so apply_patch run from the shell is seen too
-  { event: 'post-tool-use', claude: 'PostToolUse', codex: 'PostToolUse', ctxLimit: 16000 }, // every tool: shell-edit warnings and mid-turn message delivery
+  { event: 'user-prompt-submit', claude: 'UserPromptSubmit', codex: 'UserPromptSubmit', agy: 'PreInvocation', ctxLimit: 16000 },
+  { event: 'pre-tool-use', claude: 'PreToolUse', codex: 'PreToolUse', agy: 'PreToolUse', matcher: { claude: 'Edit|Write|MultiEdit|NotebookEdit' } }, // Codex: every tool, so apply_patch run from the shell is seen too
+  { event: 'post-tool-use', claude: 'PostToolUse', codex: 'PostToolUse', agy: 'PostToolUse', ctxLimit: 16000 }, // every tool: shell-edit warnings and mid-turn message delivery
   { event: 'post-tool-use', claude: 'PostToolUseFailure' }, // Claude only: a failed call, such as a shell command that exited non-zero, fires this instead
-  { event: 'stop', claude: 'Stop', codex: 'Stop' },
+  { event: 'stop', claude: 'Stop', codex: 'Stop', agy: 'Stop' },
   { event: 'session-end', claude: 'SessionEnd', codex: 'SessionEnd', timeout: 10 },
 ];
 
@@ -299,6 +300,39 @@ export function opencodeEnv(env: Record<string, string>): Record<string, string>
   return { ...env, CHORD_HOOKS: HOOKS_TS, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) };
 }
 
+/** agy loads <dir>/.agents/hooks.json and mcp_config.json for every --add-dir directory (its --settings refuses hooks
+ *  and MCP servers), so chord writes both into the agent's workspace `ws` and returns the arguments that load them.
+ *  The repository and the user's own agy configuration stay untouched. chord's tools are allowed in --settings, or in
+ *  agy's default mode every claim, send and finish waits at a prompt; a list passed there replaces the user's own, so
+ *  theirs (`userAllow`) goes along. Also leaves the marker that has the first hook brief the model. */
+export function agyArgs(env: Record<string, string>, ws: string, userAllow = agyAllowList()): string[] {
+  const dir = path.join(ws, '.agents');
+  fs.mkdirSync(dir, { recursive: true });
+  const hooks: Record<string, unknown[]> = {};
+  for (const e of EVENTS) {
+    if (!e.agy) continue;
+    const handlers = [{ type: 'command', command: hookCommand(e.event) }];
+    // the tool events take handler groups with a matcher, the others a flat list; chord sees every tool call
+    hooks[e.agy] = e.agy.endsWith('ToolUse') ? [{ matcher: '*', hooks: handlers }] : handlers;
+  }
+  fs.writeFileSync(path.join(dir, 'hooks.json'), JSON.stringify({ chord: hooks }, null, 2));
+  // finish may wait 240 s for the merge lock and then run the test command for up to 600 s; agy's default is 180 s
+  fs.writeFileSync(path.join(dir, 'mcp_config.json'), JSON.stringify({ mcpServers: { chord: { command: NODE, args: [SERVE_TS], env, timeoutSeconds: 1200 } } }, null, 2));
+  fs.writeFileSync(agyBriefingDue(ws), '');
+  fs.rmSync(agyWarnings(ws), { force: true }); // about the last run, whose claims are gone
+  return ['--add-dir', ws, '--settings', JSON.stringify({ permissions: { allow: [...new Set(['mcp(chord/*)', ...userAllow])] } })];
+}
+
+/** The user's own --settings for agy folded into chord's: their keys go through as given, and their allow list joins
+ *  chord's, in place in `args`. */
+export function mergeAgySettings(args: string[], user: Record<string, any>): string[] {
+  const i = args.indexOf('--settings');
+  const out = [...args];
+  const allow = [...new Set([...JSON.parse(args[i + 1]).permissions.allow, ...(Array.isArray(user.permissions?.allow) ? user.permissions.allow : [])])];
+  out[i + 1] = JSON.stringify({ ...user, permissions: { ...user.permissions, allow } });
+  return out;
+}
+
 export interface Launch {
   name: string;
   project: Project;
@@ -360,6 +394,9 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
     // PI_PROGRAM_STATUS: pi reports its state over OSC 7501 only when the terminal asks for it or this is set, and the
     // wrapper reads that report as a second source of idle and busy
     if (tool === 'pi') return { name, project, cwd: ws, worktree, dbFile, env: { ...env, CHORD_HOOKS: HOOKS_TS, CHORD_SERVE: SERVE_TS, PI_PROGRAM_STATUS: '1' }, args: piArgs() };
+    // AGY_CLI_OSC7501: agy reports its state over OSC 7501 only with this set. No hook fires at launch, so that report
+    // is what makes the agent idle (wakeable, stoppable) before its first turn.
+    if (tool === 'agy') return { name, project, cwd: ws, worktree, dbFile, env: { ...env, AGY_CLI_OSC7501: 'on' }, args: agyArgs(env, ws) };
     return { name, project, cwd: ws, worktree, dbFile, env, args: tool === 'claude' ? claudeArgs(env, projectConfig) : codexArgs(env, [path.join(project.repo, '.git')]) };
   } catch (e) {
     db.setStatus(d, name, 'offline'); // the launch failed: the name is free again

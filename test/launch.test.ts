@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { NODE, ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeProjectSettings, mergeUserSettings, withNodeOnPath } from '../src/launch.ts';
+import { NODE, agyArgs, ensureWorktree, pickName, claudeArgs, codexArgs, prepare, hookCommand, mergeAgySettings, mergeProjectSettings, mergeUserSettings, withNodeOnPath } from '../src/launch.ts';
+import { agyBriefingDue, agyWarnings } from '../src/hooks.ts';
 import { NeedsRestructure, resolveProject, restructure, encodeProjectPath, knownProjects } from '../src/project.ts';
 import { git, initRepo, tempProject, tmp } from './helpers/git.ts';
 
@@ -416,6 +417,49 @@ test('pi gets chord\'s extension on the command line and the hook and server pat
   assert.equal(l.env.CHORD_TOOL, 'pi');
   assert.equal(l.env.CHORD_AGENT_ID, 'p');
   assert.equal(l.env.PI_PROGRAM_STATUS, '1'); // pi reports its state over OSC 7501 even where the terminal never asks
+});
+
+test('agy gets hooks.json and mcp_config.json in the agent\'s workspace, loaded with --add-dir, with chord\'s tools allowed', () => {
+  const proj = tmp('chord agy é 中文 '); initRepo(path.join(proj, 'repo')); // spaces and non-ASCII in every path
+  const l = prepare('agy', proj, 'g');
+  const ws = l.cwd, agents = path.join(ws, '.agents');
+  assert.deepEqual(l.args.slice(0, 3), ['--add-dir', ws, '--settings']);
+  assert.equal(l.args.length, 4); // the user's own arguments follow
+  assert.ok(JSON.parse(l.args[3]).permissions.allow.includes('mcp(chord/*)')); // or every chord call asks first in agy's default mode
+  const hooks = JSON.parse(fs.readFileSync(path.join(agents, 'hooks.json'), 'utf8'));
+  assert.deepEqual(Object.keys(hooks), ['chord']);
+  assert.deepEqual(hooks.chord, {
+    SessionStart: [{ type: 'command', command: hookCommand('session-start') }],
+    PreInvocation: [{ type: 'command', command: hookCommand('user-prompt-submit') }], // before every model call; see hooks.ts agyHandle
+    PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand('pre-tool-use') }] }],
+    PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand('post-tool-use') }] }],
+    Stop: [{ type: 'command', command: hookCommand('stop') }],
+  });
+  const mcp = JSON.parse(fs.readFileSync(path.join(agents, 'mcp_config.json'), 'utf8')).mcpServers.chord;
+  assert.equal(mcp.command, NODE);
+  assert.match(mcp.args[0], /serve\.(ts|js)$/);
+  assert.equal(mcp.timeoutSeconds, 1200); // finish may wait 240 s for the merge lock, then run the test command for up to 600 s
+  assert.equal(mcp.env.CHORD_WORKSPACE, ws.split(path.sep).join('/'));
+  assert.equal(mcp.env.CHORD_TOOL, 'agy');
+  assert.equal(l.env.AGY_CLI_OSC7501, 'on'); // agy reports idle and busy on the terminal only with this
+  assert.equal(fs.existsSync(agyBriefingDue(ws)), true);
+  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: l.worktree, encoding: 'utf8' }), ''); // nothing in the repository
+  // a relaunch writes everything again and drops warnings the last run left unread: its claims went with it
+  fs.rmSync(agyBriefingDue(ws)); fs.writeFileSync(agyWarnings(ws), '[chord] old\n');
+  db.setStatus(db.openDb(l.dbFile), 'g', 'offline');
+  prepare('agy', proj, 'g');
+  assert.equal(fs.existsSync(agyBriefingDue(ws)), true);
+  assert.equal(fs.existsSync(agyWarnings(ws)), false);
+});
+
+test('agyArgs passes the user\'s own allow list on with chord\'s rule; mergeAgySettings folds in their --settings', () => {
+  const ws = tmp('chord-agy-ws-');
+  const args = agyArgs({ CHORD_AGENT_ID: 'g' }, ws, ['command(git status)', 'mcp(chord/*)']);
+  // agy takes a list passed with --settings in place of the one in the user's settings file
+  assert.deepEqual(JSON.parse(args[3]), { permissions: { allow: ['mcp(chord/*)', 'command(git status)'] } });
+  const merged = mergeAgySettings(args, { toolPermission: 'request-review', permissions: { allow: ['command(npm test)'], deny: ['command(rm)'] } });
+  assert.deepEqual(merged.slice(0, 3), args.slice(0, 3));
+  assert.deepEqual(JSON.parse(merged[3]), { toolPermission: 'request-review', permissions: { allow: ['mcp(chord/*)', 'command(git status)', 'command(npm test)'], deny: ['command(rm)'] } });
 });
 
 test('opencode gets chord through the environment: inline config with the MCP server and the plugin', () => {

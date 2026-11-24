@@ -176,6 +176,28 @@ test('briefing lists only online peers and appends the repository instructions',
   assert.match(out, /CLAUDE.md:\nReply in French\./);
 });
 
+test('a Claude briefing stays under the hook output cap, rules whole, with large instructions and many claims', () => {
+  const { d } = setup(); // agent a runs Claude Code: Claude Code cuts additionalContext over 10,000 characters to a 2,000-character preview
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-brief-'));
+  fs.writeFileSync(path.join(wt, 'AGENTS.md'), '# House rules\n' + 'Use tabs everywhere in this code base.\n'.repeat(300));
+  fs.writeFileSync(path.join(wt, 'CLAUDE.md'), 'Reply in French.\n'.repeat(600));
+  for (let i = 0; i < 70; i++) db.addClaim(d, { agent: 'b', file: `src/module-${i}/implementation.ts`, intent: 'rework the parser and its error reporting for the new syntax', kind: 'modify' });
+  const ctx: Ctx = { db: d, agent: 'a', cwd: path.dirname(wt), worktree: wt };
+  const out = (handleHook(ctx, 'claude', 'session-start', {}) as any).hookSpecificOutput.additionalContext as string;
+  assert.ok(out.length <= 9500, `${out.length} characters`);
+  assert.match(out, /Rules:[\s\S]*\n9\. Do not use git stash/);
+  assert.match(out, /- \.\.\. and \d+ more/);
+  assert.match(out, /CLAUDE\.md/); // named at least, to be read
+  db.releaseAll(d, 'b', 'test'); // no claims: the instructions take the room, CLAUDE.md is still named
+  const bare = (handleHook(ctx, 'claude', 'session-start', {}) as any).hookSpecificOutput.additionalContext as string;
+  assert.ok(bare.length <= 9500, `${bare.length} characters`);
+  assert.match(bare, /AGENTS\.md:\n# House rules[\s\S]*truncated[\s\S]*CLAUDE\.md/);
+  for (let i = 0; i < 70; i++) db.addClaim(d, { agent: 'b', file: `src/module-${i}/implementation.ts`, intent: 'rework the parser and its error reporting for the new syntax', kind: 'modify' });
+  // other tools keep the full instructions
+  const codex: Ctx = { ...ctx, agent: 'b' };
+  assert.ok((handleHook(codex, 'codex', 'session-start', {}) as any).hookSpecificOutput.additionalContext.length > 15000);
+});
+
 test('session-end after /clear keeps the agent online with its claims', () => {
   const { d, ctx } = setup();
   db.addClaim(d, { agent: 'a', file: 'f', intent: 'x', kind: 'add' });

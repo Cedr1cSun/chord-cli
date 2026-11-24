@@ -178,6 +178,10 @@ test('oscState reads the last complete Codex state report in a chunk; oscTail ke
   assert.equal(oscState('\x1b]7501;state=working:app=codex\x1b\\\x1b]7501;state=error:app=codex\x1b\\'), 'idle'); // a turn that ended in an error (rate limit, overload) waits for input
   assert.equal(oscState('\x1b]7501;state=working:app=pi\x07\x1b]7501;state=error:app=pi\x07'), 'idle'); // pi after a failed run
   assert.equal(oscState('\x1b]7501;state=blocked:app=codex:kind=permission\x1b\\'), 'busy'); // a dialog: never type into it
+  // agy 1.5.16 with AGY_CLI_OSC7501=on: BEL-terminated, the app named after the state, a base64 msg on some
+  assert.equal(oscState('\x1b]7501;state=working:app=antigravity\x07\x1b]7501;state=done:app=antigravity:msg=IyMjIGNob3JkIGB3aG9hbWlgIOiwg+eUqOe7k+aenA==\x07'), 'idle');
+  assert.equal(oscState('\x1b]7501;state=done:app=antigravity\x07\x1b]7501;state=idle:app=antigravity\x07'), 'idle');
+  assert.equal(oscState('\x1b]7501;state=blocked:kind=permission:app=antigravity:msg=QXBwcm92ZSBzdWJhZ2VudCBhY3Rpb24=\x07'), 'busy'); // "Approve subagent action": never type into it
   assert.equal(oscState('\x1b]7501;state=id'), null); // cut off by the chunk boundary: not "busy" for a moment
   // the tail carried into the next chunk holds an unfinished sequence only, so a complete report is read once
   assert.equal(oscTail('abc\x1b]7501;state=id'), '\x1b]7501;state=id');

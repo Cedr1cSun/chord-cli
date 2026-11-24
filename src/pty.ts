@@ -205,9 +205,9 @@ export function nextAction(s: { status: string | undefined; unread: boolean; sto
   return null;
 }
 
-/** Codex and pi report their state to the terminal as OSC 7501 ("state=idle" / "state=working", and as of Codex 0.164
- *  "state=done" when a turn ends and "state=error" when it ends in an error, which also waits for input); Claude Code
- *  does not. "blocked" (a dialog) and "clear" (exit, or the terminal handed to an editor) count as busy. */
+/** Codex, pi and agy report their state to the terminal as OSC 7501 ("state=idle" / "state=working", and as of Codex
+ *  0.164 "state=done" when a turn ends and "state=error" when it ends in an error, which also waits for input); Claude
+ *  Code does not. "blocked" (a dialog) and "clear" (exit, or the terminal handed to an editor) count as busy. */
 export function oscState(chunk: string): 'idle' | 'busy' | null {
   const m = /\x1b\]7501;state=(\w+)[^\x07\x1b]*(?:\x07|\x1b\\)/g; // complete reports only: "state=id" cut off by a chunk is not "busy"
   let last: 'idle' | 'busy' | null = null;
@@ -251,7 +251,9 @@ export function run(tool: Tool, launch: Launch, extraArgs: string[]): Promise<nu
     lastOutputAt = Date.now();
     process.stdout.write(titles.push(x));
     if (awaitingEcho) echoBuf = (echoBuf + x).slice(-16000);
-    if (tool === 'codex' || tool === 'pi') { // the hooks set status too; the terminal report catches turns the hooks miss (Esc, untrusted hooks)
+    // the hooks set status too; the terminal report catches what the hooks miss (Esc, untrusted hooks, and agy's launch,
+    // which fires no hook)
+    if (tool === 'codex' || tool === 'pi' || tool === 'agy') {
       const state = oscState(outTail + x);
       if (state) tolerant('terminal state report', () => db.setStatus(d, launch.name, state));
       outTail = oscTail(x);

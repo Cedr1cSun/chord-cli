@@ -205,12 +205,13 @@ export function nextAction(s: { status: string | undefined; unread: boolean; sto
   return null;
 }
 
-/** Codex reports its state to the terminal as OSC 7501 ("state=idle" / "state=working", and "state=done" when a turn
- *  ends, as of 0.164); Claude Code does not. */
+/** Codex and pi report their state to the terminal as OSC 7501 ("state=idle" / "state=working", and as of Codex 0.164
+ *  "state=done" when a turn ends and "state=error" when it ends in an error, which also waits for input); Claude Code
+ *  does not. "blocked" (a dialog) and "clear" (exit, or the terminal handed to an editor) count as busy. */
 export function oscState(chunk: string): 'idle' | 'busy' | null {
   const m = /\x1b\]7501;state=(\w+)[^\x07\x1b]*(?:\x07|\x1b\\)/g; // complete reports only: "state=id" cut off by a chunk is not "busy"
   let last: 'idle' | 'busy' | null = null;
-  for (const x of chunk.matchAll(m)) last = x[1] === 'idle' || x[1] === 'done' ? 'idle' : 'busy';
+  for (const x of chunk.matchAll(m)) last = x[1] === 'idle' || x[1] === 'done' || x[1] === 'error' ? 'idle' : 'busy';
   return last;
 }
 

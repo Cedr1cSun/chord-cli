@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { claudeMcpChoices, claudeTrusts, codexFirstStart, disabledCodexHooks } from '../src/trust.ts';
+import { agyAllowList, agyHasChordServer, claudeMcpChoices, claudeTrusts, codexFirstStart, disabledCodexHooks } from '../src/trust.ts';
 
 test('disabledCodexHooks names the chord hooks switched off in Codex\'s config', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chord-codex-')), 'config.toml');
@@ -63,6 +63,21 @@ test('claudeMcpChoices reads .mcp.json approvals from the repository\'s settings
   assert.equal(claudeMcpChoices(repo, claudeJson, userSettings).all, true);
   fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), '{oops'); fs.writeFileSync(userSettings, 'null');
   assert.deepEqual(claudeMcpChoices(repo, claudeJson, userSettings), { all: false, enabled: ['d'], disabled: [] }); // broken files count as empty
+});
+
+test('agyAllowList reads the permissions.allow list of the user\'s agy settings; agyHasChordServer spots a global server named chord', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'chord-agy-'));
+  const settings = path.join(home, 'settings.json'), mcp = path.join(home, 'mcp_config.json');
+  assert.deepEqual(agyAllowList(settings), []); // no file
+  fs.writeFileSync(settings, JSON.stringify({ toolPermission: 'request-review', permissions: { allow: ['command(git status)', 'mcp(fs/*)'], deny: ['command(rm)'] } }));
+  assert.deepEqual(agyAllowList(settings), ['command(git status)', 'mcp(fs/*)']);
+  fs.writeFileSync(settings, '{oops');
+  assert.deepEqual(agyAllowList(settings), []); // a broken file counts as empty
+  assert.equal(agyHasChordServer(mcp), false); // no file
+  fs.writeFileSync(mcp, JSON.stringify({ mcpServers: { playwright: { command: 'npx' } } }));
+  assert.equal(agyHasChordServer(mcp), false);
+  fs.writeFileSync(mcp, JSON.stringify({ mcpServers: { playwright: { command: 'npx' }, chord: { command: 'node' } } }));
+  assert.equal(agyHasChordServer(mcp), true);
 });
 
 test('codexFirstStart: without a Codex state database, a second launch waits until the first one\'s Codex has made it', async () => {

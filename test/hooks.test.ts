@@ -342,22 +342,24 @@ test('pi: edit and write name their file as path, relative to the project folder
   }
 });
 
-test('OpenCode: edit, write and apply_patch name their files; relative paths and workdir resolve against the project folder', () => {
-  assert.deepEqual(filesTouched('opencode', { tool_name: 'edit', tool_input: { filePath: '/P/chord/agents/a/repo/x.ts', oldString: 'a', newString: 'b' } }), ['/P/chord/agents/a/repo/x.ts']);
-  assert.deepEqual(filesTouched('opencode', { tool_name: 'write', tool_input: { filePath: '/P/chord/agents/a/repo/y.ts', content: '' } }), ['/P/chord/agents/a/repo/y.ts']);
-  assert.deepEqual(filesTouched('opencode', { tool_name: 'apply_patch', tool_input: { patchText: '*** Begin Patch\n*** Update File: src/z.ts\n*** End Patch' } }), ['src/z.ts']);
-  assert.deepEqual(filesTouched('opencode', { tool_name: 'bash', tool_input: { command: 'ls' } }), []);
+test('OpenCode: edit, write and patch name their files; relative paths and workdir resolve against the project folder', () => {
+  assert.deepEqual(filesTouched('opencode', { tool_name: 'edit', tool_input: { path: '/P/chord/agents/a/repo/x.ts', oldString: 'a', newString: 'b' } }), ['/P/chord/agents/a/repo/x.ts']);
+  assert.deepEqual(filesTouched('opencode', { tool_name: 'write', tool_input: { path: 'chord/agents/a/repo/y.ts', content: '' } }), ['chord/agents/a/repo/y.ts']); // as the model wrote it
+  assert.deepEqual(filesTouched('opencode', { tool_name: 'patch', tool_input: { patchText: '*** Begin Patch\n*** Update File: src/z.ts\n*** End Patch' } }), ['src/z.ts']);
+  assert.deepEqual(filesTouched('opencode', { tool_name: 'shell', tool_input: { command: 'ls' } }), []);
+  assert.deepEqual(filesTouched('opencode', { tool_name: 'shell', tool_input: { command: "apply_patch '*** Begin Patch\n*** Add File: src/w.ts\n+x\n*** End Patch'" } }), ['src/w.ts']); // a patch run from the shell
   const d = db.openDb(':memory:');
   const P = process.platform === 'win32' ? 'D:\\P' : '/P';
   const cwd = path.join(P, 'chord', 'agents', 'a');
   const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
   db.addAgent(d, { name: 'a', tool: 'opencode', pid: process.pid, cwd });
-  const write = (filePath: string) => handleHook(ctx, 'opencode', 'pre-tool-use', { tool_name: 'write', tool_input: { filePath, content: '' } }) as any;
+  const write = (p: string) => handleHook(ctx, 'opencode', 'pre-tool-use', { tool_name: 'write', tool_input: { path: p, content: '' } }) as any;
   assert.match(write(path.join(cwd, 'repo', 'src', 'x.ts')).hookSpecificOutput.permissionDecisionReason, /not claimed/);
+  assert.match(write('chord/agents/a/repo/src/x.ts').hookSpecificOutput.permissionDecisionReason, /not claimed/); // relative to the project folder
   const own = path.join(cwd, 'repo', 'src', 'x.ts').replace(/[\\/]/g, '[\\\\/]');
   assert.match(write(path.join(P, 'repo', 'src', 'x.ts')).hookSpecificOutput.permissionDecisionReason, new RegExp(`outside your workspace.*edit your own copy ${own}`)); // the main checkout; OpenCode's edit wants absolute paths too
-  assert.equal((handleHook(ctx, 'opencode', 'pre-tool-use', { tool_name: 'edit', tool_input: {} }) as any).hookSpecificOutput.permissionDecision, 'deny'); // names no file
-  const patch = (f: string, workdir?: string) => handleHook(ctx, 'opencode', 'pre-tool-use', { tool_name: 'apply_patch', tool_input: { patchText: `*** Begin Patch\n*** Update File: ${f}\n*** End Patch`, ...(workdir ? { workdir } : {}) } }) as any;
+  for (const name of ['edit', 'write', 'patch']) assert.equal((handleHook(ctx, 'opencode', 'pre-tool-use', { tool_name: name, tool_input: {} }) as any).hookSpecificOutput.permissionDecision, 'deny', name); // names no file
+  const patch = (f: string, workdir?: string) => handleHook(ctx, 'opencode', 'pre-tool-use', { tool_name: 'patch', tool_input: { patchText: `*** Begin Patch\n*** Update File: ${f}\n*** End Patch`, ...(workdir ? { workdir } : {}) } }) as any;
   assert.match(patch('repo/src/x.ts').hookSpecificOutput.permissionDecisionReason, /main checkout/); // relative to the project folder, like Codex
   db.addClaim(d, { agent: 'a', file: 'repo/src/x.ts', intent: 'x', kind: 'add' });
   assert.equal(write(path.join(cwd, 'repo', 'src', 'x.ts')), undefined);

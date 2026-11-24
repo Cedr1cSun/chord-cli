@@ -18,8 +18,10 @@ export type Tool = 'claude' | 'codex' | 'opencode' | 'pi';
 type HookOut = object | undefined;
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
-const OPENCODE_EDIT_TOOLS = new Set(['edit', 'write']); // absolute filePath; apply_patch carries a patch like Codex's
-const PI_EDIT_TOOLS = OPENCODE_EDIT_TOOLS; // path, relative to pi's cwd (the project folder) or absolute
+// OpenCode 2 and pi: path, relative to the tool's cwd (the project folder) or absolute; OpenCode's patch carries a
+// patch like Codex's
+const OPENCODE_EDIT_TOOLS = new Set(['edit', 'write']);
+const PI_EDIT_TOOLS = OPENCODE_EDIT_TOOLS;
 /** The path as pi's own normalizePath reads it (pi 1.6 utils/paths.js): a leading @ dropped, Git Bash's /c/..., /mnt/c/...
  *  and /cygdrive/c/... as C:\... on Windows, ~ and file:// expanded. Checked as given, they would land outside the project. */
 const piPath = (p: string): string => {
@@ -36,19 +38,19 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
     const p = input.file_path ?? input.notebook_path;
     return typeof p === 'string' ? [p] : [];
   }
-  if (tool === 'opencode' && OPENCODE_EDIT_TOOLS.has(name)) return typeof input.filePath === 'string' ? [input.filePath] : [];
+  if (tool === 'opencode' && OPENCODE_EDIT_TOOLS.has(name)) return typeof input.path === 'string' ? [input.path] : [];
   if (tool === 'pi') return PI_EDIT_TOOLS.has(name) && typeof input.path === 'string' ? [piPath(input.path)] : [];
   if (tool === 'codex' || tool === 'opencode') {
     // the patch has been seen under "command"; "patchText", "input", "patch" and a bare string cost nothing to accept as well
     const text = typeof input === 'string' ? input : [input.command, input.patchText, input.input, input.patch].find(v => typeof v === 'string');
-    if (name === 'apply_patch' && typeof text === 'string') return patchFiles(text);
+    if (name === (tool === 'codex' ? 'apply_patch' : 'patch') && typeof text === 'string') return patchFiles(text);
     if (isShell(name) && typeof text === 'string' && text.includes('*** Begin Patch')) return patchFiles(text); // apply_patch run from the shell
   }
   return [];
 }
 
 /** Tools that write files and must therefore name them: a call that names none is refused rather than let through. */
-const isEditTool = (tool: Tool, name: unknown) => (tool === 'claude' ? EDIT_TOOLS.has(String(name)) : tool === 'pi' ? PI_EDIT_TOOLS.has(String(name)) : tool === 'opencode' ? OPENCODE_EDIT_TOOLS.has(String(name)) || name === 'apply_patch' : name === 'apply_patch');
+const isEditTool = (tool: Tool, name: unknown) => (tool === 'claude' ? EDIT_TOOLS.has(String(name)) : tool === 'pi' ? PI_EDIT_TOOLS.has(String(name)) : tool === 'opencode' ? OPENCODE_EDIT_TOOLS.has(String(name)) || name === 'patch' : name === 'apply_patch');
 
 const isShell = (name: unknown) => /^(bash|powershell|shell|exec|exec_command|local_shell)$/i.test(String(name ?? ''));
 

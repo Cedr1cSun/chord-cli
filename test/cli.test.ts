@@ -5,9 +5,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as db from '../src/db.ts';
-import { ago, cleanArgs, cleanReport, events, fit, listArgs, ls, messages, quitHint, refuseHookKillers, resumeArgv, stop, takeSettings, when, width } from '../src/cli.ts';
+import { ago, cleanArgs, cleanReport, events, fit, listArgs, ls, messages, quitHint, refuseHookKillers, refuseOpencodeVersion, resumeArgv, stop, takeSettings, when, width } from '../src/cli.ts';
 import { ensureWorktree } from '../src/launch.ts';
 import { git, tempProject, tmp } from './helpers/git.ts';
+
+test('refuseOpencodeVersion lets OpenCode 2 and later through and refuses 1.x, naming the way out', () => {
+  for (const v of ['opencode v2.4.1\n', '2.0.0', 'v10.1.0']) refuseOpencodeVersion(v);
+  for (const v of ['1.19.3\n', 'opencode v1.0.150', '0.15.8', '', 'unknown']) assert.throws(() => refuseOpencodeVersion(v), /OpenCode 2[\s\S]*chord 0\.3\.1 with OpenCode 1/, v);
+});
 
 test('events lists claims, releases and merges oldest first, one line each', () => {
   const d = db.openDb(':memory:');
@@ -175,7 +180,10 @@ test('takeSettings lifts the user --settings out of the tool arguments; hook-kil
   assert.throws(() => refuseHookKillers('codex', ['-c', 'mcp_servers={x={command="n"}}']), /replace chord's own hooks/);
   assert.throws(() => refuseHookKillers('codex', ['-cmcp_servers.chord.enabled=false']), /replace chord's own hooks/);
   refuseHookKillers('codex', ['-c', 'features={apps=true}']); refuseHookKillers('codex', ['--disable', 'apps']); // fine
-  assert.throws(() => refuseHookKillers('opencode', ['--pure']), /switches off the plugin/);
+  // chord starts OpenCode with its own --standalone server; --server would attach to one without chord's plugin
+  assert.throws(() => refuseHookKillers('opencode', ['--server', 'http://127.0.0.1:4096']), /--server/);
+  assert.throws(() => refuseHookKillers('opencode', ['--server=http://127.0.0.1:4096']), /--server/);
+  refuseHookKillers('opencode', ['--pure']); refuseHookKillers('opencode', ['--standalone']); // --pure is gone in OpenCode 2: OpenCode refuses it itself
   assert.throws(() => refuseHookKillers('pi', ['--no-mcp']), /switches off the MCP support/);
   refuseHookKillers('pi', ['--model', 'sonnet', '-ne']); // -ne keeps explicit -e extensions, and chord names builtin:mcp with -e too
   refuseHookKillers('claude', ['--model', 'opus']); refuseHookKillers('codex', ['-c', 'model="gpt-5"']); refuseHookKillers('opencode', ['-m', 'anthropic/claude-sonnet-4-5']); // fine

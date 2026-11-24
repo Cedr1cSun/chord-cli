@@ -19,8 +19,9 @@ const context = (out: HookOut) => out?.hookSpecificOutput?.additionalContext;
 export default function chord(pi: Pi): void {
   if (!process.env.CHORD_AGENT_ID || !process.env.CHORD_HOOKS || !process.env.CHORD_SERVE) return; // a plain pi run: chord is not here
   const env = Object.fromEntries(Object.entries(process.env).filter(([k, v]) => k.startsWith('CHORD_') && v !== undefined)) as Record<string, string>;
-  // pi's default exposure, codemode, keeps MCP tools out of the model's sight; finish may wait minutes for the merge lock
-  pi.registerMcpServer('chord', { command: process.execPath, args: [process.env.CHORD_SERVE], env, exposure: 'direct', timeout: 600, description: 'Coordination with the other agents on this project: register, claim files, send messages, finish' });
+  // pi's default exposure, codemode, keeps MCP tools out of the model's sight; finish may wait 240 s for the merge lock
+  // and then run the test command for up to 600 s
+  pi.registerMcpServer('chord', { command: process.execPath, args: [process.env.CHORD_SERVE], env, exposure: 'direct', timeout: 1200, description: 'Coordination with the other agents on this project: register, claim files, send messages, finish' });
   let briefing: string | undefined; // the session's briefing, handed to the model with its first prompt
   pi.on('session_start', (e, ctx) => {
     briefing = context(hook('session-start', { session_id: ctx.sessionManager.getSessionId(), source: e.reason }));

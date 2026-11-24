@@ -174,6 +174,19 @@ test('ensureWorktree recovers a deleted workspace and a moved project, and refus
   assert.throws(() => ensureWorktree(path.join(moved, 'repo'), foreign, 'y'), /not a git worktree/);
 });
 
+test('ensureWorktree lets an agent back into its own interrupted rebase, and still refuses a detached HEAD', () => {
+  const proj = tempProject(); const repo = path.join(proj, 'repo');
+  const wt = ensureWorktree(repo, path.join(proj, 'chord', 'agents', 'x', 'repo'), 'x');
+  fs.writeFileSync(path.join(repo, 'f.txt'), 'main'); git(repo, 'add', 'f.txt'); git(repo, 'commit', '-q', '-m', 'main side');
+  fs.writeFileSync(path.join(wt, 'f.txt'), 'x'); git(wt, 'add', 'f.txt'); git(wt, 'commit', '-q', '-m', 'x side');
+  assert.throws(() => git(wt, 'rebase', 'main')); // conflict: the agent stops half-way, as after finish reports one
+  assert.equal(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), 'HEAD');
+  assert.equal(ensureWorktree(repo, wt, 'x'), wt);
+  git(wt, 'rebase', '--abort');
+  git(wt, 'checkout', '-q', '--detach');
+  assert.throws(() => ensureWorktree(repo, wt, 'x'), /is on HEAD instead of chord\/x/);
+});
+
 test('a failed worktree add leaves no branch or directory behind, and long paths work', () => {
   const proj = tempProject(); const repo = path.join(proj, 'repo');
   const out = (...a: string[]) => execFileSync('git', a, { cwd: repo, encoding: 'utf8' }).trim();

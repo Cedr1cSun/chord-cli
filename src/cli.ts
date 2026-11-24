@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // The chord command line; see USAGE.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -189,7 +190,7 @@ export function refuseHookKillers(tool: Tool, rest: string[]): void {
     // claude reads these as --bare and --safe-mode, with its own truthy test: 1, true, yes or on, trimmed, any case
     for (const v of ['CLAUDE_CODE_SIMPLE', 'CLAUDE_CODE_SAFE_MODE']) if (/^(1|true|yes|on)$/i.test((process.env[v] ?? '').trim())) throw new Error(`${v} switches off the hooks chord relies on; unset it for chord`);
   } else if (tool === 'opencode') {
-    if (rest.includes('--pure')) throw new Error('--pure switches off the plugin chord relies on; run plain opencode for that');
+    if (rest.some(a => a === '--server' || a.startsWith('--server='))) throw new Error("--server attaches to an OpenCode server that runs without chord's plugin; chord starts its own with --standalone");
   } else if (tool === 'pi') {
     if (rest.includes('--no-mcp')) throw new Error("--no-mcp switches off the MCP support chord's tools rely on; run plain pi for that");
   } else {
@@ -205,6 +206,13 @@ export function refuseHookKillers(tool: Tool, rest: string[]): void {
       if (process.platform === 'win32' && sandbox && sandbox !== 'danger-full-access') throw new Error(`Codex's "${sandbox}" sandbox cannot run chord's hooks on Windows (the sandboxed user cannot start them), so file claims would not be checked; run without -s, or with -s danger-full-access`);
     }
   }
+}
+
+/** OpenCode 1.x runs neither chord's plugin nor --standalone, so its agents would write with no claim checked. `version`:
+ *  what `opencode --version` printed. */
+export function refuseOpencodeVersion(version: string): void {
+  const major = Number(/(\d+)\.\d+/.exec(version)?.[1]);
+  if (!(major >= 2)) throw new Error(`opencode --version says "${version.trim()}", and this chord supports OpenCode 2 only. Install OpenCode 2 (npm install -g @opencode/cli), or use chord 0.3.1 with OpenCode 1.x (npm install -g chord-cli@0.3.1)`);
 }
 
 /** `[--force|-f] [agent...]` for chord clean. */
@@ -304,7 +312,8 @@ async function main(argv: string[]): Promise<number> {
   const name = takeName(rest);
   const userSettings = cmd === 'claude' ? takeSettings(rest) : undefined;
   refuseHookKillers(cmd as Tool, rest);
-  resolveCommand(cmd); // fail before creating a workspace when the tool is not installed
+  const command = resolveCommand(cmd); // fail before creating a workspace when the tool is not installed
+  if (cmd === 'opencode') refuseOpencodeVersion(execFileSync(command.file, [...command.args, '--version'], { encoding: 'utf8', timeout: 60_000, windowsHide: true }));
   if (process.platform === 'darwin') ensureSpawnHelper(); // or when node-pty could not start it
   let launch;
   try {
@@ -316,6 +325,7 @@ async function main(argv: string[]): Promise<number> {
   }
   process.stderr.write(`chord: agent ${launch.name}; worktree ${launch.worktree}\n`);
   if (userSettings) launch.args = mergeUserSettings(launch.args, userSettings);
+  if (cmd === 'opencode' && rest.includes('--standalone')) launch.args = launch.args.filter(a => a !== '--standalone'); // OpenCode rejects it twice
   if (cmd === 'codex') {
     const off = disabledCodexHooks();
     if (off.length) process.stderr.write(`chord: Codex has chord's ${off.join(', ')} hook(s) switched off in ~/.codex/config.toml, so the matching chord features will not work. Remove the "enabled = false" line(s) under the [hooks.state.'...<session-flags>...'] tables to switch them back on.\n`);

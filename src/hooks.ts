@@ -181,7 +181,8 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       // Codex and OpenCode resolve a patch's relative paths against the call's workdir when it gives one, else against
       // their own cwd, the project folder (the workspace when no project is known, as in the tests)
       const base = ctx.project ?? ctx.cwd;
-      const workdir = tool !== 'claude' && typeof payload.tool_input?.workdir === 'string' ? path.resolve(base, payload.tool_input.workdir) : base;
+      const dir = tool !== 'claude' ? commandDir(tool, payload) : null;
+      const workdir = dir !== null ? path.resolve(base, dir) : base;
       for (const f of files) {
         const abs = realPath(path.resolve(workdir, f));
         if (!insideDir(ctx.worktree, abs)) {
@@ -206,7 +207,7 @@ export function handleHook(ctx: Ctx, tool: Tool, event: Event, payload: Record<s
       // peers at the next tool call, not at turn end.
       db.setStatus(ctx.db, ctx.agent, 'busy');
       const parts: string[] = [];
-      if (isShell(payload.tool_name)) parts.push(...shellWarnings(ctx, payload), ...commandWarnings(ctx, payload));
+      if (isShell(payload.tool_name)) parts.push(...shellWarnings(ctx, payload), ...commandWarnings(ctx, payload, tool));
       // a Claude Code subagent's tool calls fire this hook too (with its agent_id); context given to it never reaches
       // the main conversation, so the messages wait for a call of the agent's own
       const ms = payload.agent_id ? [] : db.takeUnread(ctx.db, ctx.agent);
@@ -271,17 +272,24 @@ function shellWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
   return out;
 }
 
+/** The directory a call ran in, when the payload says: the call's workdir, or for Codex the top-level cwd (its shell
+ *  tool sends no workdir). Claude Code's cwd is its session's, the project folder, so it is not taken. */
+const commandDir = (tool: Tool | undefined, payload: Record<string, any>): string | null =>
+  typeof payload.tool_input?.workdir === 'string' ? payload.tool_input.workdir : tool === 'codex' && typeof payload.cwd === 'string' ? payload.cwd : null;
+
 /** What the command's text alone gives away: it ran in or named the main checkout, or used git stash. Heuristics,
  *  so warnings, not gates; no git involved, unlike shellWarnings. */
-export function commandWarnings(ctx: Ctx, payload: Record<string, any>): string[] {
+export function commandWarnings(ctx: Ctx, payload: Record<string, any>, tool?: Tool): string[] {
   const out: string[] = [];
   const cmd = typeof payload.tool_input?.command === 'string' ? payload.tool_input.command : '';
   // From the project folder, "<repo>/" is the main checkout: a command that ran there (Codex's workdir), cd'd there or
   // named a path there did not touch the agent's own copy.
   if (ctx.project) {
     const repoName = path.basename(ctx.worktree);
-    const workdir = typeof payload.tool_input?.workdir === 'string' ? path.resolve(ctx.project, payload.tool_input.workdir) : null;
-    const inMain = workdir !== null && insideDir(ctx.project, workdir) && !insideDir(ctx.cwd, workdir);
+    const dir = commandDir(tool, payload);
+    const workdir = dir !== null ? path.resolve(ctx.project, dir) : null;
+    // below the project folder, which is where Codex runs a command that names no directory, and outside the workspace
+    const inMain = workdir !== null && insideDir(ctx.project, workdir) && !insideDir(workdir, ctx.project) && !insideDir(ctx.cwd, workdir);
     const words: string[] = cmd.split(/\s+/);
     const namesMain = words.some((w, i) => {
       if (/chord[\\/]agents[\\/]/.test(w)) return false;

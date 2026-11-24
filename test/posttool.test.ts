@@ -156,9 +156,14 @@ test('post-tool-use says so when a shell command ran in the main checkout', () =
 
 test('commandWarnings judges the command text alone, with no repository to look at', async () => {
   const { commandWarnings } = await import('../src/hooks.ts');
-  const P = process.platform === 'win32' ? 'D:\P' : '/P';
+  const P = process.platform === 'win32' ? 'D:\\P' : '/P';
   const ctx: Ctx = { db: db.openDb(':memory:'), agent: 'a', cwd: path.join(P, 'chord', 'agents', 'a'), worktree: path.join(P, 'chord', 'agents', 'a', 'repo'), project: P };
   assert.match(commandWarnings(ctx, { tool_input: { command: 'cd repo && npm test' } })[0], /main checkout/);
   assert.match(commandWarnings(ctx, { tool_input: { command: 'git stash' } })[0], /git stash is shared/);
   assert.deepEqual(commandWarnings(ctx, { tool_input: { command: 'npm test', workdir: 'chord/agents/a/repo' } }), []);
+  // Codex gives the command's directory as the payload's cwd, not as a workdir in tool_input
+  assert.match(commandWarnings(ctx, { cwd: path.join(P, 'repo'), tool_input: { command: 'npm test' } }, 'codex')[0], /main checkout/);
+  assert.deepEqual(commandWarnings(ctx, { cwd: path.join(P, 'chord', 'agents', 'a', 'repo'), tool_input: { command: 'npm test' } }, 'codex'), []);
+  assert.deepEqual(commandWarnings(ctx, { cwd: P, tool_input: { command: 'npm test' } }, 'codex'), []); // the project folder, where Codex runs a command by default
+  assert.deepEqual(commandWarnings(ctx, { cwd: P, tool_input: { command: 'npm test' } }, 'claude'), []); // Claude Code's cwd is its session's, the project folder
 });

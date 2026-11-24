@@ -296,6 +296,19 @@ test('the deny reason finds the own copy when another agent is named like the re
   assert.match(other.hookSpecificOutput.permissionDecisionReason, /edit your own copy chord\/agents\/a\/repo\/src\/y\.ts instead/);
 });
 
+test('Codex: a patch run from the shell resolves against the command directory Codex gives as cwd', () => {
+  const d = db.openDb(':memory:');
+  const P = process.platform === 'win32' ? 'D:\\P' : '/P';
+  const cwd = path.join(P, 'chord', 'agents', 'a');
+  const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
+  db.addAgent(d, { name: 'a', tool: 'codex', pid: process.pid, cwd });
+  db.addClaim(d, { agent: 'a', file: 'repo/src/x.ts', intent: 'x', kind: 'modify' });
+  // Codex's shell tool puts no workdir in tool_input; the directory the command ran in is the payload's cwd
+  const shell = (dir: string) => handleHook(ctx, 'codex', 'pre-tool-use', { tool_name: 'Bash', cwd: dir, tool_input: { command: "apply_patch <<'EOF'\n*** Begin Patch\n*** Update File: src/x.ts\n@@\n-a\n+b\n*** End Patch\nEOF" } }) as any;
+  assert.equal(shell(path.join(cwd, 'repo')), undefined);
+  assert.match(shell(path.join(P, 'repo')).hookSpecificOutput.permissionDecisionReason, /outside your workspace/);
+});
+
 test('pi: edit and write name their file as path, relative to the project folder or absolute', () => {
   assert.deepEqual(filesTouched('pi', { tool_name: 'edit', tool_input: { path: 'chord/agents/a/repo/x.ts', edits: [] } }), ['chord/agents/a/repo/x.ts']);
   assert.deepEqual(filesTouched('pi', { tool_name: 'write', tool_input: { path: '/P/chord/agents/a/repo/y.ts', content: '' } }), [process.platform === 'win32' ? 'P:\\chord\\agents\\a\\repo\\y.ts' : '/P/chord/agents/a/repo/y.ts']); // pi reads /P/ as drive P: on Windows

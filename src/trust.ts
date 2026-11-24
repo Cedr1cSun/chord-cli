@@ -1,4 +1,4 @@
-// What the user has told Claude Code and Codex to trust, read from their own config files. Agents run in the
+// What the user has told Claude Code, Codex and agy to trust, read from their own config files. Agents run in the
 // project folder, which the user trusts (or not) in Claude Code themselves; chord writes no trust of its own.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -51,7 +51,22 @@ export function disabledCodexHooks(file = codexConfigPath()): string[] {
   return off;
 }
 
-const hasCodexState = (home: string) => { try { return fs.readdirSync(home).some(f => /^state_\d+\.sqlite$/.test(f)); } catch { return false; } };
+/** The permissions.allow list in the user's agy settings. A list passed with --settings replaces this one instead of
+ *  adding to it, so chord passes it along with its own rule. */
+export function agyAllowList(file = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'settings.json')): string[] {
+  try {
+    const allow = JSON.parse(fs.readFileSync(file, 'utf8'))?.permissions?.allow;
+    return Array.isArray(allow) ? allow.filter((r): r is string => typeof r === 'string') : [];
+  } catch { return []; }
+}
+
+/** Whether the user's global agy MCP configuration defines a server named chord: agy keeps that one and silently drops
+ *  the one chord passes, so the agent would have no chord tools. */
+export function agyHasChordServer(file = path.join(os.homedir(), '.gemini', 'config', 'mcp_config.json')): boolean {
+  try { return Object.hasOwn(JSON.parse(fs.readFileSync(file, 'utf8'))?.mcpServers ?? {}, 'chord'); } catch { return false; }
+}
+
+const hasCodexState =(home: string) => { try { return fs.readdirSync(home).some(f => /^state_\d+\.sqlite$/.test(f)); } catch { return false; } };
 
 /** Codex creates and migrates its state database (~/.codex/state_N.sqlite) on its first start, and when two start at
  *  once the second exits with "local database appears to be damaged". Until that database exists, launches take

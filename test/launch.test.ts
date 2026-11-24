@@ -302,6 +302,26 @@ test('the setup command from <project>/chord/config.json runs once per new workt
   assert.ok(prepare('codex', proj, 'three').worktree); // no setup configured: nothing runs
 });
 
+test('a setup that fails for an agent that already worked keeps its branch, commits and uncommitted files', () => {
+  const proj = tempProject();
+  const alice = prepare('codex', proj, 'alice'); // no setup configured yet: no marker
+  const d = db.openDb(alice.dbFile);
+  fs.writeFileSync(path.join(alice.worktree, 'done.txt'), 'done'); git(alice.worktree, 'add', 'done.txt'); git(alice.worktree, 'commit', '-q', '-m', 'alice work');
+  fs.writeFileSync(path.join(alice.worktree, 'wip.txt'), 'half done');
+  db.setStatus(d, 'alice', 'offline');
+  fs.mkdirSync(path.join(proj, 'chord'), { recursive: true });
+  fs.writeFileSync(path.join(proj, 'chord', 'config.json'), JSON.stringify({ setup: 'node -e "process.exit(1)"' })); // added later, and failing
+  assert.throws(() => prepare('codex', proj, 'alice'), /setup command failed[^]*kept/);
+  assert.notEqual(git(alice.project.repo, 'branch', '--list', 'chord/alice'), '');
+  assert.match(git(alice.project.repo, 'log', '--format=%s', 'chord/alice'), /alice work/);
+  assert.equal(fs.readFileSync(path.join(alice.worktree, 'wip.txt'), 'utf8'), 'half done');
+  // the worktree directory is gone but the branch with its commits is not: launching puts a worktree back on that branch,
+  // and a failed setup must not delete it either
+  git(alice.project.repo, 'worktree', 'remove', '--force', alice.worktree);
+  assert.throws(() => prepare('codex', proj, 'alice'), /setup command failed/);
+  assert.match(git(alice.project.repo, 'log', '--format=%s', 'chord/alice'), /alice work/);
+});
+
 test('pi gets chord\'s extension on the command line and the hook and server paths in the environment', () => {
   const proj = tempProject();
   const l = prepare('pi', proj, 'p');

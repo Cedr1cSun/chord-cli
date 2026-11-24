@@ -284,6 +284,20 @@ test('the repository\'s own Claude settings and .mcp.json ride along; Codex gets
   assert.ok(!codexArgs(env).some(a => a.includes('Notification')));
 });
 
+test('settings.local.json comes from the main checkout: it is not tracked, so a new worktree has none', () => {
+  const repo = tmp('chord-repo-'), wt = tmp('chord-wt-');
+  fs.mkdirSync(path.join(repo, '.claude')); fs.mkdirSync(path.join(wt, '.claude'));
+  fs.writeFileSync(path.join(wt, '.claude', 'settings.json'), JSON.stringify({ env: { A: 'json' } }));
+  fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ env: { A: 'stale main checkout' } }));
+  fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus', hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/guard.js"' }] }] } }));
+  const env = { CHORD_AGENT_ID: 'a', CHORD_DB: '/db', CHORD_TOOL: 'claude', CHORD_WORKTREE: wt };
+  const args = claudeArgs(env, { repo, claudeConfig: path.join(wt, 'none.json'), claudeSettings: path.join(wt, 'none.json') });
+  const s = JSON.parse(args[args.indexOf('--settings') + 1]);
+  assert.equal(s.model, 'opus');
+  assert.deepEqual(s.env, { A: 'json' }); // settings.json is tracked: the agent's own branch has the version that counts
+  assert.equal(s.hooks.Stop[1].hooks[0].command, `node "${wt.replace(/\\/g, '/')}/guard.js"`); // still the worktree
+});
+
 test('the user\'s own --settings win over the repository\'s settings, and chord\'s hooks and tools stay', () => {
   const wt = tmp('chord-wt-');
   fs.mkdirSync(path.join(wt, '.claude'));

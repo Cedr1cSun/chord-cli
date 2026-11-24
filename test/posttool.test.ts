@@ -100,6 +100,12 @@ test('post-tool-use also warns about commits to unclaimed files, git stash, and 
   assert.match(run('git commit -am x'), /changed files you have not claimed: repo\/b.txt/);
   db.addClaim(d, { agent: 'w', file: 'repo/b.txt', intent: 'x', kind: 'add' });
   assert.equal(run('ls'), '');
+  // a committed rename changed both ends
+  git(wt, 'mv', 'a.txt', 'c.txt'); git(wt, 'commit', '-q', '-m', 'mv');
+  const mv = run('git commit -m mv');
+  assert.match(mv, /repo\/c.txt/); assert.match(mv, /repo\/a.txt/);
+  db.addClaim(d, { agent: 'w', file: 'repo/a.txt', intent: 'x', kind: 'rename' }); db.addClaim(d, { agent: 'w', file: 'repo/c.txt', intent: 'x', kind: 'rename' });
+  assert.equal(run('ls'), '');
   // stash is shared between worktrees
   assert.match(run('git stash && npm test && git stash pop'), /git stash is shared by every worktree/);
   assert.equal(run('echo stash'), '');

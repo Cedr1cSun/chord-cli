@@ -109,7 +109,13 @@ function siblingWorktrees(wt: string): string[] {
  *  agents work on one index. */
 function onBranch(wt: string, branch: string): string {
   const head = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD');
-  if (head !== branch) throw new Error(`${wt} is on ${head} instead of ${branch}; its git registration seems to be shared with another agent. Remove the directory and launch again`);
+  if (head === 'HEAD') {
+    // a rebase of this branch stopped half-way (a conflict after finish, then the agent left) detaches HEAD: let it back in
+    const rebasing = ['rebase-merge', 'rebase-apply'].map(d => path.resolve(wt, git(wt, 'rev-parse', '--git-path', `${d}/head-name`)))
+      .some(f => fs.existsSync(f) && fs.readFileSync(f, 'utf8').trim() === `refs/heads/${branch}`);
+    if (rebasing) { process.stderr.write(`chord: a rebase of ${branch} is in progress in ${wt}; finish it with git rebase --continue or --abort\n`); return wt; }
+  }
+  if (head !== branch) throw new Error(`${wt} is on ${head} instead of ${branch}; its git registration seems to be shared with another agent. Check the directory for uncommitted work you want to keep, then remove it and launch again`);
   return wt;
 }
 

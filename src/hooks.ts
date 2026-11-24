@@ -1,7 +1,7 @@
-// Hook entry point for Claude Code, Codex, OpenCode and pi: `node hooks.ts <event>`, payload on stdin.
+// Hook entry point for Claude Code, Codex, OpenCode, pi and agy: `node hooks.ts <event>`, payload on stdin.
 // Event names are chord's own; launch.ts maps each tool's hook config onto them (OpenCode's through the plugin in
 // opencode/plugin/index.ts and pi's through the extension in pi/extensions/chord.ts, which call this with the same
-// payload shape).
+// payload shape; agy's payloads and answers are translated here, see agyHandle).
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -309,6 +309,88 @@ export function commandWarnings(ctx: Ctx, payload: Record<string, any>, tool?: T
   return out;
 }
 
+// agy runs hook commands itself, with its own event names and camelCase payloads. Its calls are translated where the
+// hook process starts, so the rules above stay the same for every tool. launch.ts runs SessionStart as session-start,
+// PreInvocation (before every model call) as user-prompt-submit, PreToolUse and PostToolUse as pre- and post-tool-use
+// and Stop as stop.
+
+/** Left by the launch in the agent's workspace and removed by the first hook that briefs the model. agy fires
+ *  SessionStart only at the first prompt of a new conversation, never at launch or for a resumed one. */
+export const agyBriefingDue = (ws: string) => path.join(ws, '.agents', 'chord-briefing-due');
+/** What the checks after a tool call found, waiting for the next PreInvocation: agy's PostToolUse cannot speak. */
+export const agyWarnings = (ws: string) => path.join(ws, '.agents', 'chord-warnings');
+
+/** agy's payload in the shape handleHook takes, with agy's own fields alongside. */
+export function fromAgy(p: Record<string, any>): Record<string, any> {
+  const args = p.toolCall?.args ?? {};
+  // run_command's CommandLine, and its Cwd (documented, never seen), are what the shell checks read as command and workdir
+  const input = typeof args.CommandLine === 'string' ? { ...args, command: args.CommandLine, ...(typeof args.Cwd === 'string' ? { workdir: args.Cwd } : {}) } : args;
+  return { ...p, session_id: p.conversationId, prompt: p.lastUserInput, tool_name: p.toolCall?.name, tool_input: input };
+}
+
+/** chord's answer in agy's shape: context becomes an injected system message, a refusal agy's deny, a blocked stop
+ *  agy's continue. Nothing to say is nothing printed: agy takes `{}` from PreToolUse for a refusal. */
+export function toAgy(out: HookOut): object | undefined {
+  const o = out as { hookSpecificOutput?: { additionalContext?: string; permissionDecision?: string; permissionDecisionReason?: string }; decision?: string; reason?: string } | undefined;
+  const h = o?.hookSpecificOutput;
+  if (h?.permissionDecision === 'deny') return { decision: 'deny', reason: h.permissionDecisionReason };
+  if (h?.additionalContext) return { injectSteps: [{ systemMessage: { systemMessage: h.additionalContext } }] };
+  if (o?.decision === 'block') return { decision: 'continue', reason: o.reason };
+  return undefined;
+}
+
+const contextOf = (out: HookOut) => (out as { hookSpecificOutput?: { additionalContext?: string } } | undefined)?.hookSpecificOutput?.additionalContext ?? '';
+
+/** Removes `file`; true only for the caller that did, so two hooks never both act on it. */
+const take = (file: string) => { try { fs.unlinkSync(file); return true; } catch { return false; } };
+
+/** The warnings waiting in the workspace `ws`, each line once. */
+function takeWarnings(ws: string): string {
+  const file = agyWarnings(ws), mine = `${file}.${process.pid}`;
+  try { fs.renameSync(file, mine); } catch { return ''; } // none waiting, or another hook has them
+  const text = fs.readFileSync(mine, 'utf8');
+  fs.rmSync(mine, { force: true });
+  return [...new Set(text.split('\n').filter(Boolean))].join('\n');
+}
+
+/** handleHook's events for one agy hook call. The conversation the hooks recorded is the agent's own; any other is a
+ *  sub-agent's, whose writes and shell commands are checked but which never takes messages, replaces the recorded
+ *  conversation or makes the agent idle. */
+export function agyHandle(ctx: Ctx, event: Event, p: Record<string, any>): HookOut {
+  const run = (e: Event, payload = p) => safeHandle(ctx, 'agy', e, payload);
+  const own = () => p.conversationId === db.getAgent(ctx.db, ctx.agent)?.session_id;
+  switch (event) {
+    case 'pre-tool-use':
+      return run(event);
+    case 'post-tool-use': {
+      // messages are left for the PreInvocation that follows, as they are for a Claude Code subagent (agent_id)
+      const found = contextOf(run(event, { ...p, agent_id: p.conversationId }));
+      // shortcut: a warning waits for the agent's next PreInvocation and wakes nobody, so after a turn's last shell
+      // command it is heard at the next prompt; upgrade if agy's PostToolUse learns to inject context
+      if (found) fs.appendFileSync(agyWarnings(ctx.cwd), found + '\n');
+      return undefined;
+    }
+    case 'session-start':
+      if (!p.lastUserInput) return undefined; // a sub-agent starting: it has no user input
+      take(agyBriefingDue(ctx.cwd)); // briefed here, so not again at the PreInvocation that follows
+      return run(event); // a new conversation of the agent's own: recorded
+    case 'user-prompt-submit': {
+      // the first model call since launch is in the user's own conversation, new or resumed: briefed, its id recorded
+      const first = take(agyBriefingDue(ctx.cwd));
+      if (!first && !own()) return undefined;
+      const parts = [first ? contextOf(run('session-start')) : '', takeWarnings(ctx.cwd)];
+      // invocationNum restarts at 0 with each prompt (and when a sub-agent's message wakes the agent); above 0 the model
+      // is about to read tool results, where the other tools' PostToolUse speaks
+      parts.push(contextOf(p.invocationNum ? run('post-tool-use', { ...p, tool_name: undefined }) : run(event)));
+      const text = parts.filter(Boolean).join('\n\n');
+      return text ? context('PreInvocation', text) : undefined;
+    }
+    case 'stop':
+      return own() ? run(event) : undefined;
+  }
+  return undefined;
+}
+
 /** handleHook, but never lets an exception reach the tool: a broken hook must not fail open on a write. */
 export function safeHandle(ctx: Ctx, tool: Tool, event: Event, payload: Record<string, any>): HookOut {
   try {
@@ -338,6 +420,8 @@ async function main(): Promise<void> {
   const raw = Buffer.concat(chunks).toString('utf8'); // decode once: a multi-byte character may straddle chunks
   let payload: Record<string, any> = {};
   try { payload = JSON.parse(raw); } catch { /* no payload */ }
+  if (tool === 'agy') payload = fromAgy(payload);
+  const answer = (out: HookOut) => { const o = tool === 'agy' ? toAgy(out) : out; if (o !== undefined) process.stdout.write(JSON.stringify(o)); };
   let ctx: Ctx;
   try {
     ctx = { db: db.openDb(file), agent, cwd, worktree, project: process.env.CHORD_PROJECT };
@@ -346,14 +430,19 @@ async function main(): Promise<void> {
     const msg = (e as Error).message;
     process.stderr.write(`chord hook: cannot open ${file}: ${msg}\n`);
     if (event === 'pre-tool-use' && filesTouched(tool, payload).length) {
-      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `chord could not check this write (${msg}); try again or report it to the user` } }));
+      answer({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `chord could not check this write (${msg}); try again or report it to the user` } });
     }
     return;
   }
   if (process.env.CHORD_DEBUG_HOOKS) db.log(`hook payload ${event}: keys=${Object.keys(payload).join(',')} agent_id=${payload.agent_id ?? '-'} agent_type=${payload.agent_type ?? '-'} source=${payload.source ?? '-'} reason=${payload.reason ?? '-'}`);
-  const out = safeHandle(ctx, tool, event, payload);
-  db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}): ${out === undefined ? 'no output' : `json ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
-  if (out !== undefined) process.stdout.write(JSON.stringify(out));
+  let out: HookOut;
+  if (tool !== 'agy') out = safeHandle(ctx, tool, event, payload);
+  else {
+    try { out = agyHandle(ctx, event, payload); } catch (e) { db.log(`hook ${event} failed: ${(e as Error).message}`); } // pre-tool-use goes through safeHandle and never gets here
+  }
+  const agy = tool === 'agy' ? ` conversation=${String(payload.conversationId).slice(0, 8)} invocation=${payload.invocationNum ?? '-'}` : '';
+  db.log(`hook ${event} (${tool}, tool_name=${payload.tool_name ?? '-'}${agy}): ${out === undefined ? 'no output' : `json ${JSON.stringify(out).length} chars`} in ${Date.now() - started}ms`);
+  answer(out);
 }
 
 const isMain = (() => { try { return fs.realpathSync.native(process.argv[1] ?? '') === fs.realpathSync.native(fileURLToPath(new URL(import.meta.url))); } catch { return false; } })();

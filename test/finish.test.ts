@@ -129,6 +129,9 @@ test('finish refuses a detached worktree and skips the merge when there is nothi
   git(wt, 'checkout', '-q', '--detach');
   assert.throws(() => finish(ctx), /your worktree is not on its branch/);
   git(wt, 'checkout', '-q', 'chord/w');
+  // a broken test command does not hold the claims of a finish with nothing to merge
+  ctx.project = path.dirname(root);
+  fs.writeFileSync(path.join(ctx.project, 'chord', 'config.json'), JSON.stringify({ test: 'node -e "process.exit(3)"' }));
   const r = finish(ctx); // no commits beyond main
   assert.deepEqual(r.merged, []); assert.match((r as any).note, /nothing to merge/);
   assert.equal(db.claimsBy(d, 'w').length, 0);

@@ -253,6 +253,12 @@ function finishLocked(ctx: Ctx) {
     db.addEvent(ctx.db, ctx.agent, 'conflict', null, `rebase of ${branch} onto ${main} conflicted; aborted, nothing merged`);
     throw new Error(`rebase onto ${main} failed; nothing was merged. Run \`git rebase ${main}\` in your worktree, resolve the conflicts so both changes survive, run the tests, then call finish again; ask the user only if you cannot resolve them.\n${stderrOf(e)}`);
   }
+  const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
+  if (!subjects.length) {
+    db.log(`finish: ${branch} has nothing beyond ${main}; claims released, nothing merged`);
+    db.releaseAll(ctx.db, ctx.agent, 'finish');
+    return { merged: [] as string[], into: main, notified: [] as string[], note: 'your branch has no commits beyond main; nothing to merge' };
+  }
   // The project's tests, on the branch as it now sits on top of main: a clean rebase can still break what another
   // agent merged. ponytail: they run inside the finish lock, so other agents' finish waits for them (withLock gives
   // up after 240 s); run them before taking the lock and re-check main if test suites get long.
@@ -266,7 +272,6 @@ function finishLocked(ctx: Ctx) {
       throw new Error(`your branch is now rebased onto ${main}, but the project's test command failed there, so nothing was merged: ${test}\n${out}\nFix it (another agent's merged work may be what broke), commit, and call finish again.`);
     }
   }
-  const subjects = git(root, 'log', '--format=%s', `${main}..${branch}`).split('\n').filter(Boolean);
   // A submodule commit the branch points at must exist in the main checkout's copy of the submodule, or the
   // fast-forward leaves main pointing at a commit that is nowhere but inside this agent's worktree.
   for (const line of git(root, '-c', 'core.quotePath=false', 'diff', '--raw', main, branch).split('\n')) { // a non-ASCII path arrives as itself, not quoted and escaped
@@ -274,11 +279,6 @@ function finishLocked(ctx: Ctx) {
     if (!m) continue;
     const [, sha, sub] = m;
     if (!gitOk(path.join(root, sub), 'cat-file', '-e', `${sha}^{commit}`)) throw new Error(`${sub} is a submodule and your branch points it at commit ${sha.slice(0, 7)}, which the main checkout's submodule does not have; push that commit to the submodule's remote (and fetch it in ${path.join(root, sub)}) before finishing. Nothing was merged.`);
-  }
-  if (!subjects.length) {
-    db.log(`finish: ${branch} has nothing beyond ${main}; claims released, nothing merged`);
-    db.releaseAll(ctx.db, ctx.agent, 'finish');
-    return { merged: [] as string[], into: main, notified: [] as string[], note: 'your branch has no commits beyond main; nothing to merge' };
   }
   // Files the branch adds must not already sit untracked in the main checkout: the fast-forward would stop half-way,
   // leaving some of them written and every later finish of this agent failing on them.

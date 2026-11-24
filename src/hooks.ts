@@ -61,6 +61,7 @@ function formatMessages(ms: db.Message[]): string {
 const MAX_CLAIM_LINES = 60;
 const MAX_WARNED_FILES = 20;
 const MAX_INSTRUCTION_CHARS = 8000;
+const CLAUDE_BRIEFING_CHARS = 9500; // under Claude Code's 10,000-character cap on additionalContext
 
 /** The agent's worktree as a path from its cwd, the project folder: chord/agents/<name>/<repoName>. */
 const repoDirOf = (ctx: Ctx) => path.relative(ctx.project ?? ctx.cwd, ctx.worktree).split(path.sep).join('/') || '.';
@@ -85,17 +86,23 @@ function realPath(p: string): string {
 
 /** The repository's own agent instructions. The agent's cwd is the project folder, which is not a git repository, so
  *  Codex does not load the worktree's AGENTS.md and Claude only reads a nested CLAUDE.md once it opens a file there. */
-function projectInstructions(ctx: Ctx, repoDir: string): string[] {
+function projectInstructions(ctx: Ctx, repoDir: string, budget = Infinity): string[] {
   const out: string[] = [];
   for (const name of ['AGENTS.md', 'CLAUDE.md']) {
     try {
       const text = fs.readFileSync(path.join(ctx.worktree, name), 'utf8');
-      const body = text.length > MAX_INSTRUCTION_CHARS ? text.slice(0, MAX_INSTRUCTION_CHARS) + `\n[... truncated, read ${repoDir}/${name} for the rest]` : text;
-      out.push('', `Project instructions from ${repoDir}/${name}:`, body.trimEnd());
+      const head = `Project instructions from ${repoDir}/${name}:`, tail = `\n[... truncated, read ${repoDir}/${name} for the rest]`;
+      const reserve = name === 'AGENTS.md' ? pointer(repoDir, 'CLAUDE.md').length + 2 : 0; // CLAUDE.md is named at least
+      const room = Math.min(MAX_INSTRUCTION_CHARS, budget - reserve - head.length - tail.length - 3);
+      // too little room for a useful excerpt: only the pointer
+      const lines = room < 1000 ? ['', pointer(repoDir, name)] : ['', head, (text.length > room ? text.slice(0, room) + tail : text).trimEnd()];
+      out.push(...lines); budget -= lines.join('\n').length + 1;
     } catch { /* not present */ }
   }
   return out;
 }
+
+const pointer = (repoDir: string, name: string) => `Read ${repoDir}/${name} before starting: it holds the project's instructions.`;
 
 export function briefing(ctx: Ctx): string {
   const me = db.getAgent(ctx.db, ctx.agent);
@@ -120,10 +127,19 @@ export function briefing(ctx: Ctx): string {
     ...peers.map(a => `- ${a.name} (${a.tool}, ${a.status}): ${a.task ?? 'not registered yet'}${a.scope ? ` [${a.scope}]` : ''}`),
     '',
     claims.length ? 'Current file claims:' : 'No files are claimed yet.',
-    ...claims.slice(0, MAX_CLAIM_LINES).map(c => `- ${c.file} <- ${c.agent}: ${c.kind}, ${c.intent}${c.symbols ? ` (${c.symbols})` : ''}`),
-    ...(claims.length > MAX_CLAIM_LINES ? [`- ... and ${claims.length - MAX_CLAIM_LINES} more (the claim tool reports holders of any file you claim)`] : []),
-    ...projectInstructions(ctx, repoDir),
   ];
+  // Claude Code shows the model only a 2,000-character preview of a hook's additionalContext over 10,000 characters
+  const budget = me?.tool === 'claude' ? CLAUDE_BRIEFING_CHARS : Infinity;
+  const more = (n: number) => `- ... and ${n} more (the claim tool reports holders of any file you claim)`;
+  let used = lines.join('\n').length, shown = 0;
+  for (const c of claims.slice(0, MAX_CLAIM_LINES)) {
+    const line = `- ${c.file} <- ${c.agent}: ${c.kind}, ${c.intent}${c.symbols ? ` (${c.symbols})` : ''}`;
+    // room left for the "more" line and a pointer to each instructions file
+    if (used + line.length + 1 + more(claims.length).length + 1 + 2 * (pointer(repoDir, 'AGENTS.md').length + 2) > budget) break;
+    lines.push(line); used += line.length + 1; shown++;
+  }
+  if (claims.length > shown) { lines.push(more(claims.length - shown)); used += more(claims.length - shown).length + 1; }
+  lines.push(...projectInstructions(ctx, repoDir, budget - used));
   return lines.join('\n');
 }
 

@@ -52,6 +52,7 @@ On the stronger model chord keeps pace with the best baselines. On the weaker on
 | Codex CLI | supported |
 | OpenCode | supported (2.x; for 1.x use chord 0.3.1) |
 | pi | supported |
+| Antigravity CLI (`agy`) | supported |
 | Gemini CLI | planned |
 | Cursor CLI | planned |
 | GitHub Copilot CLI | planned |
@@ -107,6 +108,7 @@ chord claude                                     # start an agent
 chord codex --name api                           # start another, named
 chord opencode --name web                        # any mix of tools
 chord pi --name docs
+chord agy --name tests
 chord claude "fix the flaky test in tests/auth"  # arguments after the tool name go to the tool
 ```
 
@@ -120,15 +122,15 @@ chord stop api           # let it finish its turn, then quit
 chord clean              # remove the workspaces and branches of agents that have left
 ```
 
-`--name` fixes an agent's name, workspace and branch, so launching the same name later returns to the same worktree. `chord resume <agent>` does that and also reopens the agent's own conversation, for Claude, Codex, OpenCode and pi alike. Run chord in a repository root and it offers to move the repository into a child directory first.
+`--name` fixes an agent's name, workspace and branch, so launching the same name later returns to the same worktree. `chord resume <agent>` does that and also reopens the agent's own conversation, for Claude, Codex, OpenCode, pi and agy alike. Run chord in a repository root and it offers to move the repository into a child directory first.
 
-Agents start in the project folder, the same directory you run plain `claude`, `codex`, `opencode` or `pi` in, so that stays their project too: one `/resume` list, one CLAUDE.md, one trust answer. Each agent edits only its own worktree under `chord/agents/<name>/`; chord refuses edits (editor tools, apply_patch) to the main checkout and to other agents' worktrees, and tells the agent off after a shell command that ran there.
+Agents start in the project folder, the same directory you run plain `claude`, `codex`, `opencode`, `pi` or `agy` in, so that stays their project too: one `/resume` list, one CLAUDE.md, one trust answer. Each agent edits only its own worktree under `chord/agents/<name>/`; chord refuses edits (editor tools, apply_patch) to the main checkout and to other agents' worktrees, and tells the agent off after a shell command that ran there.
 
 ## 🧰 Commands
 
 | command | what it does |
 |---|---|
-| `chord <agent> [--name x] [tool args...]` | start an agent: `claude`, `codex`, `opencode` or `pi` |
+| `chord <agent> [--name x] [tool args...]` | start an agent: `claude`, `codex`, `opencode`, `pi` or `agy` |
 | `chord resume <agent> [tool args...]` | start an agent that has left again, in its own worktree, reopening its own conversation |
 | `chord ls [--all]` | agents and claims of this project, or of every project |
 | `chord messages [agent] [-n N]` | message history |
@@ -154,11 +156,11 @@ A repository's own Claude configuration (`.claude/settings*.json`, `.mcp.json`) 
 ## 🔌 How chord works with your tools
 
 - **Waking an agent** means typing a short note into its terminal. chord does this only when the input box is empty, the keyboard has been quiet for a few seconds, and the terminal has echoed the note; a dialogue never receives the Enter.
-- **Trust**: agents run in the project folder, so Claude asks about it once, as it does for plain `claude`; chord writes nothing to `~/.claude.json`. Claude Code also asks whether to add the agent's worktree at every start until you have trusted the repository in Claude Code (run `claude` once in it); the default answer, "No, exit", ends the session, so choose "Yes, add it". Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off. OpenCode asks nothing: chord starts each agent with `--standalone`, so it gets a server of its own, and hands it the plugin and the MCP server through `OPENCODE_CONFIG_CONTENT`, so a configuration of your own set in that variable is not read while an agent runs; your global config, `OPENCODE_CONFIG_DIR` and the project's `opencode.json` are. `--server` is refused, because the server it connects to runs without chord's plugin. pi asks nothing either: chord loads its extension with `-e` and the extension registers the MCP server for that session, so `~/.pi` is not written to.
+- **Trust**: agents run in the project folder, so Claude asks about it once, as it does for plain `claude`; chord writes nothing to `~/.claude.json`. Claude Code also asks whether to add the agent's worktree at every start until you have trusted the repository in Claude Code (run `claude` once in it); the default answer, "No, exit", ends the session, so choose "Yes, add it". Codex asks you to review chord's hooks once, and again whenever their definition changes; answer "trust all". chord says so at launch if a hook has been switched off. OpenCode asks nothing: chord starts each agent with `--standalone`, so it gets a server of its own, and hands it the plugin and the MCP server through `OPENCODE_CONFIG_CONTENT`, so a configuration of your own set in that variable is not read while an agent runs; your global config, `OPENCODE_CONFIG_DIR` and the project's `opencode.json` are. `--server` is refused, because the server it connects to runs without chord's plugin. pi asks nothing either: chord loads its extension with `-e` and the extension registers the MCP server for that session, so `~/.pi` is not written to. agy asks once whether you trust the project folder, as it does for plain `agy`, and remembers your answer. chord writes its hooks and MCP server into the agent's workspace (`chord/agents/<name>/.agents/`) and loads them with `--add-dir`, so `~/.gemini` and the repository are not written to; the repository's own `.agents/` and GEMINI.md are not loaded for an agent. If your global agy MCP configuration already has a server named `chord`, chord refuses to start, because agy would use that one instead.
 - **Branches and worktrees.** Each agent adds a `chord/<name>` branch and a worktree; `chord clean` removes them when the agent has left and keeps anything not yet on main.
-- **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex keeps the sandbox and approval mode from your own configuration. On Windows chord refuses a sandbox given on the command line, because that sandbox cannot run the hooks; on Linux and macOS the hooks run inside the sandbox, but Codex then asks you to approve each chord tool call. OpenCode runs chord's tools without asking, as it does any MCP tool, and keeps your own permission rules for everything else. So does pi; its `--no-mcp` is refused, because chord's tools would go with it.
+- **Permissions.** chord's own tools are pre-approved for Claude, so an agent working on its own is never parked at a prompt for them; your usual shell and edit approvals apply as before. Codex keeps the sandbox and approval mode from your own configuration. On Windows chord refuses a sandbox given on the command line, because that sandbox cannot run the hooks; on Linux and macOS the hooks run inside the sandbox, but Codex then asks you to approve each chord tool call. OpenCode runs chord's tools without asking, as it does any MCP tool, and keeps your own permission rules for everything else. So does pi; its `--no-mcp` is refused, because chord's tools would go with it. agy gets chord's tools allowed with `--settings`, next to the allow list from your agy settings file and from any `--settings` of your own, since a list passed there replaces the one in the file; your other rules stay. agy's `--remote-agent` is refused, because the session would not run on this machine.
 - **The terminal title** reads `chord <agent> · <task>`, so each window says which agent it is.
-- **Hooks gate the editor tools.** Files changed from the shell are reported by name after each command, with the claim to make.
+- **Hooks gate the editor tools.** Files changed from the shell are reported by name after each command, with the claim to make. agy's hook after a tool call cannot speak to the model, so an agy agent hears it before its next model call.
 
 ## 🗺️ Scope
 

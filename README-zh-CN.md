@@ -52,6 +52,7 @@
 | Codex CLI | 支持 |
 | OpenCode | 支持 2.x（1.x 请用 chord 0.3.1） |
 | pi | 支持 |
+| Antigravity CLI（`agy`） | 支持 |
 | Gemini CLI | 计划中 |
 | Cursor CLI | 计划中 |
 | GitHub Copilot CLI | 计划中 |
@@ -107,6 +108,7 @@ chord claude                                     # 开一个 agent
 chord codex --name api                           # 再开一个，起个名字
 chord opencode --name web                        # 工具随便搭配
 chord pi --name docs
+chord agy --name tests
 chord claude "fix the flaky test in tests/auth"  # 工具名后面的参数原样交给工具
 ```
 
@@ -120,15 +122,15 @@ chord stop api           # 让它做完这一轮再退出
 chord clean              # 删掉已经离开的 agent 的工作区和分支
 ```
 
-`--name` 固定 agent 的名字、工作区和分支，以后用同一个名字启动就回到同一个 worktree。`chord resume <agent>` 也是这样，还会接着打开这个 agent 自己的对话，Claude、Codex、OpenCode 和 pi 都一样。在仓库根目录里跑 chord，它会先提议把仓库移进一个子目录。
+`--name` 固定 agent 的名字、工作区和分支，以后用同一个名字启动就回到同一个 worktree。`chord resume <agent>` 也是这样，还会接着打开这个 agent 自己的对话，Claude、Codex、OpenCode、pi 和 agy 都一样。在仓库根目录里跑 chord，它会先提议把仓库移进一个子目录。
 
-agent 在项目文件夹里启动，也就是你平时直接敲 `claude`、`codex`、`opencode` 或 `pi` 的那个目录，所以那仍然是它们的项目：同一份 `/resume` 列表，同一个 CLAUDE.md，同一次信任确认。每个 agent 只改 `chord/agents/<名字>/` 下自己的 worktree；chord 拒绝对主 checkout 和其他 agent 的 worktree 的编辑（编辑器工具、apply_patch），shell 命令在那里跑过之后也会说一声。
+agent 在项目文件夹里启动，也就是你平时直接敲 `claude`、`codex`、`opencode`、`pi` 或 `agy` 的那个目录，所以那仍然是它们的项目：同一份 `/resume` 列表，同一个 CLAUDE.md，同一次信任确认。每个 agent 只改 `chord/agents/<名字>/` 下自己的 worktree；chord 拒绝对主 checkout 和其他 agent 的 worktree 的编辑（编辑器工具、apply_patch），shell 命令在那里跑过之后也会说一声。
 
 ## 🧰 命令
 
 | 命令 | 作用 |
 |---|---|
-| `chord <agent> [--name x] [tool args...]` | 开一个 agent：`claude`、`codex`、`opencode` 或 `pi` |
+| `chord <agent> [--name x] [tool args...]` | 开一个 agent：`claude`、`codex`、`opencode`、`pi` 或 `agy` |
 | `chord resume <agent> [tool args...]` | 把离开的 agent 再开起来，回到它的 worktree，接着它自己的对话 |
 | `chord ls [--all]` | 本项目的 agent 和占用，或所有项目的 |
 | `chord messages [agent] [-n N]` | 消息记录 |
@@ -154,11 +156,11 @@ agent 在项目文件夹里启动，也就是你平时直接敲 `claude`、`code
 ## 🔌 chord 怎么和你的工具相处
 
 - **叫醒 agent** 就是往它的终端里敲一句短话。chord 只在输入框为空、键盘安静了几秒、终端回显了这句话之后才这么做；对话框永远收不到那个回车。
-- **信任**：agent 在项目文件夹里跑，所以 Claude 像平时敲 `claude` 一样只问一次；chord 不往 `~/.claude.json` 里写任何东西。在 Claude Code 里信任这个仓库之前（在仓库里跑一次 `claude`），它每次启动都会问是否添加 agent 的 worktree；默认答案 "No, exit" 会直接退出，要选 "Yes, add it"。Codex 会让你审核一次 chord 的 hook，hook 定义变了会再问一次；选 "trust all"。有 hook 被关掉时 chord 会在启动时告诉你。OpenCode 什么都不问：chord 用 `--standalone` 启动每个 agent，让它有自己的 server，并通过 `OPENCODE_CONFIG_CONTENT` 把插件和 MCP server 交给它，所以你自己写在这个变量里的配置在 agent 运行期间不会被读取；全局配置、`OPENCODE_CONFIG_DIR` 和项目里的 `opencode.json` 照常生效。`--server` 会被拒绝，因为它连上的 server 里没有 chord 的插件。pi 也什么都不问：chord 用 `-e` 加载它的扩展，扩展在本次会话里注册 MCP server，所以不会写 `~/.pi`。
+- **信任**：agent 在项目文件夹里跑，所以 Claude 像平时敲 `claude` 一样只问一次；chord 不往 `~/.claude.json` 里写任何东西。在 Claude Code 里信任这个仓库之前（在仓库里跑一次 `claude`），它每次启动都会问是否添加 agent 的 worktree；默认答案 "No, exit" 会直接退出，要选 "Yes, add it"。Codex 会让你审核一次 chord 的 hook，hook 定义变了会再问一次；选 "trust all"。有 hook 被关掉时 chord 会在启动时告诉你。OpenCode 什么都不问：chord 用 `--standalone` 启动每个 agent，让它有自己的 server，并通过 `OPENCODE_CONFIG_CONTENT` 把插件和 MCP server 交给它，所以你自己写在这个变量里的配置在 agent 运行期间不会被读取；全局配置、`OPENCODE_CONFIG_DIR` 和项目里的 `opencode.json` 照常生效。`--server` 会被拒绝，因为它连上的 server 里没有 chord 的插件。pi 也什么都不问：chord 用 `-e` 加载它的扩展，扩展在本次会话里注册 MCP server，所以不会写 `~/.pi`。agy 会像平时敲 `agy` 一样问一次信不信任项目文件夹，并自己记住答案。chord 把 hook 和 MCP server 写进 agent 的工作区（`chord/agents/<名字>/.agents/`），用 `--add-dir` 加载，所以不会写 `~/.gemini`，也不会写仓库；仓库自己的 `.agents/` 和 GEMINI.md 不随 agent 加载。如果你的全局 agy MCP 配置里已经有叫 `chord` 的 server，chord 拒绝启动，因为 agy 会用那个而不用 chord 的。
 - **分支和 worktree。** 每个 agent 添一个 `chord/<名字>` 分支和一个 worktree；`chord clean` 在 agent 离开后删掉它们，还没到 main 上的东西留着。
-- **权限。** chord 自己的工具对 Claude 预先放行，所以独自干活的 agent 不会卡在它们的确认框上；你平时的 shell 和编辑审批照旧。Codex 沿用你自己配置里的沙箱和审批模式。Windows 上 chord 拒绝命令行里给出的沙箱，因为那个沙箱起不来 hook；Linux 和 macOS 上沙箱里 hook 照常运行，但 Codex 会让你逐个批准 chord 的工具调用。OpenCode 运行 chord 的工具不会询问，和其他 MCP 工具一样；其余工具沿用你自己的权限规则。pi 也一样；它的 `--no-mcp` 会被拒绝，因为 chord 的工具会跟着没掉。
+- **权限。** chord 自己的工具对 Claude 预先放行，所以独自干活的 agent 不会卡在它们的确认框上；你平时的 shell 和编辑审批照旧。Codex 沿用你自己配置里的沙箱和审批模式。Windows 上 chord 拒绝命令行里给出的沙箱，因为那个沙箱起不来 hook；Linux 和 macOS 上沙箱里 hook 照常运行，但 Codex 会让你逐个批准 chord 的工具调用。OpenCode 运行 chord 的工具不会询问，和其他 MCP 工具一样；其余工具沿用你自己的权限规则。pi 也一样；它的 `--no-mcp` 会被拒绝，因为 chord 的工具会跟着没掉。agy 通过 `--settings` 放行 chord 的工具，并带上你 agy 设置文件里的放行列表和你自己 `--settings` 里的，因为那里传入的列表会顶替文件里的；你的其他规则不受影响。agy 的 `--remote-agent` 会被拒绝，因为会话不在这台机器上跑。
 - **终端标题**是 `chord <agent> · <任务>`，每个窗口都说得出自己是谁。
-- **hook 把关的是编辑器工具。** 从 shell 改的文件在每条命令之后按名字报出来，并附上该做的占用。
+- **hook 把关的是编辑器工具。** 从 shell 改的文件在每条命令之后按名字报出来，并附上该做的占用。agy 的工具调用后 hook 没法对模型说话，所以 agy 的 agent 在下一次调用模型之前才收到。
 
 ## 🗺️ 范围
 

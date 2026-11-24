@@ -16,13 +16,6 @@ const hook = (event: string, payload: object) => new Promise<HookOut>(resolve =>
 });
 const context = (out: HookOut) => out?.hookSpecificOutput?.additionalContext;
 
-// shortcut: OpenCode 2's tool names translated to the 1.x ones hooks.ts knows (write/edit `path` as `filePath`, patch
-// as apply_patch); drop once hooks.ts reads the 2.x names itself
-const asV1 = (tool: string, input: any) =>
-  tool === 'patch' ? { tool_name: 'apply_patch', tool_input: input }
-  : (tool === 'edit' || tool === 'write') && input && typeof input.path === 'string' ? { tool_name: tool, tool_input: { ...input, filePath: input.path } }
-  : { tool_name: tool, tool_input: input };
-
 export default {
   id: 'chord',
   async setup(ctx: any) {
@@ -54,7 +47,7 @@ export default {
     });
 
     ctx.tool.hook('execute.before', async (e: any) => {
-      const out = await hook('pre-tool-use', { session_id: e.sessionID, ...asV1(e.tool, e.input) });
+      const out = await hook('pre-tool-use', { session_id: e.sessionID, tool_name: e.tool, tool_input: e.input });
       const d = out?.hookSpecificOutput;
       if (d?.permissionDecision === 'deny') throw new Error(d.permissionDecisionReason ?? 'refused by chord'); // the model reads the reason
     });
@@ -64,7 +57,7 @@ export default {
       // here would be lost; the enclosing `execute` call delivers them
       if (e.codemode || e.status !== 'completed' || !e.result) return;
       const child = await isChild(e.sessionID);
-      const r = context(await hook('post-tool-use', { session_id: e.sessionID, ...asV1(e.tool, e.input), ...(child ? { agent_id: e.sessionID } : {}) }));
+      const r = context(await hook('post-tool-use', { session_id: e.sessionID, tool_name: e.tool, tool_input: e.input, ...(child ? { agent_id: e.sessionID } : {}) }));
       if (!r) return;
       // the model reads `content` when it has any, else `output`
       if (e.result.content?.length) e.result.content = [...e.result.content, { type: 'text', text: r }];

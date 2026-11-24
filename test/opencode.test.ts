@@ -110,6 +110,7 @@ test('the plugin refuses an unclaimed write with chord\'s reason and lets a clai
     await assert.rejects(write(path.join(wt, 'src', 'x.ts')), /not claimed by you/);
     await assert.rejects(write(path.join(wt, 'src', 'x.ts'), true), /not claimed by you/); // a call nested in Code Mode's execute too
     await assert.rejects(write(path.join(P, 'repo', 'src', 'x.ts')), /outside your workspace.*edit your own copy/); // the main checkout
+    await assert.rejects(f.hooks['tool.execute.before']({ sessionID: 'ses_1', tool: 'patch', input: { patchText: '*** Begin Patch\n*** Add File: chord/agents/a/repo/src/y.ts\n+y\n*** End Patch' } }), /not claimed by you/);
     db.addClaim(d, { agent: 'a', file: 'repo/src/x.ts', intent: 'x', kind: 'add' });
     await write(path.join(wt, 'src', 'x.ts'));
     await f.hooks['tool.execute.before']({ sessionID: 'ses_1', tool: 'read', input: { path: path.join(P, 'repo', 'README.md') } }); // reading anything is fine

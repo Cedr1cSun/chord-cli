@@ -313,8 +313,9 @@ const fwd = (p: string) => p.split(path.sep).join('/');
 /** pi loads chord's extension beside this module from the command line, so the user's own ~/.pi is not touched. The
  *  extension runs inside pi's process and spawns `node $CHORD_HOOKS <event>` for each event, and registers the MCP
  *  server `$CHORD_SERVE` itself (pi's own MCP support), so it needs nothing from chord but those two paths and the
- *  CHORD_* variables, which it inherits. */
-export const piArgs = () => ['-e', path.join(path.dirname(HOOKS_TS), 'pi', 'extensions', `chord${path.extname(HOOKS_TS)}`)];
+ *  CHORD_* variables, which it inherits. pi's own MCP extension is named too: it comes from the settings, so -ne or
+ *  "-builtin:mcp" there would leave chord's server registered with nothing to connect it. */
+export const piArgs = () => ['-e', 'builtin:mcp', '-e', path.join(path.dirname(HOOKS_TS), 'pi', 'extensions', `chord${path.extname(HOOKS_TS)}`)];
 
 /** Resolve everything for `chord <tool> [--name x] [tool args...]` without spawning. Throws NeedsRestructure. */
 export function prepare(tool: Tool, cwd: string, override?: string): Launch {

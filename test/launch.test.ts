@@ -311,6 +311,31 @@ test('a repository whose only Claude config is its untracked settings.local.json
   } finally { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
 });
 
+test('claude warns about its add-dir question until the repository is trusted; no other tool does', () => {
+  const proj = tempProject(); const repo = path.join(proj, 'repo');
+  const home = tmp('chord-userhome-');
+  const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  process.env.HOME = home; process.env.USERPROFILE = home;
+  const write = process.stderr.write;
+  const launch = (tool: 'claude' | 'codex', name: string) => {
+    let err = '';
+    process.stderr.write = ((s: string) => { err += s; return true; }) as typeof write;
+    try { return { wt: prepare(tool, proj, name).worktree, err }; } finally { process.stderr.write = write; }
+  };
+  const trust = (dir: string) => fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ projects: { [dir.replace(/\\/g, '/')]: { hasTrustDialogAccepted: true } } }));
+  try {
+    const bare = launch('claude', 'h1');
+    assert.equal(bare.err.trim().split('\n').length, 1);
+    assert.ok(bare.err.includes(`Claude Code will ask whether to add ${bare.wt}`) && bare.err.includes('"Yes, add it"') && bare.err.includes(`in ${repo}`));
+    assert.equal(launch('codex', 'h2').err, '');
+    // Claude Code 2.1.331 still asks when only the project folder is trusted; trusting the repository stops it
+    trust(proj);
+    assert.ok(launch('claude', 'h3').err.includes('Claude Code will ask'));
+    trust(repo);
+    assert.equal(launch('claude', 'h4').err, '');
+  } finally { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+});
+
 test('the user\'s own --settings win over the repository\'s settings, and chord\'s hooks and tools stay', () => {
   const wt = tmp('chord-wt-');
   fs.mkdirSync(path.join(wt, '.claude'));

@@ -391,6 +391,7 @@ test('pi gets chord\'s extension on the command line and the hook and server pat
   assert.match(l.env.CHORD_SERVE, /serve\.(ts|js)$/); // and registers this as the MCP server
   assert.equal(l.env.CHORD_TOOL, 'pi');
   assert.equal(l.env.CHORD_AGENT_ID, 'p');
+  assert.equal(l.env.PI_PROGRAM_STATUS, '1'); // pi reports its state over OSC 7501 even where the terminal never asks
 });
 
 test('opencode gets chord through the environment: inline config with the MCP server and the plugin', () => {

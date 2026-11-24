@@ -1,6 +1,6 @@
 // Hook entry point for Claude Code, Codex, OpenCode and pi: `node hooks.ts <event>`, payload on stdin.
 // Event names are chord's own; launch.ts maps each tool's hook config onto them (OpenCode's through the plugin in
-// opencode/plugins/chord.ts and pi's through the extension in pi/extensions/chord.ts, which call this with the same
+// opencode/plugin/index.ts and pi's through the extension in pi/extensions/chord.ts, which call this with the same
 // payload shape).
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

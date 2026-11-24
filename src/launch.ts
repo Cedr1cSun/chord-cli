@@ -318,13 +318,15 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
   db.addAgent(d, { name, tool, pid: process.pid, cwd: ws });
   try {
     const config = readConfig(project);
+    // a branch that exists already may hold the agent's work, so a failed setup must leave it alone
+    const fresh = git(project.repo, 'branch', '--list', `chord/${name}`) === '';
     const worktree = ensureWorktree(project.repo, path.join(ws, project.repoName), name);
     const env = { CHORD_AGENT_ID: name, CHORD_DB: fwd(dbFile), CHORD_TOOL: tool, CHORD_PROJECT: fwd(project.dir), CHORD_WORKSPACE: fwd(ws), CHORD_WORKTREE: fwd(worktree) };
     // Setup is owed until it has finished once: a marker, not the worktree's existence, says so, because a setup
     // interrupted half-way leaves the worktree behind and a relaunch must not take a half-prepared checkout for ready.
     const marker = setupMarker(project, name);
     if (config.setup && !fs.existsSync(marker)) {
-      runSetup(project, name, worktree, config.setup, env);
+      runSetup(project, name, worktree, config.setup, env, fresh);
       fs.mkdirSync(path.dirname(marker), { recursive: true });
       fs.writeFileSync(marker, `${Date.now()}\n`);
     }
@@ -345,8 +347,9 @@ export function prepare(tool: Tool, cwd: string, override?: string): Launch {
 /** Where `chord clean` and a relaunch look to see whether the setup command has run for this agent. */
 export const setupMarker = (project: Project, name: string) => path.join(project.stateDir, 'setup-done', name);
 
-/** A failed setup aborts the launch, and the half-prepared worktree and branch go with it so the next launch starts clean. */
-function runSetup(project: Project, name: string, worktree: string, setup: string, env: Record<string, string>): void {
+/** A failed setup aborts the launch. A `fresh` worktree and branch go with it so the next launch starts clean; an
+ *  existing one is kept, and with no marker written setup runs again next time. */
+function runSetup(project: Project, name: string, worktree: string, setup: string, env: Record<string, string>, fresh: boolean): void {
   process.stderr.write(`chord: running setup in ${worktree}: ${setup}\n`);
   // Ctrl+C goes to the setup command, which then fails and is cleaned up below; without a listener it would kill chord
   // itself first and leave the worktree and branch behind
@@ -355,10 +358,12 @@ function runSetup(project: Project, name: string, worktree: string, setup: strin
   try {
     execSync(setup, { cwd: worktree, stdio: 'inherit', env: { ...process.env, ...env } });
   } catch (e) {
-    try { git(project.repo, 'worktree', 'remove', '--force', worktree); } catch { /* best effort */ }
-    try { git(project.repo, 'branch', '-D', `chord/${name}`); } catch { /* best effort */ }
+    if (fresh) {
+      try { git(project.repo, 'worktree', 'remove', '--force', worktree); } catch { /* best effort */ }
+      try { git(project.repo, 'branch', '-D', `chord/${name}`); } catch { /* best effort */ }
+    }
     const status = (e as { status?: number | null }).status;
-    throw new Error(`setup command failed${status != null ? ` with exit code ${status}` : ''}: ${setup}\nthe worktree was removed; fix the command in ${path.join(project.dir, 'chord', 'config.json')} or the repository and launch again`);
+    throw new Error(`setup command failed${status != null ? ` with exit code ${status}` : ''}: ${setup}\nthe worktree was ${fresh ? 'removed' : 'kept with its work'}; fix the command in ${path.join(project.dir, 'chord', 'config.json')} or the repository and launch again`);
   } finally {
     process.off('SIGINT', ignoreSigint);
   }

@@ -206,6 +206,7 @@ test('claimPath accepts the project-relative spelling of the own worktree', () =
   const ctx: Ctx = { db: d, agent: 'a', cwd, worktree: path.join(cwd, 'repo'), project: P };
   assert.equal(claimPath(ctx, 'chord/agents/a/repo/src/x.ts'), 'repo/src/x.ts');
   assert.equal(claimPath(ctx, 'src/x.ts'), 'repo/src/x.ts');
-  assert.equal(claimPath(ctx, 'repo/src/x.ts'), 'repo/repo/src/x.ts'); // repository-relative like any other relative path: from the project folder "repo/" would be the main checkout
+  // the spelling chord prints itself, for a file not there yet: the repository has no repo/ directory, so it is not repository-relative
+  assert.throws(() => claimPath(ctx, 'repo/src/x.ts'), /no repo\/src\/x\.ts in the repository.*"src\/x\.ts"/);
   assert.throws(() => claimPath(ctx, 'chord/agents/b/repo/src/x.ts'), /outside your workspace/);
 });

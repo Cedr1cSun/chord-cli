@@ -40,11 +40,11 @@ export function claimPath(ctx: Ctx, file: string): string {
   else {
     abs = path.resolve(ctx.worktree, file);
     // From the project folder "<repo>/x" is the main checkout's x. An agent naming its own copy that way, where the
-    // repository has no such path but x exists at its root, is told the spellings that reach it rather than given a
-    // claim on a file that is not there.
+    // repository has no such path but x exists at its root, or has no <repo>/ directory at all (a new or deleted x),
+    // is told the spellings that reach it rather than given a claim on a file that is not there.
     const repoName = path.basename(ctx.worktree), inner = asGiven.slice(repoName.length + 1);
-    if (asGiven.startsWith(`${repoName}/`) && !fs.existsSync(abs) && fs.existsSync(path.resolve(ctx.worktree, inner))) {
-      throw new Error(`there is no ${asGiven} in the repository, but it has ${inner}: name files relative to the repository root ("${inner}") or from the project folder ("chord/agents/<you>/${repoName}/${inner}")`);
+    if (asGiven.startsWith(`${repoName}/`) && !fs.existsSync(abs) && (fs.existsSync(path.resolve(ctx.worktree, inner)) || !fs.existsSync(path.join(ctx.worktree, repoName)))) {
+      throw new Error(`there is no ${asGiven} in the repository (from the project folder "${repoName}/" is the main checkout): name files relative to the repository root ("${inner}") or from the project folder ("chord/agents/<you>/${repoName}/${inner}")`);
     }
   }
   if (!insideDir(ctx.cwd, abs)) throw new Error(`${file} is outside your workspace; chord only coordinates files under ${ctx.cwd}`);

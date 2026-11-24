@@ -12,7 +12,7 @@ import { patchFiles } from './patch.ts';
 import { canWrite, dirtyTracked, insideDir, normFile, type Ctx } from './tools.ts';
 
 export type Event = 'session-start' | 'user-prompt-submit' | 'pre-tool-use' | 'post-tool-use' | 'stop' | 'session-end' | 'notification';
-export type Tool = 'claude' | 'codex' | 'opencode' | 'pi';
+export type Tool = 'claude' | 'codex' | 'opencode' | 'pi' | 'agy';
 
 /** What the hook prints: a JSON object, or nothing for `undefined`. */
 type HookOut = object | undefined;
@@ -22,6 +22,8 @@ const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 // patch like Codex's
 const OPENCODE_EDIT_TOOLS = new Set(['edit', 'write']);
 const PI_EDIT_TOOLS = OPENCODE_EDIT_TOOLS;
+// agy 1.5.16 edits with write_file and edit_file (an absolute Path); its documentation also lists the other three, with TargetFile
+const AGY_EDIT_TOOLS = new Set(['write_file', 'edit_file', 'write_to_file', 'replace_file_content', 'multi_replace_file_content']);
 /** The path as pi's own normalizePath reads it (pi 1.6 utils/paths.js): a leading @ dropped, Git Bash's /c/..., /mnt/c/...
  *  and /cygdrive/c/... as C:\... on Windows, ~ and file:// expanded. Checked as given, they would land outside the project. */
 const piPath = (p: string): string => {
@@ -40,6 +42,7 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
   }
   if (tool === 'opencode' && OPENCODE_EDIT_TOOLS.has(name)) return typeof input.path === 'string' ? [input.path] : [];
   if (tool === 'pi') return PI_EDIT_TOOLS.has(name) && typeof input.path === 'string' ? [piPath(input.path)] : [];
+  if (tool === 'agy') { const p = input.Path ?? input.TargetFile; return AGY_EDIT_TOOLS.has(name) && typeof p === 'string' ? [p] : []; }
   if (tool === 'codex' || tool === 'opencode') {
     // the patch has been seen under "command"; "patchText", "input", "patch" and a bare string cost nothing to accept as well
     const text = typeof input === 'string' ? input : [input.command, input.patchText, input.input, input.patch].find(v => typeof v === 'string');
@@ -50,9 +53,9 @@ export function filesTouched(tool: Tool, payload: Record<string, any>): string[]
 }
 
 /** Tools that write files and must therefore name them: a call that names none is refused rather than let through. */
-const isEditTool = (tool: Tool, name: unknown) => (tool === 'claude' ? EDIT_TOOLS.has(String(name)) : tool === 'pi' ? PI_EDIT_TOOLS.has(String(name)) : tool === 'opencode' ? OPENCODE_EDIT_TOOLS.has(String(name)) || name === 'patch' : name === 'apply_patch');
+const isEditTool = (tool: Tool, name: unknown) => (tool === 'claude' ? EDIT_TOOLS.has(String(name)) : tool === 'agy' ? AGY_EDIT_TOOLS.has(String(name)) : tool === 'pi' ? PI_EDIT_TOOLS.has(String(name)) : tool === 'opencode' ? OPENCODE_EDIT_TOOLS.has(String(name)) || name === 'patch' : name === 'apply_patch');
 
-const isShell = (name: unknown) => /^(bash|powershell|shell|exec|exec_command|local_shell)$/i.test(String(name ?? ''));
+const isShell = (name: unknown) => /^(bash|powershell|shell|exec|exec_command|local_shell|run_command)$/i.test(String(name ?? ''));
 
 const hhmm = (t: number) => new Date(t).toTimeString().slice(0, 5); // local time
 

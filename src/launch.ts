@@ -202,7 +202,7 @@ export function claudeArgs(env: Record<string, string>, projectConfig: ProjectCo
   const addDir = wt ? ['--add-dir', wt] : [];
   const projectMcp = projectConfig && wt ? projectMcpConfig(wt, projectConfig) : null;
   const mcpFiles = projectMcp ? [projectMcp] : [];
-  const settings = projectConfig && wt ? mergeProjectSettings(ours, wt) : ours;
+  const settings = projectConfig && wt ? mergeProjectSettings(ours, wt, projectConfig.repo) : ours;
   // --add-dir and --mcp-config take any number of values, so they must not come last: the user's own arguments
   // follow these, and a prompt such as `chord claude "fix the tests"` would be read as another directory.
   // --settings takes exactly one value and closes the list.
@@ -249,12 +249,13 @@ function mergeSettings(ours: Record<string, any>, theirs: Record<string, any>): 
 }
 
 /** chord's settings plus the repository's .claude/settings.json and settings.local.json (later files win, hook lists
- *  are concatenated so both chord's and the project's hooks run). */
-export function mergeProjectSettings(ours: Record<string, any>, worktree: string): Record<string, any> {
+ *  are concatenated so both chord's and the project's hooks run). settings.local.json is not tracked, so it is read
+ *  from the main checkout `repo`; settings.json from the agent's worktree. */
+export function mergeProjectSettings(ours: Record<string, any>, worktree: string, repo = worktree): Record<string, any> {
   let theirs: Record<string, any> = {};
   for (const name of ['settings.json', 'settings.local.json']) { // settings.local.json wins, as in Claude Code itself
     let one: Record<string, any>;
-    try { one = JSON.parse(fs.readFileSync(path.join(worktree, '.claude', name), 'utf8')); } catch { continue; }
+    try { one = JSON.parse(fs.readFileSync(path.join(name === 'settings.json' ? worktree : repo, '.claude', name), 'utf8')); } catch { continue; }
     if (typeof one !== 'object' || one === null) continue;
     one = substituteProjectDir(one, worktree);
     theirs = { ...mergeSettings(one, theirs), hooks: concatHooks(theirs, one) }; // permission lists add up across the two files

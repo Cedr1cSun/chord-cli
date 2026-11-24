@@ -21,8 +21,15 @@ test('InputGate holds while a draft is being typed and releases only on Enter or
   assert.equal(g.clear(), false); // Esc closes a menu or interrupts; it does not empty the box
   g.onUserInput('\x15');
   assert.equal(g.clear(), true);
-  g.onUserInput('\x1b[B'); // arrow key: neither a draft nor a submit
+  g.onUserInput('\x1b[B'); // Down: neither a draft nor a submit
   assert.equal(g.clear(), true);
+  g.onUserInput('\x1b[A'); // Up recalls an earlier prompt into the box: a draft whose content chord cannot see
+  assert.equal(g.clear(), false);
+  g.onUserInput('\x15');
+  assert.equal(g.clear(), true);
+  g.onUserInput('\x1b[38;72;0;1;0;1_\x1b[38;72;0;0;0;1_'); // Up in win32-input-mode (Vk 38, no character), down and up
+  assert.equal(g.clear(), false);
+  g.onUserInput('\x15');
   g.onUserInput('abc');
   g.onUserInput('\x1b[24;1R\x1b[?62;c'); // terminal replies to queries do not touch the draft state
   assert.equal(g.clear(), false);
@@ -42,6 +49,8 @@ test('InputGate.settled: chord keeps its hands off for three seconds after any k
   assert.equal(g.settled(15000), true);
   g.onUserInput('\x1b[24;1R', 20000); // a terminal reply is not a key
   assert.equal(g.settled(20000), true);
+  g.onUserInput('\x1b[A', 30000); // Up recalls a prompt: a key like any other
+  assert.equal(g.settled(32000), false);
 });
 
 test('InputGate: backspace empties a draft, Ctrl+U/Ctrl+C clear it, a paste with newlines stays a draft, Shift+Enter is not a submit', () => {
@@ -85,7 +94,8 @@ test('decodeKeys drops OSC, DCS, SS3 and mouse sequences and holds any unfinishe
   assert.equal(dec('\x1b]11;rgb:0000/0000/0000\x1b\\'), ''); // OSC reply with ST terminator
   assert.equal(dec('\x1b]0;title\x07'), ''); // OSC with BEL
   assert.equal(dec('\x1bP>|ConPTY 1.19\x1b\\'), ''); // DCS reply with printable payload
-  assert.equal(dec('\x1bOA\x1bOB'), ''); // SS3 arrows
+  assert.equal(dec('\x1bOB'), ''); // SS3 Down
+  assert.notEqual(dec('\x1bOA'), ''); // SS3 Up recalls history: kept as a key
   assert.equal(dec('\x1b[<35;10;5M'), ''); // SGR mouse report
   assert.equal(dec('ab\x1b]11;rgb:00'), 'ab'); assert.equal(held, '\x1b]11;rgb:00'); // unfinished OSC is held
   assert.equal(dec('x\x1b'), 'x'); assert.equal(held, '\x1b'); // chunk ending right after ESC

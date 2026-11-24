@@ -48,12 +48,14 @@ export function ensureSpawnHelper(root = path.dirname(createRequire(import.meta.
 
 const ESC_KEY = '';   // a decoded Esc key, kept apart from escape sequences while they are stripped
 const SOFT_NL = '';   // Shift+Enter: a newline inside the draft, not a submit
+const HIST = '';      // Up: recalls an earlier prompt into the box, a draft whose content chord cannot see
 
 /**
  * Characters the user typed, out of a raw stdin chunk. Under ConPTY keys arrive in win32-input-mode,
  * `ESC [ Vk ; Sc ; Uc ; KeyDown ; Ctrl ; Repeat _`, one event per key press and release, and a chunk may
  * end mid-sequence; `hold` receives such a tail to prepend to the next chunk. Other escape sequences
- * (arrows, mouse reports, terminal replies to queries) are dropped: they are not a draft.
+ * (arrows, mouse reports, terminal replies to queries) are dropped: they are not a draft. Up is the exception: it
+ * recalls an earlier prompt into the input box, so it comes back as a placeholder character that counts as typed.
  */
 export function decodeKeys(data: string, hold: (rest: string) => void): string {
   if (data === '\x1b') { hold(''); return '\x1b'; } // a bare Esc key outside win32-input-mode
@@ -64,7 +66,8 @@ export function decodeKeys(data: string, hold: (rest: string) => void): string {
     if (!complete) { hold(tail); data = data.slice(0, lastEsc); } else hold('');
   } else hold('');
   return data
-    .replace(/\x1b\[(\d+);(\d+);(\d+);(\d+);(\d+);(\d+)_/g, (_, _vk, _sc, uc, down, ctrl) => {
+    .replace(/\x1b\[(\d+);(\d+);(\d+);(\d+);(\d+);(\d+)_/g, (_, vk, _sc, uc, down, ctrl) => {
+      if (down === '1' && vk === '38') return HIST; // VK_UP
       if (down !== '1' || Number(uc) === 0) return '';
       const code = Number(uc);
       if (code === 27) return ESC_KEY;
@@ -73,6 +76,7 @@ export function decodeKeys(data: string, hold: (rest: string) => void): string {
     })
     .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')  // OSC (terminal replies, titles)
     .replace(/\x1bP[^\x1b]*\x1b\\/g, '')               // DCS (e.g. XTVERSION replies)
+    .replace(/\x1b\[(?:1;\d+)?A|\x1bOA/g, HIST)         // Up, before the other arrows are dropped
     .replace(/\x1b\[[0-9;?<>=]*[ -/]*[@-~]/g, '')      // CSI (arrows, mouse, replies)
     .replace(/\x1bO./g, '')                            // SS3 (application-mode arrows)
     .replace(/\x1b\x1b/g, ESC_KEY)                     // Esc pressed twice outside win32 mode

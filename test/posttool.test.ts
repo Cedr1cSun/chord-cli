@@ -141,6 +141,8 @@ test('post-tool-use also warns about commits to unclaimed files, git stash, and 
   // block finish, so it is not reported either: the warning uses finish's own rule
   fs.writeFileSync(path.join(root, 'crlf.txt'), 'one\r\ntwo\r\n'); git(root, 'add', 'crlf.txt'); git(root, 'commit', '-q', '-m', 'crlf');
   fs.writeFileSync(path.join(root, '.gitattributes'), '* text\n'); git(root, 'add', '.gitattributes'); git(root, 'commit', '-q', '-m', 'attributes');
+  // git skips a file whose stat data still matches the index, so rewrite it to make the phantom change show every time
+  fs.writeFileSync(path.join(root, 'crlf.txt'), 'one\r\ntwo\r\n');
   assert.notEqual(git(root, 'status', '--porcelain', '--untracked-files=no'), ''); // the phantom change
   assert.equal(run('ls'), '');
   // the main checkout dirtied by the shell blocks everyone's finish

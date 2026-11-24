@@ -186,6 +186,8 @@ export function takeSettings(rest: string[]): Record<string, any> | undefined {
 export function refuseHookKillers(tool: Tool, rest: string[]): void {
   if (tool === 'claude') {
     for (const flag of ['--bare', '--safe-mode', '--disable-all-hooks']) if (rest.includes(flag)) throw new Error(`${flag} switches off the hooks chord relies on; run plain claude for that`);
+    // claude reads these as --bare and --safe-mode, with its own truthy test: 1, true, yes or on, trimmed, any case
+    for (const v of ['CLAUDE_CODE_SIMPLE', 'CLAUDE_CODE_SAFE_MODE']) if (/^(1|true|yes|on)$/i.test((process.env[v] ?? '').trim())) throw new Error(`${v} switches off the hooks chord relies on; unset it for chord`);
   } else if (tool === 'opencode') {
     if (rest.includes('--pure')) throw new Error('--pure switches off the plugin chord relies on; run plain opencode for that');
   } else if (tool === 'pi') {

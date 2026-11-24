@@ -152,6 +152,18 @@ test('takeSettings lifts the user --settings out of the tool arguments; hook-kil
   assert.throws(() => takeSettings(['--settings', '{oops']), /JSON object or a path/);
   assert.throws(() => takeSettings(['--settings', '[1]']), /JSON object/);
   assert.throws(() => refuseHookKillers('claude', ['--bare']), /switches off the hooks/);
+  // the environment variables behind --bare and --safe-mode switch the hooks off just the same
+  const prevEnv = { simple: process.env.CLAUDE_CODE_SIMPLE, safe: process.env.CLAUDE_CODE_SAFE_MODE };
+  try {
+    delete process.env.CLAUDE_CODE_SIMPLE; process.env.CLAUDE_CODE_SAFE_MODE = '1';
+    assert.throws(() => refuseHookKillers('claude', []), /CLAUDE_CODE_SAFE_MODE switches off the hooks/);
+    delete process.env.CLAUDE_CODE_SAFE_MODE; process.env.CLAUDE_CODE_SIMPLE = ' On ';
+    assert.throws(() => refuseHookKillers('claude', []), /CLAUDE_CODE_SIMPLE switches off the hooks/);
+    process.env.CLAUDE_CODE_SIMPLE = '0';
+    refuseHookKillers('claude', []); // fine
+  } finally {
+    for (const [k, v] of [['CLAUDE_CODE_SIMPLE', prevEnv.simple], ['CLAUDE_CODE_SAFE_MODE', prevEnv.safe]] as const) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
   assert.throws(() => refuseHookKillers('codex', ['-c', 'hooks.PreToolUse=[]']), /replace chord's own hooks/);
   assert.throws(() => refuseHookKillers('codex', ['--config=mcp_servers.chord.command="x"']), /replace chord's own hooks/);
   assert.throws(() => refuseHookKillers('opencode', ['--pure']), /switches off the plugin/);

@@ -10,9 +10,14 @@ type HookOut = { hookSpecificOutput?: { additionalContext?: string; permissionDe
 type Pi = { on(event: string, handler: (event: any, ctx: Ctx) => any): unknown; registerMcpServer(name: string, config: object): void };
 type Ctx = { sessionManager: { getSessionId(): string } };
 
-const hook = (event: string, payload: object): HookOut => {
+const EDIT_TOOLS = new Set(['edit', 'write']);
+// A hook that cannot run, exits non-zero (the hook process exits 0 on purpose, with a refusal as JSON on stdout) or prints
+// something unreadable gives no answer, or with `strict` throws the cause.
+const hook = (event: string, payload: object, strict = false): HookOut => {
   const r = spawnSync('node', [process.env.CHORD_HOOKS!, event], { input: JSON.stringify(payload), encoding: 'utf8', env: process.env, windowsHide: true });
-  try { return r.stdout ? JSON.parse(r.stdout) : undefined; } catch { return undefined; }
+  const cause = r.error ? r.error.message : r.status !== 0 ? (r.status === null ? `killed by ${r.signal}` : `exit code ${r.status}`) : '';
+  if (cause && strict) throw new Error(cause);
+  try { return r.stdout ? JSON.parse(r.stdout) : undefined; } catch { if (strict) throw new Error('unreadable output'); return undefined; }
 };
 const context = (out: HookOut) => out?.hookSpecificOutput?.additionalContext;
 
@@ -35,7 +40,10 @@ export default function chord(pi: Pi): void {
     return texts.length ? { message: { customType: 'chord', content: texts.join('\n\n'), display: true } } : undefined;
   });
   pi.on('tool_call', (e, ctx) => {
-    const d = hook('pre-tool-use', { session_id: ctx.sessionManager.getSessionId(), tool_name: e.toolName, tool_input: e.input })?.hookSpecificOutput;
+    let d;
+    try { d = hook('pre-tool-use', { session_id: ctx.sessionManager.getSessionId(), tool_name: e.toolName, tool_input: e.input }, true)?.hookSpecificOutput; } catch (err) {
+      if (EDIT_TOOLS.has(e.toolName)) return { block: true, reason: `chord's hook could not run, so this edit was not checked (${(err as Error).message}); try again or report it to the user` };
+    }
     if (d?.permissionDecision === 'deny') return { block: true, reason: d.permissionDecisionReason ?? 'refused by chord' }; // the model reads the reason
   });
   pi.on('tool_result', (e, ctx) => {

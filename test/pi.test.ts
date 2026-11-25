@@ -150,3 +150,19 @@ test('without chord\'s environment the extension does nothing', async () => {
   assert.deepEqual(Object.keys(handlers), []);
   assert.deepEqual(servers, {});
 });
+
+test('the extension blocks an edit when chord\'s hook process cannot run, and lets other tools through', async () => {
+  const { env, wt } = setup();
+  const f = fakePi();
+  await withEnv({ ...env, CHORD_HOOKS: path.join(env.CHORD_WORKSPACE, 'no-such-hooks.ts') }, async () => {
+    chord(f.pi as any);
+    const call = (toolName: string) => f.handlers.tool_call({ type: 'tool_call', toolName, toolCallId: 'c1', input: { path: path.join(wt, 'src', 'x.ts') } }, f.ctx());
+    for (const toolName of ['edit', 'write']) {
+      const r = await call(toolName);
+      assert.equal(r?.block, true, toolName);
+      assert.match(r.reason, /chord's hook could not run.*edit was not checked.*exit code 1/s);
+    }
+    assert.equal(await call('read'), undefined);
+    assert.equal(await call('bash'), undefined);
+  });
+});

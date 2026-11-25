@@ -172,3 +172,15 @@ test('agy: a stop that was cancelled or failed is not continued and leaves the m
   assert.equal(hook('stop', ev.stop()).decision, 'continue'); // the normal end of a turn still delivers
   assert.equal(hook('stop', { ...ev.stop(), terminationReason: undefined }), undefined); // read already; no field behaves as before
 });
+
+test('agy: a stop while a sub-agent still works leaves the agent busy and its messages unread', () => {
+  for (const terminationReason of ['NO_TOOL_CALL', 'USER_CANCELED']) {
+    const { d, W, ev, hook } = setup();
+    db.setSession(d, 'a', MAIN); fs.rmSync(agyBriefingDue(W));
+    hook('user-prompt-submit', ev.preInvocation(0));
+    db.send(d, 'b', ['a'], 'heads up');
+    assert.equal(hook('stop', { ...ev.stop(), fullyIdle: false, terminationReason }), undefined);
+    assert.equal(db.hasUnread(d, 'a'), true);
+    assert.equal(db.getAgent(d, 'a')!.status, 'busy');
+  }
+});

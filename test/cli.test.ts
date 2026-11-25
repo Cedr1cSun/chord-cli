@@ -10,7 +10,7 @@ import { ensureWorktree } from '../src/launch.ts';
 import { git, tempProject, tmp } from './helpers/git.ts';
 
 test('refuseOpencodeVersion lets OpenCode 2 and later through and refuses 1.x, naming the way out', () => {
-  for (const v of ['opencode v2.4.1\n', '2.0.0', 'v10.1.0']) refuseOpencodeVersion(v);
+  for (const v of ['opencode v2.4.1\n', '2.0.0', 'v10.1.0', '0.0.0-dev-202611241200\n', 'opencode v0.0.0-snapshot-1']) refuseOpencodeVersion(v); // snapshot builds report major 0
   for (const v of ['1.19.3\n', 'opencode v1.0.150', '0.15.8', '', 'unknown']) assert.throws(() => refuseOpencodeVersion(v), /OpenCode 2[\s\S]*chord 0\.3\.1 with OpenCode 1/, v);
 });
 

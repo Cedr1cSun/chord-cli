@@ -218,6 +218,7 @@ export function refuseHookKillers(tool: Tool, rest: string[], agyMcpConfig?: str
  *  what `opencode --version` printed. */
 export function refuseOpencodeVersion(version: string): void {
   const major = Number(/(\d+)\.\d+/.exec(version)?.[1]);
+  if (/(?<![\d.])0\.0\.0-/.test(version)) return; // a snapshot build of OpenCode 2 reports 0.0.0-dev-<timestamp>
   if (!(major >= 2)) throw new Error(`opencode --version says "${version.trim()}", and this chord supports OpenCode 2 only. Install OpenCode 2 (npm install -g @opencode/cli), or use chord 0.3.1 with OpenCode 1.x (npm install -g chord-cli@0.3.1)`);
 }
 

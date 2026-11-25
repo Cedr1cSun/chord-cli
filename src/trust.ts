@@ -66,7 +66,7 @@ export function agyHasChordServer(file = path.join(os.homedir(), '.gemini', 'con
   try { return Object.hasOwn(JSON.parse(fs.readFileSync(file, 'utf8'))?.mcpServers ?? {}, 'chord'); } catch { return false; }
 }
 
-const hasCodexState =(home: string) => { try { return fs.readdirSync(home).some(f => /^state_\d+\.sqlite$/.test(f)); } catch { return false; } };
+const hasCodexState = (home: string) => { try { return fs.readdirSync(home).some(f => /^state_\d+\.sqlite$/.test(f)); } catch { return false; } };
 
 /** Codex creates and migrates its state database (~/.codex/state_N.sqlite) on its first start, and when two start at
  *  once the second exits with "local database appears to be damaged". Until that database exists, launches take

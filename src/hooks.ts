@@ -385,8 +385,12 @@ export function agyHandle(ctx: Ctx, event: Event, p: Record<string, any>): HookO
       const text = parts.filter(Boolean).join('\n\n');
       return text ? context('PreInvocation', text) : undefined;
     }
-    case 'stop':
-      return own() ? run(event) : undefined;
+    case 'stop': {
+      if (!own()) return undefined;
+      // a cancelled or failed turn is not continued: the messages wait for the next model call or the wake-up
+      if (p.terminationReason && p.terminationReason !== 'NO_TOOL_CALL') { db.setStatus(ctx.db, ctx.agent, 'idle'); return undefined; }
+      return run(event);
+    }
   }
   return undefined;
 }

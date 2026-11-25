@@ -155,3 +155,20 @@ test('agy: the hook process prints nothing when chord has nothing to say, and re
   assert.match(refused.reason, /chord could not check this write/);
   assert.equal(run('stop', ev.stop(), broken).stdout, '');
 });
+
+test('agy: a stop that was cancelled or failed is not continued and leaves the messages unread', () => {
+  for (const terminationReason of ['USER_CANCELED', 'ERROR', 'MAX_FORCED_INVOCATIONS']) {
+    const { d, W, ev, hook } = setup();
+    db.setSession(d, 'a', MAIN); fs.rmSync(agyBriefingDue(W));
+    hook('user-prompt-submit', ev.preInvocation(0));
+    db.send(d, 'b', ['a'], 'heads up');
+    assert.equal(hook('stop', { ...ev.stop(), terminationReason }), undefined, terminationReason);
+    assert.equal(db.hasUnread(d, 'a'), true, terminationReason);
+    assert.equal(db.getAgent(d, 'a')!.status, 'idle', terminationReason);
+  }
+  const { d, W, ev, hook } = setup();
+  db.setSession(d, 'a', MAIN); fs.rmSync(agyBriefingDue(W));
+  db.send(d, 'b', ['a'], 'heads up');
+  assert.equal(hook('stop', ev.stop()).decision, 'continue'); // the normal end of a turn still delivers
+  assert.equal(hook('stop', { ...ev.stop(), terminationReason: undefined }), undefined); // read already; no field behaves as before
+});

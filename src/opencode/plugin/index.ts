@@ -6,12 +6,19 @@ import { spawn } from 'node:child_process';
 
 type HookOut = { decision?: string; reason?: string; hookSpecificOutput?: { additionalContext?: string; permissionDecision?: string; permissionDecisionReason?: string } } | undefined;
 
-const hook = (event: string, payload: object) => new Promise<HookOut>(resolve => {
+// A hook that cannot run, exits non-zero (the hook process exits 0 on purpose, with a refusal as JSON on stdout) or prints
+// something unreadable resolves to no answer, or with `strict` rejects with the cause.
+const EDIT_TOOLS = new Set(['edit', 'write', 'patch']);
+const hook = (event: string, payload: object, strict = false) => new Promise<HookOut>((resolve, reject) => {
+  const fail = (cause: string) => strict ? reject(new Error(cause)) : resolve(undefined);
   const p = spawn('node', [process.env.CHORD_HOOKS!, event], { env: process.env, windowsHide: true });
   let out = '';
   p.stdout.on('data', d => { out += d; });
-  p.on('error', () => resolve(undefined));
-  p.on('close', () => { try { resolve(out ? JSON.parse(out) : undefined); } catch { resolve(undefined); } });
+  p.on('error', e => fail(e.message));
+  p.on('close', (code, signal) => {
+    if (code !== 0) return fail(code === null ? `killed by ${signal}` : `exit code ${code}`);
+    try { resolve(out ? JSON.parse(out) : undefined); } catch { fail('unreadable output'); }
+  });
   p.stdin.end(JSON.stringify(payload));
 });
 const context = (out: HookOut) => out?.hookSpecificOutput?.additionalContext;
@@ -47,7 +54,9 @@ export default {
     });
 
     ctx.tool.hook('execute.before', async (e: any) => {
-      const out = await hook('pre-tool-use', { session_id: e.sessionID, tool_name: e.tool, tool_input: e.input });
+      const out = await hook('pre-tool-use', { session_id: e.sessionID, tool_name: e.tool, tool_input: e.input }, true).catch(err => {
+        if (EDIT_TOOLS.has(e.tool)) throw new Error(`chord's hook could not run, so this edit was not checked (${err.message}); try again or report it to the user`);
+      });
       const d = out?.hookSpecificOutput;
       if (d?.permissionDecision === 'deny') throw new Error(d.permissionDecisionReason ?? 'refused by chord'); // the model reads the reason
     });

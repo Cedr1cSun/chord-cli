@@ -178,3 +178,16 @@ test('without chord\'s environment the plugin registers nothing', async () => {
   assert.deepEqual(f.hooks, {});
   assert.deepEqual(f.subscribed, []);
 });
+
+test('the plugin refuses an edit when chord\'s hook process cannot run, and still lets other tools through', async () => {
+  const { env, wt } = setup();
+  const f = fakeCtx();
+  await withEnv({ ...env, CHORD_HOOKS: path.join(env.CHORD_WORKSPACE, 'no-such-hooks.ts') }, async () => {
+    await plugin.setup(f.ctx);
+    for (const tool of ['edit', 'write', 'patch']) {
+      await assert.rejects(f.hooks['tool.execute.before']({ sessionID: 'ses_1', tool, input: { path: path.join(wt, 'src', 'x.ts') } }), /chord's hook could not run.*edit was not checked.*exit code 1/s, tool);
+    }
+    await f.hooks['tool.execute.before']({ sessionID: 'ses_1', tool: 'read', input: { path: path.join(wt, 'src', 'x.ts') } });
+    await f.hooks['tool.execute.before']({ sessionID: 'ses_1', tool: 'bash', input: { command: 'ls' } });
+  });
+});
